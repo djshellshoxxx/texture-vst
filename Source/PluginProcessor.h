@@ -63,6 +63,10 @@ namespace texture
         bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
         void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
+        /** The double-precision overload is not implemented; this keeps the base
+            class's version visible rather than hiding it (`-Woverloaded-virtual`). */
+        using juce::AudioProcessor::processBlock;
+
         juce::AudioProcessorEditor* createEditor() override;
         bool hasEditor() const override { return true; }
 
@@ -92,6 +96,13 @@ namespace texture
         juce::ApplicationProperties& getApplicationProperties() noexcept { return applicationProperties; }
 
         bool isPro() const noexcept { return licenseManager.isPro(); }
+
+        /** Our own GUI listeners. The `using` declarations keep the host-facing
+            `juce::AudioProcessorListener` overloads visible: without them these two
+            hide the base class versions, which the wrappers call
+            (`-Woverloaded-virtual`). */
+        using juce::AudioProcessor::addListener;
+        using juce::AudioProcessor::removeListener;
 
         void addListener (Listener* listener);
         void removeListener (Listener* listener);

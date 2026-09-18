@@ -25,9 +25,9 @@ namespace texture
         constexpr int sizeSaveDebounceMs = 500;
     }
 
-    TextureAudioProcessorEditor::TextureAudioProcessorEditor (TextureAudioProcessor& processor)
-        : juce::AudioProcessorEditor (&processor),
-          processorRef (processor)
+    TextureAudioProcessorEditor::TextureAudioProcessorEditor (TextureAudioProcessor& owner)
+        : juce::AudioProcessorEditor (&owner),
+          processorRef (owner)
     {
         setLookAndFeel (&lookAndFeel);
         setOpaque (true);

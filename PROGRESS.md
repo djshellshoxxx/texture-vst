@@ -34,12 +34,12 @@ ctest --test-dir build/release -C Release --output-on-failure
 | 6 | Build system, tools, icon, fonts, tests, README/LICENSE | DONE |
 | 7 | First successful build (VST3 + Standalone, Windows) | DONE |
 | 8 | Unit tests green (ctest) | DONE — 11053 checks, 0 failures |
-| 9 | GitHub repo created and pushed | PENDING |
+| 9 | GitHub repo created and pushed | DONE — `djshellshoxxx/texture-vst`, private |
 | 10 | Full manual test sweep: every control, every combination | PLAN WRITTEN, NEEDS A HUMAN |
-| 11 | Logic/workflow review of the GUI | PENDING |
-| 12 | CLAP build (`-DTEXTURE_BUILD_CLAP=ON`) | PENDING |
-| 13 | Linux / macOS / AU / AAX build paths verified in CMake | PENDING |
-| 14 | CI: three-platform matrix in `.github/workflows/build.yml` | DONE (unrun) |
+| 11 | Logic/workflow review of the GUI | DONE — one finding, fixed |
+| 12 | CLAP build (`-DTEXTURE_BUILD_CLAP=ON`) | DONE — `Texture.clap` built on MSVC |
+| 13 | Linux / macOS / AU / AAX build paths verified in CMake | IN PROGRESS — via CI |
+| 14 | CI: three-platform matrix in `.github/workflows/build.yml` | RUNNING |
 | 15 | Fuzzer (`17_TESTING.md`) as its own `texture_fuzz` CTest entry | DONE |
 
 ## Deviations from `22_FILE_MANIFEST.md` (all deliberate, all documented in README)
@@ -103,3 +103,14 @@ ctest --test-dir build/release -C Release --output-on-failure
   fuzzer. Getting there needed two genuine product fixes — see design decisions 7 and 8.
 - 2026-09-18: Added the fuzzer, the CI matrix, the manual test plan, and the explicit
   tab order `09_GUI_SPEC.md` specifies and nothing had set.
+- 2026-09-18: **Milestone 9 done.** `github.com/djshellshoxxx/texture-vst`, private,
+  `master` pushed. The first CI run failed and was worth every second: a lambda
+  parameter shadowing an enclosing `buffer` in `test_sample_loader.cpp` broke both
+  macOS and Linux at `-Werror` while MSVC at `/W4` said nothing, and the
+  `windows-release` preset pinned a Visual Studio version the runner no longer has.
+- 2026-09-18: **Milestone 12 done.** `-DTEXTURE_BUILD_CLAP=ON` configures, fetches
+  clap-juce-extensions and links `Texture.clap` on MSVC with no errors.
+- 2026-09-18: **Milestone 11 done.** GUI reviewed against `09_GUI_SPEC.md`: window
+  constraints, the 320 px settings slide-in, toast timings, the preset dropdown,
+  waveform click-to-mark and the accessibility titles all match. The one real gap was
+  the tab order, now `MainPanel::applyFocusOrder`.
