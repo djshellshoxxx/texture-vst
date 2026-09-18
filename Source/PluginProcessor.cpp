@@ -13,6 +13,7 @@ namespace texture
         constexpr const char* parametersTag = "Parameters";
         constexpr const char* sampleTag = "Sample";
         constexpr const char* presetTag = "Preset";
+        constexpr const char* secretTag = "Grit";
         constexpr const char* versionAttribute = "pluginVersion";
 
         /** Morph is ramped over this long so a sweep never zips (06_MORPH_KNOB_BEHAVIOUR.md). */
@@ -191,6 +192,8 @@ namespace texture
 
         for (auto& slot : compareSlots)
             slot = captureParameterTree();
+
+        installFactoryContentAsync();
     }
 
     TextureAudioProcessor::~TextureAudioProcessor()
@@ -200,6 +203,7 @@ namespace texture
         sampleLoader.setCallback (nullptr);
         sampleLoader.cancelPendingLoads();
         sampleLoader.waitForPendingLoads();
+        backgroundPool.removeAllJobs (true, 10000);
 
         cancelPendingUpdate();
 
@@ -211,6 +215,31 @@ namespace texture
             crashLogFile.appendText (Logging::readLogText());
 
         Logging::removeClient();
+    }
+
+    void TextureAudioProcessor::installFactoryContentAsync()
+    {
+        const auto directory = PresetManager::getFactorySampleDirectory();
+
+        if (FactoryContent::isInstalledIn (directory))
+        {
+            factoryInstallFinished.store (true, std::memory_order_release);
+            return;
+        }
+
+        logInfo ("factory", "Generating factory samples into " + directory.getFullPathName());
+
+        // The destructor waits for this pool, so triggerAsyncUpdate from inside the
+        // job can never outlive the processor.
+        backgroundPool.addJob ([this, directory]
+        {
+            const auto written = FactoryContent::generateInto (directory);
+
+            factorySamplesWritten.store (written, std::memory_order_release);
+            factoryInstallFinished.store (true, std::memory_order_release);
+
+            triggerAsyncUpdate();
+        });
     }
 
     void TextureAudioProcessor::cacheParameterPointers()
@@ -375,6 +404,9 @@ namespace texture
             engine.setAdsrParameters (attack, decay, sustain, release);
 
         effects.setMorphTargets (currentTargets);
+        effects.getSecretEffect().setBitDepth (secretBitDepth.load (std::memory_order_relaxed));
+        effects.getSecretEffect().setDownsample (secretDownsample.load (std::memory_order_relaxed));
+        effects.getSecretEffect().setMix (secretMix.load (std::memory_order_relaxed));
         effects.setReverbEnabled (reverbOnParameter == nullptr || reverbOnParameter->load() > 0.5f);
         effects.setOutputGainDb (gainParameter != nullptr ? gainParameter->load() : params::gainDefaultDb);
 
@@ -571,6 +603,20 @@ namespace texture
 
     void TextureAudioProcessor::handleAsyncUpdate()
     {
+        const auto written = factorySamplesWritten.exchange (-1, std::memory_order_acq_rel);
+
+        if (written > 0)
+        {
+            logInfo ("factory", juce::String (written) + " factory sample(s) generated.");
+            presetManager.refresh();
+            postToast ("Factory samples ready.", SampleLoader::Severity::info);
+            notifyPluginStateChanged();
+        }
+        else if (written == 0)
+        {
+            presetManager.refresh();
+        }
+
         if (midiLearnBindingPending.exchange (false, std::memory_order_acq_rel))
         {
             if (midiLearn.applyPendingBinding())
@@ -976,6 +1022,8 @@ namespace texture
             store->saveIfNeeded();
         }
 
+        setSecretSettings ({});
+
         clearLayer (0);
         clearLayer (1);
 
@@ -1134,6 +1182,14 @@ namespace texture
         preset.setProperty ("category", currentPresetCategory, nullptr);
         root.appendChild (preset, nullptr);
 
+        const auto secret = getSecretSettings();
+        juce::ValueTree secretState (secretTag);
+        secretState.setProperty ("bits", secret.bitDepth, nullptr);
+        secretState.setProperty ("downsample", secret.downsample, nullptr);
+        secretState.setProperty ("mix", secret.mix, nullptr);
+        secretState.setProperty ("revealed", secret.revealed, nullptr);
+        root.appendChild (secretState, nullptr);
+
         if (auto xml = root.createXml())
             copyXmlToBinary (*xml, destData);
     }
@@ -1172,6 +1228,20 @@ namespace texture
         {
             currentPresetName = preset.getProperty ("name", "").toString();
             currentPresetCategory = preset.getProperty ("category", "Cinematic").toString();
+        }
+
+        if (const auto secretState = root.getChildWithName (secretTag); secretState.isValid())
+        {
+            SecretSettings secret;
+            secret.bitDepth = static_cast<float> (static_cast<double> (
+                secretState.getProperty ("bits", SecretEffect::defaultBits)));
+            secret.downsample = static_cast<float> (static_cast<double> (
+                secretState.getProperty ("downsample", SecretEffect::defaultDownsample)));
+            secret.mix = static_cast<float> (static_cast<double> (
+                secretState.getProperty ("mix", SecretEffect::defaultMix)));
+            secret.revealed = static_cast<bool> (secretState.getProperty ("revealed", false));
+
+            setSecretSettings (secret);
         }
 
         cacheParameterPointers();
@@ -1340,6 +1410,44 @@ namespace texture
         lines.add ("===== END OF REPORT =====");
 
         return lines.joinIntoString ("\n");
+    }
+
+    // =========================================================================
+    //  Hidden effect
+    // =========================================================================
+
+    TextureAudioProcessor::SecretSettings TextureAudioProcessor::getSecretSettings() const
+    {
+        SecretSettings settings;
+        settings.bitDepth = secretBitDepth.load (std::memory_order_relaxed);
+        settings.downsample = secretDownsample.load (std::memory_order_relaxed);
+        settings.mix = secretMix.load (std::memory_order_relaxed);
+        settings.revealed = secretRevealed.load (std::memory_order_relaxed);
+
+        return settings;
+    }
+
+    void TextureAudioProcessor::setSecretSettings (const SecretSettings& settings)
+    {
+        secretBitDepth.store (juce::jlimit (SecretEffect::minBits, SecretEffect::maxBits, settings.bitDepth),
+                              std::memory_order_relaxed);
+        secretDownsample.store (juce::jlimit (SecretEffect::minDownsample, SecretEffect::maxDownsample,
+                                              settings.downsample),
+                                std::memory_order_relaxed);
+        secretMix.store (juce::jlimit (0.0f, 1.0f, settings.mix), std::memory_order_relaxed);
+        secretRevealed.store (settings.revealed, std::memory_order_relaxed);
+
+        markPresetDirty();
+    }
+
+    void TextureAudioProcessor::setSecretRevealed (bool shouldBeRevealed)
+    {
+        secretRevealed.store (shouldBeRevealed, std::memory_order_relaxed);
+
+        if (! shouldBeRevealed)
+            return;
+
+        logInfo ("easter-egg", "GRIT revealed.");
     }
 
     // =========================================================================

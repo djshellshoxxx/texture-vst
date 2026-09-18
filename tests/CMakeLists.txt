@@ -1,0 +1,76 @@
+# The unit test runner (17_TESTING.md).
+#
+# Deliberately links the DSP, IO, preset and licence sources directly rather than
+# the plugin target: the units under test take their sample rate and block size
+# through prepare() and have no host coupling, which is what makes them testable.
+
+juce_add_console_app(Texture_Tests
+    PRODUCT_NAME "Texture Tests")
+
+target_sources(Texture_Tests PRIVATE
+    test_main.cpp
+    test_granular_engine.cpp
+    test_sample_loader.cpp
+    test_license_manager.cpp
+    test_preset_manager.cpp
+    TestHelpers.h
+
+    ../Source/Engine/Grain.cpp
+    ../Source/Engine/GranularEngine.cpp
+    ../Source/Engine/SampleBuffer.cpp
+    ../Source/Engine/Voice.cpp
+
+    ../Source/Effects/Chorus.cpp
+    ../Source/Effects/EffectsChain.cpp
+    ../Source/Effects/Reverb.cpp
+    ../Source/Effects/Saturator.cpp
+    ../Source/Effects/SecretEffect.cpp
+
+    ../Source/Modulation/EnvelopeADSR.cpp
+    ../Source/Modulation/MorphLFO.cpp
+
+    ../Source/IO/FactoryContent.cpp
+    ../Source/IO/SampleLoader.cpp
+
+    ../Source/Presets/PresetManager.cpp
+
+    ../Source/License/LicenseManager.cpp
+
+    ../Source/Utility/Logging.cpp
+    ../Source/Utility/MidiLearn.cpp
+    ../Source/Utility/ParameterIDs.cpp)
+
+target_include_directories(Texture_Tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../Source")
+
+target_compile_definitions(Texture_Tests PRIVATE
+    JUCE_UNIT_TESTS=1
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+    JUCE_USE_MP3AUDIOFORMAT=1
+    JUCE_DISPLAY_SPLASH_SCREEN=0
+    JUCE_REPORT_APP_USAGE=0
+    JUCE_STRICT_REFCOUNTEDPOINTER=1
+    JUCE_MODAL_LOOPS_PERMITTED=1)
+
+target_link_libraries(Texture_Tests
+    PRIVATE
+        juce::juce_audio_basics
+        juce::juce_audio_formats
+        juce::juce_audio_processors
+        juce::juce_core
+        juce::juce_cryptography
+        juce::juce_data_structures
+        juce::juce_dsp
+        juce::juce_events
+        juce::juce_graphics
+        juce::juce_gui_basics
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags)
+
+texture_apply_strict_warnings(Texture_Tests)
+
+# One CTest entry per suite so a failure names the area straight away.
+add_test(NAME texture_unit_tests COMMAND Texture_Tests texture)
+
+set_tests_properties(texture_unit_tests PROPERTIES TIMEOUT 600)

@@ -12,6 +12,7 @@ namespace texture
         saturator.prepare (preparedSampleRate, maximumBlockSize);
         chorus.prepare (preparedSampleRate, maximumBlockSize, preparedChannels);
         reverb.prepare (preparedSampleRate, maximumBlockSize, preparedChannels);
+        secret.prepare (preparedSampleRate, preparedChannels);
 
         const juce::dsp::ProcessSpec spec {
             preparedSampleRate,
@@ -50,6 +51,7 @@ namespace texture
         saturator.reset();
         chorus.reset();
         reverb.reset();
+        secret.reset();
 
         for (auto& filter : highShelf)
             filter.reset();
@@ -65,6 +67,7 @@ namespace texture
     {
         reverb.clearTail();
         chorus.reset();
+        secret.reset();
 
         for (auto& filter : highShelf)
             filter.reset();
@@ -125,7 +128,10 @@ namespace texture
         // 3. Reverb
         reverb.process (buffer, startSample, numSamples);
 
-        // 4. High shelf air + 5. DC blocker, fused into one pass over the samples.
+        // 4. The hidden effect, if it has been found.
+        secret.process (buffer, startSample, numSamples);
+
+        // 5. High shelf air + 6. DC blocker, fused into one pass over the samples.
         for (int ch = 0; ch < numChannels; ++ch)
         {
             auto* data = buffer.getWritePointer (ch, startSample);
@@ -136,7 +142,7 @@ namespace texture
                 data[i] = blocker.process (filter.processSample (data[i]));
         }
 
-        // 6. Output gain, smoothed so automation never zips.
+        // 7. Output gain, smoothed so automation never zips.
         float peak = 0.0f;
 
         for (int i = 0; i < numSamples; ++i)

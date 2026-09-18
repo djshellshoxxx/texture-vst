@@ -1,0 +1,88 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 22, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "TEXTURE_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "debug",
+      "inherits": "base",
+      "displayName": "Debug",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "release",
+      "inherits": "base",
+      "displayName": "Release",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "asan",
+      "inherits": "base",
+      "displayName": "Release with AddressSanitizer",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "TEXTURE_ENABLE_ASAN": "ON",
+        "TEXTURE_WARNINGS_AS_ERRORS": "OFF"
+      }
+    },
+    {
+      "name": "release-clap",
+      "inherits": "release",
+      "displayName": "Release including the CLAP build",
+      "cacheVariables": { "TEXTURE_BUILD_CLAP": "ON" }
+    },
+    {
+      "name": "windows-release",
+      "inherits": "release",
+      "displayName": "Windows / MSVC 2022 Release",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+    },
+    {
+      "name": "macos-release",
+      "inherits": "release",
+      "displayName": "macOS / Xcode Release (universal)",
+      "generator": "Xcode",
+      "cacheVariables": { "CMAKE_OSX_ARCHITECTURES": "x86_64;arm64" },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" }
+    },
+    {
+      "name": "linux-release",
+      "inherits": "release",
+      "displayName": "Linux / gcc Release",
+      "generator": "Ninja",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "debug", "configurePreset": "debug" },
+    { "name": "release", "configurePreset": "release", "configuration": "Release" },
+    { "name": "asan", "configurePreset": "asan" },
+    { "name": "release-clap", "configurePreset": "release-clap", "configuration": "Release" },
+    { "name": "windows-release", "configurePreset": "windows-release", "configuration": "Release" },
+    { "name": "macos-release", "configurePreset": "macos-release", "configuration": "Release" },
+    { "name": "linux-release", "configurePreset": "linux-release" }
+  ],
+  "testPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "configuration": "Release",
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}

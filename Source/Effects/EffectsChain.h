@@ -3,6 +3,7 @@
 #include "Chorus.h"
 #include "Reverb.h"
 #include "Saturator.h"
+#include "SecretEffect.h"
 
 #include "../Utility/DspHelpers.h"
 #include "../Utility/ParameterIDs.h"
@@ -35,6 +36,12 @@ namespace texture
         /** Output gain in decibels; smoothed over 30 ms internally. */
         void setOutputGainDb (float db) noexcept;
 
+        /** The hidden effect, sitting after the reverb and before the DC blocker.
+            Inaudible and free until someone finds it.
+        */
+        SecretEffect& getSecretEffect() noexcept { return secret; }
+        const SecretEffect& getSecretEffect() const noexcept { return secret; }
+
         /** Processes in place. Real-time safe. */
         void process (juce::AudioBuffer<float>& buffer, int startSample, int numSamples) noexcept;
 
@@ -59,6 +66,7 @@ namespace texture
         Saturator saturator;
         Chorus chorus;
         Reverb reverb;
+        SecretEffect secret;
 
         using ShelfFilter = juce::dsp::IIR::Filter<float>;
         using ShelfCoefficients = juce::dsp::IIR::Coefficients<float>;

@@ -2,6 +2,7 @@
 
 #include "Effects/EffectsChain.h"
 #include "Engine/GranularEngine.h"
+#include "IO/FactoryContent.h"
 #include "IO/SampleLoader.h"
 #include "IO/WavExporter.h"
 #include "License/LicenseManager.h"
@@ -178,6 +179,23 @@ namespace texture
         bool isCrashLogEnabled() const noexcept { return crashLogEnabled; }
         juce::File getCrashLogFile() const { return crashLogFile; }
 
+        // --- Hidden effect ----------------------------------------------------
+        /** GRIT lives outside the APVTS on purpose: it must not appear in the host's
+            automation list or in the documented preset schema. It is persisted with
+            the plugin state so a found easter egg survives a session reload.
+        */
+        struct SecretSettings
+        {
+            float bitDepth { SecretEffect::defaultBits };
+            float downsample { SecretEffect::defaultDownsample };
+            float mix { SecretEffect::defaultMix };
+            bool revealed { false };
+        };
+
+        SecretSettings getSecretSettings() const;
+        void setSecretSettings (const SecretSettings& settings);
+        void setSecretRevealed (bool shouldBeRevealed);
+
         /** The parameter layout, shared with the tests. */
         static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
@@ -193,6 +211,7 @@ namespace texture
             juce::String originalName;
         };
 
+        void installFactoryContentAsync();
         void handleAsyncUpdate() override;
         void handleMidiEvent (const juce::MidiMessage& message);
         void applyMidiLearnedController (int ccNumber, int value);
@@ -227,6 +246,12 @@ namespace texture
         PresetManager presetManager;
         MidiLearn midiLearn;
         SampleLoader sampleLoader;
+
+        /** One background worker for first-launch content generation. Shut down in
+            the destructor before anything it calls back into goes away.
+        */
+        juce::ThreadPool backgroundPool { juce::ThreadPoolOptions{}.withNumberOfThreads (1)
+                                                                    .withThreadName ("Texture Background") };
 
         // --- DSP --------------------------------------------------------------
         std::array<GranularEngine, numLayers> engines {};
@@ -283,6 +308,14 @@ namespace texture
         std::atomic<int> lastMidiVelocity { 0 };
         std::atomic<int> lastMidiController { -1 };
         std::atomic<int> lastMidiControllerValue { 0 };
+        std::atomic<float> secretBitDepth { SecretEffect::defaultBits };
+        std::atomic<float> secretDownsample { SecretEffect::defaultDownsample };
+        std::atomic<float> secretMix { SecretEffect::defaultMix };
+        std::atomic<bool> secretRevealed { false };
+
+        std::atomic<int> factorySamplesWritten { -1 };
+        std::atomic<bool> factoryInstallFinished { false };
+
         std::atomic<bool> midiLearnBindingPending { false };
         std::atomic<bool> nonFiniteDetected { false };
 
