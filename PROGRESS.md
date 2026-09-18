@@ -38,8 +38,8 @@ ctest --test-dir build/release -C Release --output-on-failure
 | 10 | Full manual test sweep: every control, every combination | PLAN WRITTEN, NEEDS A HUMAN |
 | 11 | Logic/workflow review of the GUI | DONE — one finding, fixed |
 | 12 | CLAP build (`-DTEXTURE_BUILD_CLAP=ON`) | DONE — `Texture.clap` built on MSVC |
-| 13 | Linux / macOS / AU / AAX build paths verified in CMake | Windows + Linux + CLAP green; macOS in progress |
-| 14 | CI: three-platform matrix in `.github/workflows/build.yml` | DONE — Windows, Linux and CLAP green |
+| 13 | Linux / macOS / AU / AAX build paths verified in CMake | DONE for Windows, macOS and Linux; AAX unverified (no SDK) |
+| 14 | CI: three-platform matrix in `.github/workflows/build.yml` | DONE — all four jobs green |
 | 15 | Fuzzer (`17_TESTING.md`) as its own `texture_fuzz` CTest entry | DONE |
 
 ## Deviations from `22_FILE_MANIFEST.md` (all deliberate, all documented in README)
@@ -101,6 +101,20 @@ ctest --test-dir build/release -C Release --output-on-failure
    release *completes*, so the original condition re-opened the gate on a dead voice
    and it never retired. Caught by `test_granular_engine`. See `Voice::renderAdding`.
 
+## What is left
+
+1. **Milestone 10, the manual sweep.** `docs/MANUAL_TEST_PLAN.md` is written and
+   ready to work through, but it needs a human at a DAW with an audio device.
+   Reaper is installed on the build machine and the VST3 is already in
+   `C:/Program Files/Common Files/VST3/`, so that host is one double-click away.
+   Ableton, FL and Logic are not on this machine.
+2. **AAX.** The CMake path is written and guarded behind `TEXTURE_AAX_SDK_PATH`,
+   but it has never been configured: the AAX SDK requires an Avid developer
+   account, so nothing here has exercised it.
+3. **AU.** Built by CI on macOS as part of the plugin, but never loaded in Logic.
+4. The 24-hour soak and the CPU measurements in `15_PERFORMANCE_TARGETS.md` are
+   part of the manual sweep and have not been run.
+
 ## Log
 
 - 2026-09-18: Read all 25 spec files. Created tree. Cloned JUCE 8.0.8.
@@ -127,6 +141,9 @@ ctest --test-dir build/release -C Release --output-on-failure
   `windows-release` preset pinned a Visual Studio version the runner no longer has.
 - 2026-09-18: **Milestone 12 done.** `-DTEXTURE_BUILD_CLAP=ON` configures, fetches
   clap-juce-extensions and links `Texture.clap` on MSVC with no errors.
+- 2026-09-18: **Milestones 13 and 14 done.** All four CI jobs green: Windows/MSVC,
+  macOS/clang, Linux/gcc (each building the plugin and running both CTest entries)
+  and the Linux CLAP build. Run 35377995851.
 - 2026-09-18: CI earned its keep. Four rounds, each finding something MSVC at `/W4`
   is silent about: a lambda parameter shadowing an enclosing local; our
   `addListener`/`removeListener`/`processBlock` hiding the `juce::AudioProcessor`
