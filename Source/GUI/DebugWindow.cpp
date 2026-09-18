@@ -419,12 +419,12 @@ namespace texture
     //  DebugWindow
     // =========================================================================
 
-    DebugWindow::DebugWindow (TextureAudioProcessor& processor, juce::LookAndFeel& lookAndFeel)
+    DebugWindow::DebugWindow (TextureAudioProcessor& processor, juce::LookAndFeel& lookAndFeelToUse)
         : juce::DocumentWindow ("TEXTURE - Debug",
                                 colours::background,
                                 juce::DocumentWindow::closeButton)
     {
-        setLookAndFeel (&lookAndFeel);
+        setLookAndFeel (&lookAndFeelToUse);
         setUsingNativeTitleBar (true);
         setResizable (true, true);
 

@@ -7,7 +7,7 @@
 juce_add_console_app(Texture_Tests
     PRODUCT_NAME "Texture Tests")
 
-target_sources(Texture_Tests PRIVATE
+set(TEXTURE_TEST_SOURCES
     test_main.cpp
     test_granular_engine.cpp
     test_sample_loader.cpp
@@ -41,6 +41,8 @@ target_sources(Texture_Tests PRIVATE
     ../Source/Utility/MidiLearn.cpp
     ../Source/Utility/ParameterIDs.cpp)
 
+target_sources(Texture_Tests PRIVATE ${TEXTURE_TEST_SOURCES})
+
 target_include_directories(Texture_Tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../Source")
 
 target_compile_definitions(Texture_Tests PRIVATE
@@ -70,6 +72,7 @@ target_link_libraries(Texture_Tests
         juce::juce_recommended_warning_flags)
 
 texture_apply_strict_warnings(Texture_Tests)
+texture_apply_juce_warning_opt_outs(Texture_Tests ${TEXTURE_TEST_SOURCES})
 
 # The unit tests and the fuzzer are separate CTest entries: the fuzzer is
 # wall-clock bounded (17_TESTING.md) and a failure there means something quite

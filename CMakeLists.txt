@@ -241,6 +241,48 @@ target_link_libraries(Texture
 
 # --- Warnings -------------------------------------------------------------------
 # Strict on our own code; JUCE emits warnings we do not own (18_BUILD_AND_PACKAGING.md).
+#
+# Scoping -Werror away from JUCE is not enough on its own: JUCE's public headers are
+# pulled into our translation units, so a diagnostic raised inside one of them is
+# fatal in our file. Where a new compiler flags JUCE's own code, the specific
+# diagnostic is disabled here rather than the whole -Werror policy.
+#
+# -Wimplicit-int-conversion-on-negation: new in the clang that ships with Xcode 26,
+# and JUCE 8.0.8 trips it in juce_graphics/detail/juce_SimpleShapedText.h
+# (`int8_t getNumTrailingLigaturePlaceholders() { return -distanceFromLigature; }`).
+# Remove this once JUCE fixes it.
+include(CheckCXXCompilerFlag)
+
+set(TEXTURE_JUCE_WARNING_OPT_OUTS "")
+
+foreach(flag "-Wno-implicit-int-conversion-on-negation")
+    string(MAKE_C_IDENTIFIER "TEXTURE_HAS${flag}" flag_var)
+    check_cxx_compiler_flag("${flag}" ${flag_var})
+
+    if(${flag_var})
+        list(APPEND TEXTURE_JUCE_WARNING_OPT_OUTS "${flag}")
+    endif()
+endforeach()
+
+# JUCE's recommended warning flags arrive as INTERFACE options and so land *after*
+# our target's own, which means a target-level -Wno-... can be re-enabled by their
+# -Wconversion. Source-file options are emitted last of all, so the opt-outs are
+# also applied per file, to our sources only.
+function(texture_apply_juce_warning_opt_outs target)
+    if(NOT TEXTURE_JUCE_WARNING_OPT_OUTS)
+        return()
+    endif()
+
+    set(sources ${ARGN})
+    list(FILTER sources INCLUDE REGEX "\\.(c|cc|cpp|cxx|m|mm)$")
+
+    if(sources)
+        set_source_files_properties(${sources}
+            TARGET_DIRECTORY ${target}
+            PROPERTIES COMPILE_OPTIONS "${TEXTURE_JUCE_WARNING_OPT_OUTS}")
+    endif()
+endfunction()
+
 function(texture_apply_strict_warnings target)
     if(MSVC)
         target_compile_options(${target} PRIVATE /W4)
@@ -254,10 +296,15 @@ function(texture_apply_strict_warnings target)
         if(TEXTURE_WARNINGS_AS_ERRORS)
             target_compile_options(${target} PRIVATE -Werror)
         endif()
+
+        if(TEXTURE_JUCE_WARNING_OPT_OUTS)
+            target_compile_options(${target} PRIVATE ${TEXTURE_JUCE_WARNING_OPT_OUTS})
+        endif()
     endif()
 endfunction()
 
 texture_apply_strict_warnings(Texture)
+texture_apply_juce_warning_opt_outs(Texture ${TEXTURE_SOURCES})
 
 # --- Sanitizers ------------------------------------------------------------------
 if(TEXTURE_ENABLE_ASAN)

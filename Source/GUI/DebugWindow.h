@@ -73,7 +73,7 @@ namespace texture
     class DebugWindow : public juce::DocumentWindow
     {
     public:
-        DebugWindow (TextureAudioProcessor& processor, juce::LookAndFeel& lookAndFeel);
+        DebugWindow (TextureAudioProcessor& processor, juce::LookAndFeel& lookAndFeelToUse);
         ~DebugWindow() override;
 
         void closeButtonPressed() override;
