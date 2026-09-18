@@ -331,7 +331,10 @@ namespace texture
             return Status::parseError;
         }
 
-        if (parsed.isVoid() || ! parsed.isObject())
+        // Not `isObject()`: juce::var reports an array as an object as well, so a
+        // file containing `[1, 2, 3]` would sail through and then read every field
+        // as a default. Only a real JSON object has a DynamicObject behind it.
+        if (parsed.getDynamicObject() == nullptr)
         {
             errorMessage = "Could not read preset: " + file.getFileNameWithoutExtension();
             return Status::parseError;

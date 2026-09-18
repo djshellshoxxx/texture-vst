@@ -7,6 +7,54 @@ namespace texture
     namespace
     {
         constexpr int refreshIntervalMs = 200;
+
+        constexpr float readoutFontHeight = 12.0f;
+        constexpr int readoutLineHeight = 15;
+        constexpr int readoutPadding = 8;
+    }
+
+    // =========================================================================
+    //  DebugPanel::Readout
+    // =========================================================================
+
+    DebugPanel::Readout::Readout()
+    {
+        setInterceptsMouseClicks (false, false);
+        setTitle ("Plugin internals");
+        setAccessible (true);
+    }
+
+    void DebugPanel::Readout::setLines (juce::StringArray newLines, int availableWidth)
+    {
+        lines = std::move (newLines);
+
+        // Grow to fit so the enclosing Viewport can scroll; the width is whatever
+        // the viewport can show, because the content is never wrapped.
+        setSize (juce::jmax (320, availableWidth),
+                 juce::jmax (1, lines.size() * readoutLineHeight + readoutPadding * 2));
+
+        repaint();
+    }
+
+    void DebugPanel::Readout::paint (juce::Graphics& g)
+    {
+        g.fillAll (colours::panel);
+
+        g.setFont (TextureLookAndFeel::monoFont (readoutFontHeight));
+
+        auto y = readoutPadding;
+
+        for (const auto& line : lines)
+        {
+            // Section headers read as headers; everything else is plain data.
+            g.setColour (line.startsWith ("===") ? colours::accentPrimary : colours::textPrimary);
+
+            g.drawText (line,
+                        readoutPadding, y, getWidth() - readoutPadding * 2, readoutLineHeight,
+                        juce::Justification::centredLeft, false);
+
+            y += readoutLineHeight;
+        }
     }
 
     DebugPanel::DebugPanel (TextureAudioProcessor& processorToUse)
@@ -227,15 +275,13 @@ namespace texture
         lines.add ("session log      : " + Logging::getLogFile().getFullPathName());
         lines.add ("data folder      : " + PresetManager::getPluginDataDirectory().getFullPathName());
 
-        // Keep the caret and scroll position so the view does not jump while reading.
-        const auto scrollPosition = readout.getViewport() != nullptr
-                                        ? readout.getViewport()->getViewPositionY()
-                                        : 0;
+        // Keep the scroll position so the view does not jump while it is being read.
+        const auto scrollPosition = readoutViewport.getViewPositionY();
 
-        readout.setText (lines.joinIntoString ("\n"), false);
+        readout.setLines (std::move (lines),
+                          juce::jmax (320, readoutViewport.getMaximumVisibleWidth()));
 
-        if (auto* viewport = readout.getViewport())
-            viewport->setViewPosition (0, scrollPosition);
+        readoutViewport.setViewPosition (0, scrollPosition);
     }
 
     void DebugPanel::exportTroubleshootingFile()

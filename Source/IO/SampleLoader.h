@@ -2,6 +2,8 @@
 
 #include "../Engine/SampleBuffer.h"
 
+#include <juce_events/juce_events.h>
+
 #include <atomic>
 #include <functional>
 

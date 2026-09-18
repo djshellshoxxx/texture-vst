@@ -13,6 +13,7 @@ target_sources(Texture_Tests PRIVATE
     test_sample_loader.cpp
     test_license_manager.cpp
     test_preset_manager.cpp
+    test_fuzz.cpp
     TestHelpers.h
 
     ../Source/Engine/Grain.cpp
@@ -70,7 +71,11 @@ target_link_libraries(Texture_Tests
 
 texture_apply_strict_warnings(Texture_Tests)
 
-# One CTest entry per suite so a failure names the area straight away.
+# The unit tests and the fuzzer are separate CTest entries: the fuzzer is
+# wall-clock bounded (17_TESTING.md) and a failure there means something quite
+# different from a unit test failure.
 add_test(NAME texture_unit_tests COMMAND Texture_Tests texture)
+add_test(NAME texture_fuzz COMMAND Texture_Tests fuzz)
 
 set_tests_properties(texture_unit_tests PROPERTIES TIMEOUT 600)
+set_tests_properties(texture_fuzz PROPERTIES TIMEOUT 300)

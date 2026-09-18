@@ -2,6 +2,8 @@
 
 #include "../PluginProcessor.h"
 
+#include <initializer_list>
+
 namespace texture
 {
     namespace
@@ -41,6 +43,7 @@ namespace texture
         buildHeader();
         buildControls();
         buildOverlays();
+        applyFocusOrder();
 
         processor.addListener (this);
 
@@ -236,6 +239,46 @@ namespace texture
 
         if (processor.getSecretSettings().revealed)
             secretPanel->setVisible (true);
+    }
+
+    void MainPanel::applyFocusOrder()
+    {
+        // 09_GUI_SPEC.md fixes the tab order: MORPH -> ADSR -> Reverb -> Gain -> LFO.
+        // Everything the spec does not name follows in reading order, so Tab never
+        // dead-ends and never visits an overlay that is not on screen.
+        int order = 0;
+
+        const auto place = [&order] (juce::Component* component)
+        {
+            if (component != nullptr)
+                component->setExplicitFocusOrder (++order);
+        };
+
+        place (morphKnob.get());
+        place (attackKnob.get());
+        place (decayKnob.get());
+        place (sustainKnob.get());
+        place (releaseKnob.get());
+        place (reverbToggle.get());
+        place (gainKnob.get());
+        place (lfoRateKnob.get());
+        place (lfoDepthKnob.get());
+        place (lfoSyncToggle.get());
+        place (&lfoDivisionBox);
+
+        place (dropZoneA.get());
+        place (dropZoneB.get());
+        place (layerBlendKnob.get());
+
+        place (&presetNameButton);
+        place (&compareAButton);
+        place (&compareBButton);
+        place (&fileMenuButton);
+        place (&randomiseButton);
+        place (&resetButton);
+        place (&helpButton);
+        place (&gearButton);
+        place (&tierBadge);
     }
 
     // =========================================================================
@@ -978,9 +1021,10 @@ namespace texture
 
         // Pro parameters always exist; in the free tier their controls are disabled
         // and veiled, and the badge offers the upgrade (11_FREE_VS_PRO.md).
-        for (auto* component : { static_cast<juce::Component*> (lfoRateKnob.get()),
-                                 lfoDepthKnob.get(), lfoSyncToggle.get(),
-                                 layerBlendKnob.get() })
+        for (auto* component : std::initializer_list<juce::Component*> { lfoRateKnob.get(),
+                                                                         lfoDepthKnob.get(),
+                                                                         lfoSyncToggle.get(),
+                                                                         layerBlendKnob.get() })
             if (component != nullptr)
                 component->setEnabled (pro);
 

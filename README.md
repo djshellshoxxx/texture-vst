@@ -197,7 +197,22 @@ licence manager (activation, rejection, normalisation, persistence, masking), th
 MIDI-learn table, and the preset manager (round-trip, corrupt files, schema
 guards, path resolution, filtering).
 
-Plugin-in-DAW testing is manual; the checklist is in `17_TESTING.md`.
+A second CTest entry, `texture_fuzz`, pushes random parameters, random MIDI and
+random buffer sizes through the voice pool and the effects chain for 60 seconds
+and asserts the output stays finite and bounded. It runs from a fixed seed, so a
+failure reproduces. Shorten it while iterating, or lengthen it for a soak:
+
+```bash
+TEXTURE_FUZZ_SECONDS=5    ctest --preset release -R texture_fuzz
+TEXTURE_FUZZ_SECONDS=3600 ctest --preset release -R texture_fuzz
+```
+
+`.github/workflows/build.yml` runs the configure, build and both CTest entries on
+Windows/MSVC, macOS/clang and Linux/gcc for every push, plus a Linux CLAP build.
+
+Plugin-in-DAW testing is manual. The full sweep — every control, every host, the
+soak and the recovery paths — is `docs/MANUAL_TEST_PLAN.md`; the shorter
+pre-release list it expands on is in `17_TESTING.md`.
 
 ---
 

@@ -2,6 +2,10 @@
 
 #include "PluginProcessor.h"
 
+// juce_StandaloneFilterWindow.h assumes the audio/MIDI device classes are already
+// visible; it includes only the plugin-filter factory itself.
+#include <juce_audio_utils/juce_audio_utils.h>
+
 #if __has_include(<juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>)
  #include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
  #define TEXTURE_HAS_STANDALONE_WINDOW 1

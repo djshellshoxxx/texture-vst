@@ -2,6 +2,7 @@
 
 #include "../Source/License/LicenseManager.h"
 #include "../Source/Utility/MidiLearn.h"
+#include "../Source/Utility/ParameterIDs.h"
 
 #include <memory>
 

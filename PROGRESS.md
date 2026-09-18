@@ -32,13 +32,15 @@ ctest --test-dir build/release -C Release --output-on-failure
 | 4 | IO (SampleLoader, WavExporter, FactoryContent), License, Presets | DONE |
 | 5 | GUI (LookAndFeel, Widgets, MorphKnob, DropZone, Waveform, MainPanel, Settings, Help, Debug, Browser, Secret) | DONE |
 | 6 | Build system, tools, icon, fonts, tests, README/LICENSE | DONE |
-| 7 | First successful build (VST3 + Standalone, Windows) | IN PROGRESS |
-| 8 | Unit tests green (ctest) | PENDING |
+| 7 | First successful build (VST3 + Standalone, Windows) | DONE |
+| 8 | Unit tests green (ctest) | DONE — 11053 checks, 0 failures |
 | 9 | GitHub repo created and pushed | PENDING |
-| 10 | Full manual test sweep: every control, every combination | PENDING |
+| 10 | Full manual test sweep: every control, every combination | PLAN WRITTEN, NEEDS A HUMAN |
 | 11 | Logic/workflow review of the GUI | PENDING |
 | 12 | CLAP build (`-DTEXTURE_BUILD_CLAP=ON`) | PENDING |
 | 13 | Linux / macOS / AU / AAX build paths verified in CMake | PENDING |
+| 14 | CI: three-platform matrix in `.github/workflows/build.yml` | DONE (unrun) |
+| 15 | Fuzzer (`17_TESTING.md`) as its own `texture_fuzz` CTest entry | DONE |
 
 ## Deviations from `22_FILE_MANIFEST.md` (all deliberate, all documented in README)
 
@@ -50,6 +52,11 @@ ctest --test-dir build/release -C Release --output-on-failure
 - `Source/GUI/Widgets.*`, `HelpPanel.*`, `DebugWindow.*`, `SecretPanel.*` — help, debug,
   troubleshooting and easter-egg features from `include.md`
 - `tests/TestHelpers.h` — shared fixtures
+- `tests/test_fuzz.cpp` — the 60-second fuzzer `17_TESTING.md` asks for, as its own
+  `texture_fuzz` CTest entry so its failures never read as unit-test failures
+- `.github/workflows/build.yml` — the CI matrix `17_TESTING.md` asks for
+- `docs/MANUAL_TEST_PLAN.md` — the pre-release sweep, expanded from the checklist in
+  `17_TESTING.md` into something an operator can actually work through
 
 ## Key design decisions (do not "fix" these without reading the reason)
 
@@ -64,6 +71,18 @@ ctest --test-dir build/release -C Release --output-on-failure
    so the scale is exact and there is no second layout path.
 5. **Secret effect (GRIT) lives outside the APVTS** so finding the easter egg never
    changes the host's automation list. It is persisted in the plugin state instead.
+6. **Factory presets are generated on first launch too**, by
+   `PresetManager::installFactoryPresetsIfNeeded`, for the same reason as the samples
+   and because they have to reference the generated sample paths. The
+   `factory_samples/presets/<Category>/` folders in the repo are placeholders only.
+7. **`PresetManager::load` tests `getDynamicObject()`, not `var::isObject()`.**
+   juce::var reports an array as an object as well, so `isObject()` let a file
+   containing `[1, 2, 3]` through and it then read every field as a default. This
+   was a real bug, caught by `test_preset_manager`.
+8. **A voice stops spawning grains when its envelope goes inactive**, not merely when
+   it leaves the release phase. `isInReleasePhase()` returns false again once the
+   release *completes*, so the original condition re-opened the gate on a dead voice
+   and it never retired. Caught by `test_granular_engine`. See `Voice::renderAdding`.
 
 ## Log
 
@@ -72,3 +91,15 @@ ctest --test-dir build/release -C Release --output-on-failure
 - 2026-09-18: Wrote PluginProcessor, PresetManager, WavExporter, LookAndFeel, Widgets. Commit 2.
 - 2026-09-18: Wrote the whole GUI layer, build system, tools, tests, icon, fonts, docs.
 - 2026-09-18: CMake configure succeeded against local JUCE. First full build running.
+- 2026-09-18: **Milestone 7 done.** Fixed the first-compile breaks: four missing JUCE
+  module includes, a forward-declared base class, a `copyFrom` overload that does not
+  exist, two `const char* + const char*` concatenations, a shadowed `playHead`, three
+  range-`for` loops over brace-lists of mixed pointer types that MSVC will not deduce,
+  and `DebugPanel::Readout`, which was declared but never implemented. `Texture.vst3`
+  and `Texture.exe` both build; JUCE's `juce_vst3_helper` loaded the built VST3
+  out-of-process to generate its `moduleinfo.json`, which is the first real evidence
+  the binary is a valid VST3.
+- 2026-09-18: **Milestone 8 done.** ctest green: 11053 checks, 0 failures, plus the
+  fuzzer. Getting there needed two genuine product fixes — see design decisions 7 and 8.
+- 2026-09-18: Added the fuzzer, the CI matrix, the manual test plan, and the explicit
+  tab order `09_GUI_SPEC.md` specifies and nothing had set.

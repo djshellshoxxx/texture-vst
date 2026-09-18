@@ -378,9 +378,9 @@ namespace texture
         const auto requestedDepth = lfoDepthParameter != nullptr ? lfoDepthParameter->load() : 0.0f;
         morphLfo.setDepth (licenseManager.isPro() ? requestedDepth : 0.0f);
 
-        if (auto* playHead = getPlayHead())
+        if (auto* hostPlayHead = getPlayHead())
         {
-            if (const auto position = playHead->getPosition())
+            if (const auto position = hostPlayHead->getPosition())
             {
                 morphLfo.updateFromPlayHead (position->getBpm().orFallback (120.0),
                                              position->getIsPlaying(),
@@ -508,8 +508,8 @@ namespace texture
         }
         else
         {
-            buffer.copyFrom (0, 0, stereoBus, 0, 0, numSamples, 0.5f);
-            buffer.addFrom (0, 0, stereoBus, 1, 0, numSamples, 0.5f);
+            buffer.copyFrom (0, 0, stereoBus.getReadPointer (0), numSamples, 0.5f);
+            buffer.addFrom (0, 0, stereoBus.getReadPointer (1), numSamples, 0.5f);
         }
 
         // Metering.
@@ -1326,8 +1326,8 @@ namespace texture
         lines.add ("");
 
         lines.add ("--- Host ---");
-        lines.add ("Wrapper: " + juce::AudioProcessor::getWrapperTypeDescription (wrapperType));
-        lines.add ("Host: " + juce::PluginHostType().getHostDescription());
+        lines.add ("Wrapper: " + juce::String (juce::AudioProcessor::getWrapperTypeDescription (wrapperType)));
+        lines.add ("Host: " + juce::String (juce::PluginHostType().getHostDescription()));
         lines.add ("OS: " + juce::SystemStats::getOperatingSystemName());
         lines.add ("CPU: " + juce::SystemStats::getCpuVendor() + " " + juce::SystemStats::getCpuModel());
         lines.add ("Cores: " + juce::String (juce::SystemStats::getNumCpus()));

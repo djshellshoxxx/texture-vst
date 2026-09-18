@@ -282,11 +282,11 @@ namespace texture::tests
 
             presets.refresh();
 
-            auto countMatching = [&] (const juce::String& category, const juce::String& search)
+            auto countMatching = [&] (const juce::String& categoryFilter, const juce::String& search)
             {
                 int count = 0;
 
-                for (const auto& info : presets.filter (category, search))
+                for (const auto& info : presets.filter (categoryFilter, search))
                     if (info.name.startsWith (marker))
                         ++count;
 

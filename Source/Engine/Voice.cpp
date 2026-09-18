@@ -186,7 +186,11 @@ namespace texture
 
         const auto readIncrement = static_cast<double> (basePitchRatio * pitchBendRatio);
         const auto sourceLengthAsDouble = static_cast<double> (sourceLength);
-        const auto canSpawn = lastEnvelopeLevel > grainCutoffLevel || ! envelope.isInReleasePhase();
+        // Spawning must stop the moment the envelope finishes. `isInReleasePhase()`
+        // goes false again once the release completes, so testing it alone would
+        // re-open the gate on a dead voice and the voice would never retire.
+        const auto canSpawn = envelope.isActive()
+                              && (! envelope.isInReleasePhase() || lastEnvelopeLevel > grainCutoffLevel);
 
         int offset = 0;
 

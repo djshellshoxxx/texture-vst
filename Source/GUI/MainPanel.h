@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../PluginProcessor.h"
 #include "../Presets/PresetBrowser.h"
 #include "DebugWindow.h"
 #include "DropZone.h"
@@ -54,6 +55,7 @@ namespace texture
         void buildHeader();
         void buildControls();
         void buildOverlays();
+        void applyFocusOrder();
 
         void showFileMenu();
         void showPresetMenu();

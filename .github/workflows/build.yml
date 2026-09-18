@@ -1,0 +1,113 @@
+name: build
+
+# 17_TESTING.md: unit tests run on every push, on the three supported toolchains.
+# DAW integration is a manual pre-release sweep and is deliberately not automated here.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows / MSVC
+            os: windows-latest
+            preset: windows-release
+          - name: macOS / clang
+            os: macos-latest
+            preset: macos-release
+          - name: Linux / gcc
+            os: ubuntu-latest
+            preset: linux-release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # JUCE on Linux needs the X11/ALSA/GTK development headers; everything else
+      # the plugin uses is in the standard runner images.
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build \
+            libasound2-dev \
+            libjack-jackd2-dev \
+            libcurl4-openssl-dev \
+            libfreetype-dev \
+            libfontconfig1-dev \
+            libx11-dev \
+            libxcomposite-dev \
+            libxcursor-dev \
+            libxext-dev \
+            libxinerama-dev \
+            libxrandr-dev \
+            libxrender-dev \
+            libglu1-mesa-dev \
+            mesa-common-dev \
+            libwebkit2gtk-4.1-dev
+
+      # JUCE is fetched by cmake/JuceFetch.cmake; caching it keeps CI off the
+      # clone path on every run.
+      - name: Cache JUCE
+        uses: actions/cache@v4
+        with:
+          path: build/${{ matrix.preset }}/_deps
+          key: juce-${{ runner.os }}-${{ hashFiles('cmake/JuceFetch.cmake') }}
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      # Not `ctest --preset`: the platform presets are configure/build presets, and
+      # a test preset is bound to one configure preset's binary directory.
+      - name: Test
+        run: ctest --test-dir build/${{ matrix.preset }} -C Release --output-on-failure
+
+      - name: Upload artefacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: texture-${{ runner.os }}
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            build/${{ matrix.preset }}/**/Texture_artefacts/**/*.vst3
+            build/${{ matrix.preset }}/**/Texture_artefacts/**/*.component
+            build/${{ matrix.preset }}/**/Texture_artefacts/**/Texture.exe
+            build/${{ matrix.preset }}/**/Texture_artefacts/**/Texture.app
+            build/${{ matrix.preset }}/**/Texture_artefacts/**/Texture
+
+  clap:
+    name: CLAP (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build libasound2-dev libjack-jackd2-dev libcurl4-openssl-dev \
+            libfreetype-dev libfontconfig1-dev libx11-dev libxcomposite-dev \
+            libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev \
+            libxrender-dev libglu1-mesa-dev mesa-common-dev libwebkit2gtk-4.1-dev
+
+      - name: Configure
+        run: cmake --preset release-clap -G Ninja
+
+      - name: Build
+        run: cmake --build --preset release-clap

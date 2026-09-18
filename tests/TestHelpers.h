@@ -1,9 +1,30 @@
 #pragma once
 
 #include "../Source/Engine/SampleBuffer.h"
+#include "../Source/License/LicenseManager.h"
+#include "../Source/Presets/PresetManager.h"
+
+#include <juce_events/juce_events.h>
 
 #include <cmath>
 #include <memory>
+
+namespace texture
+{
+    // juce::UnitTest::expectEquals prints both operands, and a scoped enum has no
+    // stream operator. These live in `texture` rather than `texture::tests` so that
+    // ADL finds them from inside JUCE, and they print the same wording the plugin
+    // shows the user, which makes a failure message directly actionable.
+    inline juce::String& operator<< (juce::String& target, LicenseManager::Result result)
+    {
+        return target << LicenseManager::describe (result);
+    }
+
+    inline juce::String& operator<< (juce::String& target, PresetManager::Status status)
+    {
+        return target << PresetManager::describe (status);
+    }
+}
 
 namespace texture::tests
 {

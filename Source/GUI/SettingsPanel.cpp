@@ -2,6 +2,8 @@
 
 #include "../PluginProcessor.h"
 
+#include <initializer_list>
+
 namespace texture
 {
     namespace
@@ -310,22 +312,23 @@ namespace texture
         const auto isPreferences = tab == Tab::preferences;
         const auto isAbout = tab == Tab::about;
 
-        for (auto* component : { static_cast<juce::Component*> (&licenseBlurb),
-                                 &emailLabel, &emailField, &keyLabel, &keyField,
-                                 &activateButton, &restoreButton, &deactivateButton,
-                                 &buyButton, &licenseStatus })
+        for (auto* component : std::initializer_list<juce::Component*> {
+                 &licenseBlurb, &emailLabel, &emailField, &keyLabel, &keyField,
+                 &activateButton, &restoreButton, &deactivateButton,
+                 &buyButton, &licenseStatus })
             component->setVisible (isLicense);
 
-        for (auto* component : { static_cast<juce::Component*> (&tooltipsToggle),
-                                 &presetFolderLabel, &presetFolderButton, &revealPresetFolderButton,
-                                 &sampleFolderLabel, &sampleFolderButton, &revealSampleFolderButton,
-                                 &defaultGainLabel, &defaultGainSlider,
-                                 &audioSettingsButton, &clearMappingsButton })
+        for (auto* component : std::initializer_list<juce::Component*> {
+                 &tooltipsToggle,
+                 &presetFolderLabel, &presetFolderButton, &revealPresetFolderButton,
+                 &sampleFolderLabel, &sampleFolderButton, &revealSampleFolderButton,
+                 &defaultGainLabel, &defaultGainSlider,
+                 &audioSettingsButton, &clearMappingsButton })
             component->setVisible (isPreferences);
 
-        for (auto* component : { static_cast<juce::Component*> (&aboutText),
-                                 &aboutHomepageButton, &aboutGithubButton,
-                                 &aboutSupportButton, &aboutCloudButton })
+        for (auto* component : std::initializer_list<juce::Component*> {
+                 &aboutText, &aboutHomepageButton, &aboutGithubButton,
+                 &aboutSupportButton, &aboutCloudButton })
             component->setVisible (isAbout);
 
         if (isLicense)
