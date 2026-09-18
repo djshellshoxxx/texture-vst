@@ -71,8 +71,7 @@ target_link_libraries(Texture_Tests
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags)
 
-texture_apply_strict_warnings(Texture_Tests)
-texture_apply_juce_warning_opt_outs(Texture_Tests ${TEXTURE_TEST_SOURCES})
+texture_apply_strict_warnings(Texture_Tests ${TEXTURE_TEST_SOURCES})
 
 # The unit tests and the fuzzer are separate CTest entries: the fuzzer is
 # wall-clock bounded (17_TESTING.md) and a failure there means something quite

@@ -13,8 +13,8 @@ namespace texture
         constexpr float ringGap = 6.0f;
     }
 
-    MorphKnob::MorphKnob (TextureAudioProcessor& processor)
-        : ParameterKnob (processor, params::morph, "MORPH",
+    MorphKnob::MorphKnob (TextureAudioProcessor& processorToUse)
+        : ParameterKnob (processorToUse, params::morph, "MORPH",
                          "MORPH transforms the sound from clean playback at 0% to a fully "
                          "granular ambient wash at 100%. Double-click to reset, Shift-drag "
                          "for fine control, Ctrl/Cmd-click to step 0 / 35 / 70 / 100%.")
