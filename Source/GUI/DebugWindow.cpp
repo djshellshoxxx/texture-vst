@@ -109,7 +109,7 @@ namespace texture
         addAndMakeVisible (copyLogButton);
 
         revealLogButton.setTooltip ("Show log.txt in your file browser");
-        revealLogButton.onClick = [this]
+        revealLogButton.onClick = []
         {
             const auto file = Logging::getLogFile();
 
