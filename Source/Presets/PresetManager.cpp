@@ -1,0 +1,533 @@
+#include "PresetManager.h"
+
+#include "../Utility/ParameterIDs.h"
+
+#include <algorithm>
+
+namespace texture
+{
+    namespace
+    {
+        constexpr const char* favouritesKeyName = "preset_favourites";
+        constexpr const char* presetRootKeyName = "preset_folder";
+
+        /** A factory preset defined in code so a fresh install is never empty. */
+        struct FactoryPresetSpec
+        {
+            const char* category;
+            const char* name;
+            const char* tags;
+            const char* sample;
+            float morph;
+            float attackMs;
+            float decayMs;
+            float sustain;
+            float releaseMs;
+            bool reverbOn;
+            float gainDb;
+        };
+
+        constexpr FactoryPresetSpec factoryPresets[] = {
+            { "Cinematic", "Warm Pad",   "warm,slow,stereo",      "factory/Pad_04.wav", 0.42f,  350.0f,  500.0f, 0.80f, 1200.0f, true,  -3.0f },
+            { "Cinematic", "Cold Vast",  "cold,wide,slow",        "factory/Pad_11.wav", 0.78f, 1400.0f, 1800.0f, 0.75f, 4200.0f, true,  -4.5f },
+            { "Ambient",   "Slow Drift", "drift,soft,evolving",   "factory/Pad_07.wav", 0.62f,  900.0f, 1500.0f, 0.85f, 3000.0f, true,  -3.5f },
+            { "Lofi",      "Tape Bed",   "lofi,tape,dusty",       "factory/Pad_02.wav", 0.28f,  120.0f,  400.0f, 0.70f,  900.0f, true,  -2.0f },
+            { "Synthwave", "Neon Hold",  "neon,bright,sustained", "factory/Pad_16.wav", 0.35f,   60.0f,  300.0f, 0.90f,  800.0f, true,  -1.5f }
+        };
+
+        juce::String joinTags (const juce::StringArray& tags)
+        {
+            return tags.joinIntoString (",");
+        }
+
+        juce::StringArray splitTags (const juce::String& text)
+        {
+            juce::StringArray tags;
+            tags.addTokens (text, ",", "");
+            tags.trim();
+            tags.removeEmptyStrings();
+            return tags;
+        }
+    }
+
+    // --- PresetData ---------------------------------------------------------
+
+    float PresetManager::PresetData::getParameter (const juce::String& id, float fallback) const
+    {
+        const auto* value = parameters.getVarPointer (juce::Identifier (id));
+        return value != nullptr ? static_cast<float> (static_cast<double> (*value)) : fallback;
+    }
+
+    void PresetManager::PresetData::setParameter (const juce::String& id, float value)
+    {
+        parameters.set (juce::Identifier (id), value);
+    }
+
+    // --- Construction -------------------------------------------------------
+
+    PresetManager::PresetManager (juce::ApplicationProperties* properties)
+        : applicationProperties (properties)
+    {
+        if (auto* store = getStore())
+        {
+            const auto storedRoot = store->getValue (presetRootKeyName);
+
+            if (storedRoot.isNotEmpty())
+                searchRootOverride = juce::File (storedRoot);
+        }
+    }
+
+    juce::PropertiesFile* PresetManager::getStore() const
+    {
+        return applicationProperties != nullptr ? applicationProperties->getUserSettings() : nullptr;
+    }
+
+    juce::StringArray PresetManager::getCategories()
+    {
+        return { "Cinematic", "Lofi", "Ambient", "Trap", "Synthwave" };
+    }
+
+    // --- Locations ----------------------------------------------------------
+
+    juce::File PresetManager::getPluginDataDirectory()
+    {
+        return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+                   .getChildFile ("Texture");
+    }
+
+    juce::File PresetManager::getUserPresetDirectory()
+    {
+        auto directory = getPluginDataDirectory().getChildFile ("Presets").getChildFile ("User");
+        directory.createDirectory();
+        return directory;
+    }
+
+    juce::File PresetManager::getFactoryPresetDirectory()
+    {
+        auto directory = getPluginDataDirectory().getChildFile ("Presets").getChildFile ("Factory");
+        directory.createDirectory();
+        return directory;
+    }
+
+    juce::File PresetManager::getFactorySampleDirectory()
+    {
+        auto directory = getPluginDataDirectory().getChildFile ("Samples").getChildFile ("Factory");
+        directory.createDirectory();
+        return directory;
+    }
+
+    juce::File PresetManager::getPresetSearchRoot() const
+    {
+        if (searchRootOverride != juce::File() && searchRootOverride.isDirectory())
+            return searchRootOverride;
+
+        return getPluginDataDirectory().getChildFile ("Presets");
+    }
+
+    void PresetManager::setPresetSearchRoot (const juce::File& directory)
+    {
+        searchRootOverride = directory;
+
+        if (auto* store = getStore())
+        {
+            store->setValue (presetRootKeyName, directory.getFullPathName());
+            store->saveIfNeeded();
+        }
+
+        refresh();
+    }
+
+    // --- Indexing -----------------------------------------------------------
+
+    void PresetManager::refresh()
+    {
+        index.clear();
+
+        indexDirectory (getFactoryPresetDirectory(), true);
+
+        const auto root = getPresetSearchRoot();
+        const auto factoryRoot = getFactoryPresetDirectory();
+
+        for (const auto& entry : juce::RangedDirectoryIterator (root, true, juce::String ("*") + fileExtension,
+                                                                juce::File::findFiles))
+        {
+            const auto file = entry.getFile();
+
+            if (file.isAChildOf (factoryRoot))
+                continue;   // already indexed as factory
+
+            PresetInfo info;
+            info.file = file;
+            info.isFactory = false;
+
+            PresetData data;
+            juce::String error;
+
+            if (load (file, data, error) != Status::ok)
+            {
+                juce::Logger::writeToLog ("[warn] [presets] Skipping unreadable preset: " + file.getFullPathName());
+                continue;
+            }
+
+            info.name = data.name.isNotEmpty() ? data.name : file.getFileNameWithoutExtension();
+            info.category = data.category;
+            info.author = data.author;
+            info.tags = data.tags;
+            info.isFavourite = isFavourite (file);
+
+            index.push_back (std::move (info));
+        }
+
+        std::sort (index.begin(), index.end(), [] (const PresetInfo& a, const PresetInfo& b)
+        {
+            if (a.category != b.category)
+                return a.category < b.category;
+
+            return a.name.compareIgnoreCase (b.name) < 0;
+        });
+    }
+
+    void PresetManager::indexDirectory (const juce::File& directory, bool isFactory)
+    {
+        if (! directory.isDirectory())
+            return;
+
+        for (const auto& entry : juce::RangedDirectoryIterator (directory, true,
+                                                                juce::String ("*") + fileExtension,
+                                                                juce::File::findFiles))
+        {
+            const auto file = entry.getFile();
+
+            PresetData data;
+            juce::String error;
+
+            if (load (file, data, error) != Status::ok)
+            {
+                juce::Logger::writeToLog ("[warn] [presets] Skipping unreadable preset: " + file.getFullPathName());
+                continue;
+            }
+
+            PresetInfo info;
+            info.file = file;
+            info.name = data.name.isNotEmpty() ? data.name : file.getFileNameWithoutExtension();
+            info.category = data.category;
+            info.author = data.author;
+            info.tags = data.tags;
+            info.isFactory = isFactory;
+            info.isFavourite = isFavourite (file);
+
+            index.push_back (std::move (info));
+        }
+    }
+
+    std::vector<PresetManager::PresetInfo> PresetManager::filter (const juce::String& category,
+                                                                  const juce::String& searchText,
+                                                                  bool favouritesOnly) const
+    {
+        std::vector<PresetInfo> matches;
+        const auto query = searchText.trim().toLowerCase();
+
+        for (const auto& info : index)
+        {
+            if (category.isNotEmpty() && ! category.equalsIgnoreCase ("All")
+                && ! info.category.equalsIgnoreCase (category))
+                continue;
+
+            if (favouritesOnly && ! info.isFavourite)
+                continue;
+
+            if (query.isNotEmpty())
+            {
+                const auto haystack = (info.name + " " + joinTags (info.tags) + " " + info.author).toLowerCase();
+
+                if (! haystack.contains (query))
+                    continue;
+            }
+
+            matches.push_back (info);
+        }
+
+        return matches;
+    }
+
+    const PresetManager::PresetInfo* PresetManager::findByName (const juce::String& name) const
+    {
+        for (const auto& info : index)
+            if (info.name.equalsIgnoreCase (name))
+                return &info;
+
+        return nullptr;
+    }
+
+    // --- Favourites ---------------------------------------------------------
+
+    bool PresetManager::isFavourite (const juce::File& file) const
+    {
+        auto* store = getStore();
+
+        if (store == nullptr)
+            return false;
+
+        juce::StringArray favourites;
+        favourites.addTokens (store->getValue (favouritesKeyName), "|", "");
+
+        return favourites.contains (file.getFullPathName());
+    }
+
+    void PresetManager::setFavourite (const juce::File& file, bool shouldBeFavourite)
+    {
+        auto* store = getStore();
+
+        if (store == nullptr)
+            return;
+
+        juce::StringArray favourites;
+        favourites.addTokens (store->getValue (favouritesKeyName), "|", "");
+        favourites.removeEmptyStrings();
+
+        const auto path = file.getFullPathName();
+
+        if (shouldBeFavourite)
+            favourites.addIfNotAlreadyThere (path);
+        else
+            favourites.removeString (path);
+
+        store->setValue (favouritesKeyName, favourites.joinIntoString ("|"));
+        store->saveIfNeeded();
+
+        for (auto& info : index)
+            if (info.file == file)
+                info.isFavourite = shouldBeFavourite;
+    }
+
+    // --- Read / write -------------------------------------------------------
+
+    PresetManager::Status PresetManager::load (const juce::File& file,
+                                               PresetData& data,
+                                               juce::String& errorMessage) const
+    {
+        if (! file.existsAsFile())
+        {
+            errorMessage = "Could not read preset: " + file.getFileNameWithoutExtension();
+            return Status::fileMissing;
+        }
+
+        if (file.getSize() > maxPresetFileSizeBytes)
+        {
+            errorMessage = "Could not read preset: " + file.getFileNameWithoutExtension();
+            return Status::tooLarge;
+        }
+
+        juce::var parsed;
+
+        try
+        {
+            parsed = juce::JSON::parse (file.loadFileAsString());
+        }
+        catch (const std::exception& e)
+        {
+            juce::Logger::writeToLog (juce::String ("[warn] [presets] JSON threw: ") + e.what());
+            errorMessage = "Could not read preset: " + file.getFileNameWithoutExtension();
+            return Status::parseError;
+        }
+
+        if (parsed.isVoid() || ! parsed.isObject())
+        {
+            errorMessage = "Could not read preset: " + file.getFileNameWithoutExtension();
+            return Status::parseError;
+        }
+
+        const auto schema = static_cast<int> (parsed.getProperty ("schema_version", 1));
+
+        if (schema > currentSchemaVersion)
+        {
+            errorMessage = "This preset was made with a newer version of TEXTURE.";
+            return Status::schemaTooNew;
+        }
+
+        // Only mutate `data` once everything has parsed cleanly.
+        PresetData parsedData;
+        parsedData.schemaVersion = schema;
+        parsedData.name = parsed.getProperty ("preset_name", file.getFileNameWithoutExtension()).toString();
+        parsedData.category = parsed.getProperty ("category", "Cinematic").toString();
+        parsedData.author = parsed.getProperty ("author", "User").toString();
+        parsedData.samplePath = parsed.getProperty ("sample_path", "").toString();
+
+        if (const auto* tagArray = parsed.getProperty ("tags", juce::var()).getArray())
+            for (const auto& tag : *tagArray)
+                parsedData.tags.add (tag.toString());
+
+        const auto parameterVar = parsed.getProperty ("parameters", juce::var());
+
+        if (auto* parameterObject = parameterVar.getDynamicObject())
+            for (const auto& property : parameterObject->getProperties())
+                parsedData.parameters.set (property.name, property.value);
+
+        data = std::move (parsedData);
+        errorMessage.clear();
+
+        return Status::ok;
+    }
+
+    PresetManager::Status PresetManager::save (const juce::File& file,
+                                               const PresetData& data,
+                                               juce::String& errorMessage) const
+    {
+        juce::DynamicObject::Ptr root (new juce::DynamicObject());
+        root->setProperty ("schema_version", currentSchemaVersion);
+        root->setProperty ("preset_name", data.name);
+        root->setProperty ("category", data.category);
+        root->setProperty ("author", data.author);
+
+        juce::Array<juce::var> tagArray;
+
+        for (const auto& tag : data.tags)
+            tagArray.add (tag);
+
+        root->setProperty ("tags", tagArray);
+        root->setProperty ("sample_path", data.samplePath);
+
+        juce::DynamicObject::Ptr parameterObject (new juce::DynamicObject());
+
+        for (int i = 0; i < data.parameters.size(); ++i)
+            parameterObject->setProperty (data.parameters.getName (i), data.parameters.getValueAt (i));
+
+        root->setProperty ("parameters", juce::var (parameterObject.get()));
+
+        const auto text = juce::JSON::toString (juce::var (root.get()), false);
+
+        if (text.getNumBytesAsUTF8() > static_cast<size_t> (maxPresetFileSizeBytes))
+        {
+            errorMessage = "Preset is too large to save.";
+            return Status::writeFailed;
+        }
+
+        file.getParentDirectory().createDirectory();
+
+        if (! file.replaceWithText (text))
+        {
+            errorMessage = "Could not write preset: " + file.getFileNameWithoutExtension();
+            return Status::writeFailed;
+        }
+
+        errorMessage.clear();
+        return Status::ok;
+    }
+
+    juce::File PresetManager::resolveSamplePath (const juce::String& storedPath) const
+    {
+        if (storedPath.isEmpty())
+            return {};
+
+        // 1. Absolute path, if it still exists.
+        if (juce::File::isAbsolutePath (storedPath))
+        {
+            const juce::File absolute (storedPath);
+
+            if (absolute.existsAsFile())
+                return absolute;
+        }
+
+        // A stored path may be prefixed with "factory/" for bundled content.
+        auto relative = storedPath;
+
+        if (relative.startsWithIgnoreCase ("factory/") || relative.startsWithIgnoreCase ("factory\\"))
+            relative = relative.substring (8);
+
+        // 2. Relative to the factory samples directory.
+        const auto inFactory = getFactorySampleDirectory().getChildFile (relative);
+
+        if (inFactory.existsAsFile())
+            return inFactory;
+
+        // 3. Relative to the user preset folder.
+        const auto inPresets = getPresetSearchRoot().getChildFile (relative);
+
+        if (inPresets.existsAsFile())
+            return inPresets;
+
+        // 4. Last chance: bare filename anywhere in the factory folder.
+        const auto byName = getFactorySampleDirectory()
+                                .getChildFile (juce::File::createLegalFileName (
+                                    storedPath.fromLastOccurrenceOf ("/", false, false)));
+
+        if (byName.existsAsFile())
+            return byName;
+
+        return {};
+    }
+
+    juce::String PresetManager::makeStorablePath (const juce::File& sampleFile) const
+    {
+        if (sampleFile == juce::File())
+            return {};
+
+        const auto factoryDirectory = getFactorySampleDirectory();
+
+        if (sampleFile.isAChildOf (factoryDirectory))
+            return "factory/" + sampleFile.getRelativePathFrom (factoryDirectory).replaceCharacter ('\\', '/');
+
+        return sampleFile.getFullPathName();
+    }
+
+    void PresetManager::installFactoryPresetsIfNeeded()
+    {
+        const auto root = getFactoryPresetDirectory();
+
+        for (const auto& spec : factoryPresets)
+        {
+            const auto directory = root.getChildFile (spec.category);
+            directory.createDirectory();
+
+            const auto file = directory.getChildFile (juce::String (spec.name) + fileExtension);
+
+            if (file.existsAsFile())
+                continue;
+
+            PresetData data;
+            data.name = spec.name;
+            data.category = spec.category;
+            data.author = "Factory";
+            data.tags = splitTags (spec.tags);
+            data.samplePath = spec.sample;
+            data.setParameter (params::morph, spec.morph);
+            data.setParameter (params::attack, spec.attackMs);
+            data.setParameter (params::decay, spec.decayMs);
+            data.setParameter (params::sustain, spec.sustain);
+            data.setParameter (params::release, spec.releaseMs);
+            data.setParameter (params::reverbOn, spec.reverbOn ? 1.0f : 0.0f);
+            data.setParameter (params::gainDb, spec.gainDb);
+            data.setParameter (params::lfoRate, params::lfoRateDefaultHz);
+            data.setParameter (params::lfoDepth, 0.0f);
+            data.setParameter (params::lfoSync, 0.0f);
+            data.setParameter (params::lfoDivision, static_cast<float> (params::lfoDivisionDefault));
+            data.setParameter (params::layerBlend, 0.0f);
+
+            juce::String error;
+
+            if (save (file, data, error) != Status::ok)
+                juce::Logger::writeToLog ("[warn] [presets] Could not install factory preset: " + error);
+        }
+    }
+
+    juce::File PresetManager::getDefaultPresetFile() const
+    {
+        return getFactoryPresetDirectory().getChildFile ("Cinematic")
+                                          .getChildFile (juce::String ("Warm Pad") + fileExtension);
+    }
+
+    juce::String PresetManager::describe (Status status)
+    {
+        switch (status)
+        {
+            case Status::ok:            return "OK";
+            case Status::fileMissing:   return "Preset file is missing.";
+            case Status::tooLarge:      return "Preset file is too large.";
+            case Status::parseError:    return "Preset file could not be parsed.";
+            case Status::schemaTooNew:  return "This preset was made with a newer version of TEXTURE.";
+            case Status::writeFailed:   return "Preset could not be written.";
+        }
+
+        return "Unknown preset status.";
+    }
+}
