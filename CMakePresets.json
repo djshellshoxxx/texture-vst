@@ -42,9 +42,7 @@
     {
       "name": "windows-release",
       "inherits": "release",
-      "displayName": "Windows / MSVC 2022 Release",
-      "generator": "Visual Studio 17 2022",
-      "architecture": "x64",
+      "displayName": "Windows / MSVC Release",
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
     },
     {

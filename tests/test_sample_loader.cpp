@@ -357,12 +357,12 @@ namespace texture::tests
             FactoryContent::renderPad (low, 0, 48000.0, 24000);
             FactoryContent::renderPad (high, FactoryContent::numSamples - 1, 48000.0, 24000);
 
-            auto crossings = [] (const juce::AudioBuffer<float>& buffer)
+            auto crossings = [] (const juce::AudioBuffer<float>& pad)
             {
                 int count = 0;
-                const auto* data = buffer.getReadPointer (0);
+                const auto* data = pad.getReadPointer (0);
 
-                for (int i = 1; i < buffer.getNumSamples(); ++i)
+                for (int i = 1; i < pad.getNumSamples(); ++i)
                     if ((data[i - 1] < 0.0f) != (data[i] < 0.0f))
                         ++count;
 

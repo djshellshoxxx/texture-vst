@@ -106,8 +106,10 @@ jobs:
             libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev \
             libxrender-dev libglu1-mesa-dev mesa-common-dev libwebkit2gtk-4.1-dev
 
+      # Tests off: the Linux matrix job above already runs them, and this job only
+      # exists to prove the clap-juce-extensions path still configures and links.
       - name: Configure
-        run: cmake --preset release-clap -G Ninja
+        run: cmake --preset release-clap -G Ninja -DTEXTURE_BUILD_TESTS=OFF
 
       - name: Build
         run: cmake --build --preset release-clap
