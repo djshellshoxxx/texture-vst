@@ -321,6 +321,10 @@ namespace texture
         layerMix.setSize (0, 0);
         isPrepared = false;
 
+        // Nothing can be reading a retired buffer once the audio thread has stopped.
+        for (auto& layer : layers)
+            releaseRetiredIfSafe (layer);
+
         logInfo ("processor", "releaseResources");
     }
 
@@ -431,7 +435,7 @@ namespace texture
             if (gain <= 0.0001f)
                 continue;
 
-            const auto source = layers[static_cast<size_t> (i)].live.load (std::memory_order_acquire);
+            const auto* source = layers[static_cast<size_t> (i)].live.load (std::memory_order_acquire);
 
             if (source == nullptr || ! source->isValid())
                 continue;
@@ -532,6 +536,11 @@ namespace texture
 
         if (load > peakCpuLoad.load (std::memory_order_relaxed))
             peakCpuLoad.store (load, std::memory_order_relaxed);
+
+        // Last: every read of a layer's live pointer this block happens-before the
+        // message thread can observe the new count, which is what makes retiring a
+        // swapped-out buffer safe.
+        blocksProcessed.fetch_add (1, std::memory_order_acq_rel);
     }
 
     void TextureAudioProcessor::handleMidiEvent (const juce::MidiMessage& message)
@@ -759,6 +768,38 @@ namespace texture
         sampleLoader.loadAsync (file);
     }
 
+    void TextureAudioProcessor::releaseRetiredIfSafe (Layer& layer)
+    {
+        if (layer.retired == nullptr)
+            return;
+
+        // Either no audio thread is running at all, or it has started and finished
+        // a whole block since the pointer was replaced, so it cannot still be
+        // holding the old one.
+        if (! isPrepared || blocksProcessed.load (std::memory_order_acquire) > layer.retiredAtBlock + 1)
+            layer.retired.reset();
+    }
+
+    void TextureAudioProcessor::publishSample (Layer& layer, SampleBufferPtr next)
+    {
+        jassert (next != nullptr);
+
+        // Free whatever is already waiting before taking on another one, so a slot
+        // never holds more than one retired buffer.
+        releaseRetiredIfSafe (layer);
+
+        layer.retired = std::move (layer.messageThreadCopy);
+        layer.retiredAtBlock = blocksProcessed.load (std::memory_order_acquire);
+        layer.messageThreadCopy = std::move (next);
+
+        // The swap itself: one lock-free pointer store (05_SAMPLE_LOADER.md). The
+        // audio thread may still be reading the old buffer for the rest of this
+        // block, which is why `retired` keeps it alive.
+        layer.live.store (layer.messageThreadCopy.get(), std::memory_order_release);
+
+        releaseRetiredIfSafe (layer);
+    }
+
     void TextureAudioProcessor::onSampleLoaded (const SampleLoader::LoadResult& result, int layerIndex)
     {
         const auto index = static_cast<size_t> (juce::jlimit (0, numLayers - 1, layerIndex));
@@ -767,14 +808,9 @@ namespace texture
         {
             auto& layer = layers[index];
 
-            // Publish to the audio thread, then let the previous buffer go on this
-            // thread; the audio thread never runs a destructor (05_SAMPLE_LOADER.md).
-            auto previous = layer.messageThreadCopy;
-            layer.messageThreadCopy = result.buffer;
-            layer.live.store (result.buffer, std::memory_order_release);
+            publishSample (layer, result.buffer);
             layer.file = result.file;
             layer.originalName = result.file.getFileName();
-            previous.reset();
 
             markPresetDirty();
 
@@ -802,8 +838,10 @@ namespace texture
 
     SampleBufferPtr TextureAudioProcessor::getSampleForLayer (int layerIndex) const
     {
+        // The owning copy, not the raw `live` pointer: every caller is on the
+        // message thread and wants something it can safely hold on to.
         const auto index = static_cast<size_t> (juce::jlimit (0, numLayers - 1, layerIndex));
-        return layers[index].live.load (std::memory_order_acquire);
+        return layers[index].messageThreadCopy;
     }
 
     juce::File TextureAudioProcessor::getSampleFileForLayer (int layerIndex) const
@@ -817,13 +855,9 @@ namespace texture
         const auto index = static_cast<size_t> (juce::jlimit (0, numLayers - 1, layerIndex));
         auto& layer = layers[index];
 
-        auto previous = layer.messageThreadCopy;
-        auto empty = SampleBuffer::makeEmpty();
-        layer.messageThreadCopy = empty;
-        layer.live.store (empty, std::memory_order_release);
+        publishSample (layer, SampleBuffer::makeEmpty());
         layer.file = juce::File();
         layer.originalName.clear();
-        previous.reset();
 
         for (auto& engine : engines)
             engine.allNotesOff();

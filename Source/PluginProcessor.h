@@ -214,13 +214,40 @@ namespace texture
         void enforceTierLimits();
 
     private:
+        /** One sample slot.
+
+            `live` is a raw pointer on purpose. `05_SAMPLE_LOADER.md` asks for the
+            hot-swap to be a single atomic pointer store, and
+            `std::atomic<std::shared_ptr<T>>` is not that: it manipulates a
+            reference count under a lock table on every load, which is not
+            real-time safe, and Apple's libc++ does not implement it at all.
+
+            Ownership stays on the message thread. `messageThreadCopy` holds the
+            buffer the audio thread is reading; `retired` holds the previous one
+            until the audio thread has demonstrably finished with it.
+        */
         struct Layer
         {
-            std::atomic<SampleBufferPtr> live { SampleBuffer::makeEmpty() };
-            SampleBufferPtr messageThreadCopy;      // keeps the refcount off the audio thread
+            Layer()
+            {
+                messageThreadCopy = SampleBuffer::makeEmpty();
+                live.store (messageThreadCopy.get(), std::memory_order_release);
+            }
+
+            std::atomic<const SampleBuffer*> live { nullptr };
+            SampleBufferPtr messageThreadCopy;
+            SampleBufferPtr retired;
+            juce::uint64 retiredAtBlock { 0 };
             juce::File file;
             juce::String originalName;
         };
+
+        /** Publishes `next` to the audio thread and retires the previous buffer.
+            Message thread only. */
+        void publishSample (Layer& layer, SampleBufferPtr next);
+
+        /** Frees a retired buffer once nothing can still be reading it. */
+        void releaseRetiredIfSafe (Layer& layer);
 
         void installFactoryContentAsync();
         void handleAsyncUpdate() override;
@@ -299,6 +326,10 @@ namespace texture
         int currentBlockSize { 512 };
         bool isPrepared { false };
         int activeLayer { 0 };
+
+        /** Bumped at the end of every processBlock. The sample swap uses it to
+            tell when the audio thread can no longer be holding an old pointer. */
+        std::atomic<juce::uint64> blocksProcessed { 0 };
 
         // --- Preset bookkeeping ----------------------------------------------
         juce::String currentPresetName;

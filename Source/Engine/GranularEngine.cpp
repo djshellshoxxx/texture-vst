@@ -169,7 +169,7 @@ namespace texture
             voice.setAdsrParameters (attackMs, decayMs, sustainLevel, releaseMs);
     }
 
-    int GranularEngine::renderNextBlock (const SampleBufferPtr& source,
+    int GranularEngine::renderNextBlock (const SampleBuffer* source,
                                          const MorphTargets& targets,
                                          juce::AudioBuffer<float>& output,
                                          int startSample,

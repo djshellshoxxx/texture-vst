@@ -44,12 +44,26 @@ namespace texture
         /** Renders `numSamples` of the voice pool into a cleared stereo buffer.
 
             Real-time safe. Returns the number of voices that produced audio.
+
+            Takes a raw pointer rather than the SampleBufferPtr: the engine owns
+            nothing, and the audio thread must not touch a reference count. The
+            caller guarantees the buffer outlives the call.
         */
-        int renderNextBlock (const SampleBufferPtr& source,
+        int renderNextBlock (const SampleBuffer* source,
                              const MorphTargets& targets,
                              juce::AudioBuffer<float>& output,
                              int startSample,
                              int numSamples) noexcept;
+
+        /** Convenience for the message-thread callers (offline render, tests). */
+        int renderNextBlock (const SampleBufferPtr& source,
+                             const MorphTargets& targets,
+                             juce::AudioBuffer<float>& output,
+                             int startSample,
+                             int numSamples) noexcept
+        {
+            return renderNextBlock (source.get(), targets, output, startSample, numSamples);
+        }
 
         // --- Introspection (message thread) ----------------------------------
         int getActiveVoiceCount() const noexcept;
