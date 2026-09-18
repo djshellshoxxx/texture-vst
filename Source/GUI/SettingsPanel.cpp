@@ -525,7 +525,8 @@ namespace texture
     void SettingsPanel::resized()
     {
         const auto width = juce::jmin (layout::settingsPanelWidth, getParentWidth());
-        const auto slideX = getParentWidth() - width + juce::roundToInt (currentOffset * width);
+        const auto slideX = getParentWidth() - width
+                          + juce::roundToInt (currentOffset * static_cast<float> (width));
 
         setBounds (slideX, 0, width, getParentHeight());
 

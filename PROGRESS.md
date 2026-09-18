@@ -38,8 +38,8 @@ ctest --test-dir build/release -C Release --output-on-failure
 | 10 | Full manual test sweep: every control, every combination | PLAN WRITTEN, NEEDS A HUMAN |
 | 11 | Logic/workflow review of the GUI | DONE — one finding, fixed |
 | 12 | CLAP build (`-DTEXTURE_BUILD_CLAP=ON`) | DONE — `Texture.clap` built on MSVC |
-| 13 | Linux / macOS / AU / AAX build paths verified in CMake | IN PROGRESS — via CI |
-| 14 | CI: three-platform matrix in `.github/workflows/build.yml` | RUNNING |
+| 13 | Linux / macOS / AU / AAX build paths verified in CMake | Windows + Linux + CLAP green; macOS in progress |
+| 14 | CI: three-platform matrix in `.github/workflows/build.yml` | DONE — Windows, Linux and CLAP green |
 | 15 | Fuzzer (`17_TESTING.md`) as its own `texture_fuzz` CTest entry | DONE |
 
 ## Deviations from `22_FILE_MANIFEST.md` (all deliberate, all documented in README)
@@ -71,15 +71,32 @@ ctest --test-dir build/release -C Release --output-on-failure
    so the scale is exact and there is no second layout path.
 5. **Secret effect (GRIT) lives outside the APVTS** so finding the easter egg never
    changes the host's automation list. It is persisted in the plugin state instead.
-6. **Factory presets are generated on first launch too**, by
+6. **`-Werror` is on our source files, never on the target.** JUCE compiles its
+   module sources *into* our targets, so a target-level `-Werror` makes JUCE's own
+   warnings fatal for us, which `18_BUILD_AND_PACKAGING.md` rules out. It also puts
+   the flags last on the command line, after the INTERFACE options JUCE's
+   recommended warning flags arrive as — which is the only way the
+   `-Wno-implicit-int-conversion-on-negation` opt-out survives their `-Wconversion`.
+   Check the generated project if you change this: our `.cpp` files should carry
+   `TreatWarningAsError`, and no JUCE module source should.
+7. **The sample hot-swap stores a raw pointer, not a `shared_ptr`.**
+   `std::atomic<std::shared_ptr<T>>` does not exist in Apple's libc++ (the plugin
+   would not build on macOS), and where it does exist it manipulates a reference
+   count under a lock table on every load — a lock on the audio thread, and the
+   opposite of the single atomic pointer store `05_SAMPLE_LOADER.md` specifies.
+   Ownership stays on the message thread, and a retired buffer is freed only after
+   `processBlock` has completed a whole block since the swap. Do not "simplify"
+   `releaseRetiredIfSafe` away: resetting the old pointer immediately is a
+   use-after-free.
+8. **Factory presets are generated on first launch too**, by
    `PresetManager::installFactoryPresetsIfNeeded`, for the same reason as the samples
    and because they have to reference the generated sample paths. The
    `factory_samples/presets/<Category>/` folders in the repo are placeholders only.
-7. **`PresetManager::load` tests `getDynamicObject()`, not `var::isObject()`.**
+9. **`PresetManager::load` tests `getDynamicObject()`, not `var::isObject()`.**
    juce::var reports an array as an object as well, so `isObject()` let a file
    containing `[1, 2, 3]` through and it then read every field as a default. This
    was a real bug, caught by `test_preset_manager`.
-8. **A voice stops spawning grains when its envelope goes inactive**, not merely when
+10. **A voice stops spawning grains when its envelope goes inactive**, not merely when
    it leaves the release phase. `isInReleasePhase()` returns false again once the
    release *completes*, so the original condition re-opened the gate on a dead voice
    and it never retired. Caught by `test_granular_engine`. See `Voice::renderAdding`.
@@ -110,6 +127,15 @@ ctest --test-dir build/release -C Release --output-on-failure
   `windows-release` preset pinned a Visual Studio version the runner no longer has.
 - 2026-09-18: **Milestone 12 done.** `-DTEXTURE_BUILD_CLAP=ON` configures, fetches
   clap-juce-extensions and links `Texture.clap` on MSVC with no errors.
+- 2026-09-18: CI earned its keep. Four rounds, each finding something MSVC at `/W4`
+  is silent about: a lambda parameter shadowing an enclosing local; our
+  `addListener`/`removeListener`/`processBlock` hiding the `juce::AudioProcessor`
+  overloads the format wrappers call; three more parameter/member shadows; a
+  `windows-release` preset pinned to a Visual Studio version the runner no longer
+  has; `-Werror` leaking onto JUCE's own module sources; and finally
+  `std::atomic<std::shared_ptr<T>>`, which Apple's libc++ does not implement, so the
+  plugin could not be built for macOS at all. See design decisions 6 and 7 — the
+  last two were real defects, not pedantry.
 - 2026-09-18: **Milestone 11 done.** GUI reviewed against `09_GUI_SPEC.md`: window
   constraints, the 320 px settings slide-in, toast timings, the preset dropdown,
   waveform click-to-mark and the accessibility titles all match. The one real gap was
