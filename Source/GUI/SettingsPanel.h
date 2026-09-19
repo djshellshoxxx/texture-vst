@@ -40,6 +40,11 @@ namespace texture
         /** Raised whenever the licence tier changes so the header can update. */
         std::function<void()> onTierChanged;
 
+        /** Positions the panel inside its parent for the current slide offset.
+            The owner calls this from its own resized(); the panel must never set
+            its own bounds from resized(). */
+        void updateSlideBounds();
+
         void paint (juce::Graphics& g) override;
         void resized() override;
         void mouseDown (const juce::MouseEvent& event) override;

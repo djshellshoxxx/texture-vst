@@ -6,6 +6,14 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# The sources are UTF-8; tell MSVC so, rather than letting it guess the system
+# codepage. Note this is not on its own enough to get non-ASCII text on screen:
+# juce::String decodes a plain char* as ASCII, so such literals must also be
+# wrapped in juce::String::fromUTF8 at the point of use.
+if(MSVC)
+    add_compile_options(/utf-8)
+endif()
+
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 endif()

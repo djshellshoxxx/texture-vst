@@ -38,12 +38,15 @@ namespace texture
     {
         setOpaque (true);
         setWantsKeyboardFocus (true);
-        setSize (designWidth, designHeight);
 
         buildHeader();
         buildControls();
         buildOverlays();
         applyFocusOrder();
+
+        // Only once every child exists: setSize() calls resized() synchronously when
+        // the size actually changes, and the layout dereferences the controls.
+        setSize (designWidth, designHeight);
 
         processor.addListener (this);
 
@@ -287,6 +290,11 @@ namespace texture
 
     void MainPanel::resized()
     {
+        // The layout below dereferences every control, and resized() can arrive
+        // before they exist -- any setSize/setBounds during construction calls it.
+        if (morphKnob == nullptr)
+            return;
+
         auto bounds = getLocalBounds();
 
         // --- Header -----------------------------------------------------------
@@ -414,7 +422,7 @@ namespace texture
             helpPanel->setBounds (getLocalBounds());
 
         if (settingsPanel != nullptr)
-            settingsPanel->resized();
+            settingsPanel->updateSlideBounds();
     }
 
     // =========================================================================
@@ -473,7 +481,8 @@ namespace texture
                     getWidth() - layout::windowEdgePadding * 2, 1);
 
         // --- Pro gating veil ----------------------------------------------------
-        if (! processor.isPro())
+        // Same caveat as resized(): the veil is measured from the controls.
+        if (! processor.isPro() && dropZoneB != nullptr && layerBlendKnob != nullptr)
         {
             g.setColour (colours::background.withAlpha (0.6f));
 

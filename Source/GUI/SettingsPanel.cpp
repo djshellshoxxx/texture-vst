@@ -265,6 +265,11 @@ namespace texture
     void SettingsPanel::open (Tab tab)
     {
         setTab (tab);
+
+        // Place it before it is shown, or it flashes at its old bounds for the
+        // frame before the slide timer's first tick.
+        updateSlideBounds();
+
         setVisible (true);
         toFront (true);
         targetOffset = 0.0f;
@@ -296,7 +301,9 @@ namespace texture
             }
         }
 
-        resized();
+        // The slide only moves the panel; its contents are laid out from the local
+        // bounds and do not need rebuilding on every animation tick.
+        updateSlideBounds();
         repaint();
     }
 
@@ -522,13 +529,26 @@ namespace texture
                     header.getBottom(), 1.0f);
     }
 
-    void SettingsPanel::resized()
+    void SettingsPanel::updateSlideBounds()
     {
-        const auto width = juce::jmin (layout::settingsPanelWidth, getParentWidth());
-        const auto slideX = getParentWidth() - width
+        // Deliberately not inside resized(): a component that assigns its own
+        // bounds from resized() re-enters it, and juce::getParentWidth() falls back
+        // to the monitor area when there is no parent, so the answer changed on
+        // every pass and the recursion never terminated.
+        auto* parent = getParentComponent();
+
+        if (parent == nullptr)
+            return;
+
+        const auto width = juce::jmin (layout::settingsPanelWidth, parent->getWidth());
+        const auto slideX = parent->getWidth() - width
                           + juce::roundToInt (currentOffset * static_cast<float> (width));
 
-        setBounds (slideX, 0, width, getParentHeight());
+        setBounds (slideX, 0, width, parent->getHeight());
+    }
+
+    void SettingsPanel::resized()
+    {
 
         auto bounds = getLocalBounds();
         bounds.removeFromLeft (6);   // shadow gutter
