@@ -9,22 +9,11 @@ namespace texture
         void configureKnob (juce::Slider& knob, double minimum, double maximum, double interval,
                             double defaultValue, const juce::String& tooltip)
         {
-            knob.setSliderStyle (juce::Slider::RotaryVerticalDrag);
-            knob.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
-            knob.setRotaryParameters (TextureLookAndFeel::rotaryStartAngle,
-                                      TextureLookAndFeel::rotaryEndAngle, true);
             knob.setRange (minimum, maximum, interval);
             knob.setValue (defaultValue, juce::dontSendNotification);
             knob.setDoubleClickReturnValue (true, defaultValue);
-            knob.setTooltip (tooltip);
+            knob.setTooltip (tooltip + " Right-click to reset or type a value.");
             knob.setColour (juce::Slider::rotarySliderFillColourId, colours::accentSecondary);
-        }
-
-        void configureLabel (juce::Label& label)
-        {
-            label.setFont (TextureLookAndFeel::labelFont());
-            label.setColour (juce::Label::textColourId, colours::textMuted);
-            label.setJustificationType (juce::Justification::centred);
         }
     }
 
@@ -49,12 +38,12 @@ namespace texture
                        "Secret hidden effect - GRIT wet mix. At zero the effect is fully bypassed.");
         addAndMakeVisible (mixKnob);
 
-        for (auto* label : { &bitsLabel, &rateLabel, &mixLabel })
-            configureLabel (*label);
-
-        addAndMakeVisible (bitsLabel);
-        addAndMakeVisible (rateLabel);
-        addAndMakeVisible (mixLabel);
+        mixKnob.textFromValueFunction = [] (double value) { return juce::String (juce::roundToInt (value * 100.0)) + "%"; };
+        mixKnob.valueFromTextFunction = [] (const juce::String& text)
+        {
+            const auto value = text.getDoubleValue();
+            return text.containsChar ('%') || value > 1.0 ? value / 100.0 : value;
+        };
 
         blurb.setText ("You found it. GRIT crushes and decimates the output after the reverb. "
                        "It stays out of the host's automation list and off by default.",
@@ -125,17 +114,8 @@ namespace texture
         auto knobRow = bounds.removeFromTop (juce::jmin (64, bounds.getHeight() - 22));
         const auto knobWidth = knobRow.getWidth() / 3;
 
-        auto layoutKnob = [&] (juce::Slider& knob, juce::Label& label)
-        {
-            auto cell = knobRow.removeFromLeft (knobWidth);
-            label.setBounds (cell.removeFromBottom (12));
-            knob.setBounds (cell.withSizeKeepingCentre (juce::jmin (cell.getWidth(), cell.getHeight()),
-                                                        juce::jmin (cell.getWidth(), cell.getHeight())));
-        };
-
-        layoutKnob (bitsKnob, bitsLabel);
-        layoutKnob (rateKnob, rateLabel);
-        layoutKnob (mixKnob, mixLabel);
+        for (auto* knob : { &bitsKnob, &rateKnob, &mixKnob })
+            knob->setBounds (knobRow.removeFromLeft (knobWidth).reduced (2, 0));
 
         blurb.setBounds (bounds);
     }

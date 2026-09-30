@@ -69,7 +69,7 @@ namespace texture::layout
 {
     inline constexpr int grid = 8;
     inline constexpr int windowEdgePadding = 16;
-    inline constexpr int headerHeight = 40;
+    inline constexpr int headerHeight = 32;   // theme.md: 32 px header strip
     inline constexpr int footerHeight = 24;
 
     inline constexpr float windowCornerRadius = 6.0f;

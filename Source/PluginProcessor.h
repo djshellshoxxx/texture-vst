@@ -123,6 +123,11 @@ namespace texture
 
         void clearLayer (int layerIndex);
 
+        /** Where notes start reading in a layer's sample, 0..1 (waveform click).
+            Kept out of the APVTS like GRIT, persisted with the session. */
+        void setSampleStart (int layerIndex, float normalised);
+        float getSampleStart (int layerIndex) const noexcept;
+
         /** The layer the GUI is currently editing (0 or 1). */
         int getActiveLayer() const noexcept { return activeLayer; }
         void setActiveLayer (int layerIndex);
@@ -167,6 +172,9 @@ namespace texture
         // --- Metering and diagnostics ----------------------------------------
         float readOutputPeak() noexcept { return outputPeak.readAndClear(); }
         float getSmoothedOutputPeak() const noexcept { return smoothedPeak.load (std::memory_order_relaxed); }
+
+        /** Per-channel block peak since the last read, for the stereo meter. Message thread. */
+        float readChannelPeak (int channel) noexcept { return channelPeaks[static_cast<size_t> (channel & 1)].readAndClear(); }
         int getActiveVoiceCount() const noexcept;
         float getReadPosition() const noexcept;
         float getEffectiveMorph() const noexcept { return effectiveMorph.load (std::memory_order_relaxed); }
@@ -342,6 +350,7 @@ namespace texture
 
         // --- Metering ---------------------------------------------------------
         AtomicPeak outputPeak;
+        std::array<AtomicPeak, 2> channelPeaks;
         std::atomic<float> smoothedPeak { 0.0f };
         std::atomic<float> effectiveMorph { params::morphDefault };
         std::atomic<double> cpuLoad { 0.0 };

@@ -8,10 +8,61 @@ namespace texture
 {
     namespace
     {
-        /** Pixels of vertical travel for the full range of a knob. */
-        constexpr int normalDragSensitivity = 220;
-        constexpr int fineDragSensitivity = 2200;        // Shift: 10x finer
-        constexpr int ultraFineDragSensitivity = 22000;  // Ctrl/Cmd: 100x finer
+        /** Pixels of vertical travel for the full range of a knob (theme.md:
+            plain drag is fine, Shift is coarse, Ctrl/Cmd is ultra-fine). */
+        constexpr int normalDragSensitivity = 300;
+        constexpr int coarseDragSensitivity = 100;       // Shift: 3x faster
+        constexpr int ultraFineDragSensitivity = 3000;   // Ctrl/Cmd: 10x finer
+
+        /** theme.md: "All value changes animate over 80ms ease-out." */
+        constexpr double valueAnimationMs = 80.0;
+
+        int sensitivityFor (const juce::ModifierKeys& mods)
+        {
+            if (mods.isCommandDown())
+                return ultraFineDragSensitivity;
+
+            return mods.isShiftDown() ? coarseDragSensitivity : normalDragSensitivity;
+        }
+
+        /** Shared knob setup: house drag feel, and no JUCE velocity-mode swap on Ctrl. */
+        void configureRotary (juce::Slider& slider)
+        {
+            slider.setSliderStyle (juce::Slider::RotaryVerticalDrag);
+            slider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+            slider.setRotaryParameters (TextureLookAndFeel::rotaryStartAngle,
+                                        TextureLookAndFeel::rotaryEndAngle, true);
+            slider.setMouseDragSensitivity (normalDragSensitivity);
+            slider.setVelocityModeParameters (1.0, 1, 0.0, false);
+            slider.setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
+            slider.setRepaintsOnMouseActivity (true);
+        }
+
+        void showValueEntry (juce::Slider& slider, const juce::String& name)
+        {
+            juce::Component::SafePointer<juce::Slider> safeSlider (&slider);
+
+            auto* editorWindow = new juce::AlertWindow ("Enter value",
+                                                        "Value for " + name
+                                                            + " (" + juce::String (slider.getMinimum(), 3)
+                                                            + " to " + juce::String (slider.getMaximum(), 3) + ")",
+                                                        juce::MessageBoxIconType::NoIcon);
+
+            editorWindow->addTextEditor ("value", juce::String (slider.getValue(), 4));
+            editorWindow->addButton ("Set", 1, juce::KeyPress (juce::KeyPress::returnKey));
+            editorWindow->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+            editorWindow->enterModalState (true, juce::ModalCallbackFunction::create (
+                [safeSlider, editorWindow] (int choice)
+                {
+                    std::unique_ptr<juce::AlertWindow> owned (editorWindow);
+                    const auto text = editorWindow->getTextEditorContents ("value").trim();
+
+                    // Ignore text with no digits rather than silently setting 0.
+                    if (choice == 1 && safeSlider != nullptr && text.containsAnyOf ("0123456789"))
+                        safeSlider->setValue (text.getDoubleValue(), juce::sendNotificationSync);
+                }), false);
+        }
 
         double& clipboardSlot()
         {
@@ -105,30 +156,8 @@ namespace texture
                     break;
 
                 case 2:
-                {
-                    auto* editorWindow = new juce::AlertWindow ("Enter value",
-                                                                "Value for " + params::displayNameFor (parameterID)
-                                                                    + " (" + juce::String (safeSlider->getMinimum(), 3)
-                                                                    + " to " + juce::String (safeSlider->getMaximum(), 3) + ")",
-                                                                juce::MessageBoxIconType::NoIcon);
-
-                    editorWindow->addTextEditor ("value", juce::String (safeSlider->getValue(), 4));
-                    editorWindow->addButton ("Set", 1, juce::KeyPress (juce::KeyPress::returnKey));
-                    editorWindow->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
-
-                    editorWindow->enterModalState (true, juce::ModalCallbackFunction::create (
-                        [safeSlider, editorWindow] (int choice)
-                        {
-                            if (choice == 1 && safeSlider != nullptr)
-                            {
-                                const auto text = editorWindow->getTextEditorContents ("value");
-                                safeSlider->setValue (text.getDoubleValue(), juce::sendNotificationSync);
-                            }
-
-                            delete editorWindow;
-                        }), false);
+                    showValueEntry (*safeSlider, params::displayNameFor (parameterID));
                     break;
-                }
 
                 case 3:
                     setClipboardValue (safeSlider->getValue());
@@ -157,6 +186,47 @@ namespace texture
 
             if (onChanged)
                 onChanged();
+        });
+    }
+
+    void ControlContextMenu::showFor (juce::ComboBox& box,
+                                      TextureAudioProcessor& processor,
+                                      const juce::String& parameterID)
+    {
+        juce::PopupMenu menu;
+        menu.setLookAndFeel (&box.getLookAndFeel());
+        addCommonItems (menu, processor, parameterID, false);
+
+        juce::Component::SafePointer<juce::ComboBox> safeBox (&box);
+
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (box),
+                            [safeBox, &processor, parameterID] (int result)
+        {
+            if (safeBox == nullptr || result == 0)
+                return;
+
+            switch (result)
+            {
+                case 1:
+                    safeBox->setSelectedItemIndex (juce::roundToInt (params::defaultValueFor (parameterID)),
+                                                   juce::sendNotificationSync);
+                    break;
+
+                case 5:
+                    processor.getMidiLearn().startLearning (parameterID);
+                    processor.postToast ("Move a MIDI controller to map "
+                                             + params::displayNameFor (parameterID) + ".",
+                                         SampleLoader::Severity::info);
+                    break;
+
+                case 6:
+                    processor.getMidiLearn().clearMappingFor (parameterID);
+                    processor.postToast ("MIDI mapping cleared.", SampleLoader::Severity::info);
+                    break;
+
+                default:
+                    break;
+            }
         });
     }
 
@@ -217,12 +287,7 @@ namespace texture
           parameterID (parameterIDToUse),
           labelText (labelTextToUse)
     {
-        setSliderStyle (juce::Slider::RotaryVerticalDrag);
-        setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
-        setRotaryParameters (TextureLookAndFeel::rotaryStartAngle,
-                             TextureLookAndFeel::rotaryEndAngle,
-                             true);
-        setMouseDragSensitivity (normalDragSensitivity);
+        configureRotary (*this);
         setTooltip (tooltipText);
         setWantsKeyboardFocus (true);
 
@@ -234,11 +299,75 @@ namespace texture
         setTitle (params::displayNameFor (parameterID));
         setDescription (tooltipText);
         setAccessible (true);
+
+        displayedProportion = animationTo = static_cast<float> (valueToProportionOfLength (getValue()));
     }
 
     ParameterKnob::~ParameterKnob()
     {
+        stopTimer();
         attachment.reset();
+    }
+
+    void ParameterKnob::valueChanged()
+    {
+        const auto target = static_cast<float> (valueToProportionOfLength (getValue()));
+
+        // The user's own gestures track the mouse exactly; everything else
+        // (presets, reset, randomise, A/B, automation) eases in over 80 ms.
+        if (isMouseButtonDown() || ! isShowing())
+        {
+            stopTimer();
+            displayedProportion = animationTo = target;
+            repaint();
+            return;
+        }
+
+        animationFrom = displayedProportion;
+        animationTo = target;
+        animationStartMs = juce::Time::getMillisecondCounterHiRes();
+        startTimerHz (60);
+    }
+
+    void ParameterKnob::timerCallback()
+    {
+        const auto t = juce::jlimit (0.0, 1.0, (juce::Time::getMillisecondCounterHiRes() - animationStartMs)
+                                                   / valueAnimationMs);
+        const auto eased = static_cast<float> (1.0 - std::pow (1.0 - t, 3.0));
+
+        displayedProportion = animationFrom + (animationTo - animationFrom) * eased;
+
+        if (t >= 1.0)
+        {
+            displayedProportion = animationTo;
+            stopTimer();
+        }
+
+        repaint();
+    }
+
+    void ParameterKnob::updateLearnIndicator()
+    {
+        auto& learn = processor.getMidiLearn();
+        const auto learningThis = learn.isLearning() && learn.getLearningParameterID() == parameterID;
+
+        if (learningThis || learningThis != isLearning)
+            repaint();
+
+        isLearning = learningThis;
+    }
+
+    void ParameterKnob::paintLearnRing (juce::Graphics& g, juce::Rectangle<float> area) const
+    {
+        if (! isLearning)
+            return;
+
+        const auto phase = static_cast<float> (juce::Time::getMillisecondCounter() % 1000) / 1000.0f;
+        const auto pulse = 0.5f + 0.5f * std::sin (phase * juce::MathConstants<float>::twoPi);
+        const auto size = juce::jmin (area.getWidth(), area.getHeight());
+
+        g.setColour (colours::accentPro.withAlpha (0.35f + 0.5f * pulse));
+        g.drawEllipse (area.withSizeKeepingCentre (size, size).reduced (1.0f), 2.0f);
     }
 
     void ParameterKnob::setShowsLabel (bool shouldShow)
@@ -254,12 +383,7 @@ namespace texture
 
     void ParameterKnob::updateSensitivity (const juce::MouseEvent& event)
     {
-        if (event.mods.isCommandDown())
-            setMouseDragSensitivity (ultraFineDragSensitivity);
-        else if (event.mods.isShiftDown())
-            setMouseDragSensitivity (fineDragSensitivity);
-        else
-            setMouseDragSensitivity (normalDragSensitivity);
+        setMouseDragSensitivity (sensitivityFor (event.mods));
     }
 
     void ParameterKnob::mouseDown (const juce::MouseEvent& event)
@@ -316,10 +440,12 @@ namespace texture
         getLookAndFeel().drawRotarySlider (g,
                                            knobArea.getX(), knobArea.getY(),
                                            knobArea.getWidth(), knobArea.getHeight(),
-                                           static_cast<float> (valueToProportionOfLength (getValue())),
+                                           displayedProportion,
                                            TextureLookAndFeel::rotaryStartAngle,
                                            TextureLookAndFeel::rotaryEndAngle,
                                            *this);
+
+        paintLearnRing (g, knobArea.toFloat());
 
         if (! showsLabel)
             return;
@@ -333,6 +459,244 @@ namespace texture
                     bounds.removeFromBottom (labelHeight),
                     juce::Justification::centred,
                     false);
+    }
+
+    // =========================================================================
+    //  ParameterChoiceBox
+    // =========================================================================
+
+    ParameterChoiceBox::ParameterChoiceBox (TextureAudioProcessor& processorToUse,
+                                            const juce::String& parameterIDToUse,
+                                            const juce::StringArray& items,
+                                            const juce::String& tooltipText)
+        : processor (processorToUse),
+          parameterID (parameterIDToUse)
+    {
+        addItemList (items, 1);
+        setTooltip (tooltipText + " Right-click for reset and MIDI learn.");
+        setTitle (params::displayNameFor (parameterID));
+
+        attachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
+            processor.getValueTreeState(), parameterID, *this);
+    }
+
+    ParameterChoiceBox::~ParameterChoiceBox()
+    {
+        attachment.reset();
+    }
+
+    void ParameterChoiceBox::mouseDown (const juce::MouseEvent& event)
+    {
+        if (event.mods.isPopupMenu())
+        {
+            ControlContextMenu::showFor (*this, processor, parameterID);
+            return;
+        }
+
+        juce::ComboBox::mouseDown (event);
+    }
+
+    // =========================================================================
+    //  PlainKnob
+    // =========================================================================
+
+    PlainKnob::PlainKnob (juce::String labelTextToUse, juce::String suffix)
+        : labelText (std::move (labelTextToUse))
+    {
+        configureRotary (*this);
+        setTextValueSuffix (suffix);
+        setWantsKeyboardFocus (true);
+        setTitle (labelText);
+    }
+
+    void PlainKnob::mouseDown (const juce::MouseEvent& event)
+    {
+        if (event.mods.isPopupMenu())
+        {
+            juce::PopupMenu menu;
+            menu.setLookAndFeel (&getLookAndFeel());
+            menu.addItem (1, "Reset to default");
+            menu.addItem (2, "Enter value...");
+            menu.addSeparator();
+            menu.addItem (3, "MIDI learn: not available for the hidden effect", false, false);
+
+            juce::Component::SafePointer<PlainKnob> safeThis (this);
+
+            menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this), [safeThis] (int result)
+            {
+                if (safeThis == nullptr)
+                    return;
+
+                if (result == 1)
+                    safeThis->setValue (safeThis->getDoubleClickReturnValue(), juce::sendNotificationSync);
+                else if (result == 2)
+                    showValueEntry (*safeThis, safeThis->labelText);
+            });
+            return;
+        }
+
+        setMouseDragSensitivity (sensitivityFor (event.mods));
+        juce::Slider::mouseDown (event);
+    }
+
+    void PlainKnob::mouseUp (const juce::MouseEvent& event)
+    {
+        juce::Slider::mouseUp (event);
+        setMouseDragSensitivity (normalDragSensitivity);
+    }
+
+    void PlainKnob::paint (juce::Graphics& g)
+    {
+        auto bounds = getLocalBounds();
+        const auto knobArea = bounds.withTrimmedBottom (12);
+
+        getLookAndFeel().drawRotarySlider (g, knobArea.getX(), knobArea.getY(),
+                                           knobArea.getWidth(), knobArea.getHeight(),
+                                           static_cast<float> (valueToProportionOfLength (getValue())),
+                                           TextureLookAndFeel::rotaryStartAngle,
+                                           TextureLookAndFeel::rotaryEndAngle, *this);
+
+        const auto showValue = isMouseOverOrDragging();
+        g.setColour (showValue ? colours::textPrimary : colours::textMuted);
+        g.setFont (showValue ? TextureLookAndFeel::monoFont (10.0f) : TextureLookAndFeel::labelFont());
+        g.drawText (showValue ? getTextFromValue (getValue()) : labelText,
+                    bounds.removeFromBottom (12), juce::Justification::centred, false);
+    }
+
+    // =========================================================================
+    //  LevelMeter
+    // =========================================================================
+
+    LevelMeter::LevelMeter()
+    {
+        setTooltip ("Output level, left and right. The thin line holds the peak for 1.5 s. "
+                    "Click to reset the peak readout.");
+        setTitle ("Output meter");
+    }
+
+    float LevelMeter::dbToX (float db, float width) const noexcept
+    {
+        return juce::jmap (juce::jlimit (minDb, maxDb, db), minDb, maxDb, 0.0f, width);
+    }
+
+    void LevelMeter::pushLevels (float left, float right, double nowMs)
+    {
+        const auto elapsed = lastUpdateMs > 0.0 ? juce::jlimit (0.0, 200.0, nowMs - lastUpdateMs) : 0.0;
+        lastUpdateMs = nowMs;
+
+        auto changed = false;
+        const float peaks[] { left, right };
+
+        for (size_t i = 0; i < channels.size(); ++i)
+        {
+            auto& channel = channels[i];
+            const auto db = juce::Decibels::gainToDecibels (peaks[i], minDb);
+
+            // Instant attack, 30 dB/s release on the bar itself.
+            const auto released = channel.levelDb - static_cast<float> (30.0 * elapsed / 1000.0);
+            const auto newLevel = juce::jmax (db, released, minDb);
+
+            const auto oldHold = channel.holdDb;
+
+            if (db >= channel.holdDb)
+            {
+                channel.holdDb = db;
+                channel.holdSinceMs = nowMs;
+            }
+            else if (nowMs - channel.holdSinceMs > 1500.0)
+            {
+                // Hold 1.5 s, then fall at 20 dB/s (theme.md).
+                channel.holdDb = juce::jmax (newLevel, channel.holdDb - static_cast<float> (20.0 * elapsed / 1000.0));
+            }
+
+            changed = changed || std::abs (newLevel - channel.levelDb) > 0.05f
+                              || std::abs (oldHold - channel.holdDb) > 0.05f;
+            channel.levelDb = newLevel;
+
+            if (db > peakReadoutDb)
+            {
+                peakReadoutDb = db;
+                changed = true;
+            }
+        }
+
+        if (changed)
+            repaint();
+    }
+
+    void LevelMeter::mouseDown (const juce::MouseEvent&)
+    {
+        peakReadoutDb = minDb;
+
+        for (auto& channel : channels)
+            channel.holdDb = channel.levelDb;
+
+        repaint();
+    }
+
+    void LevelMeter::paint (juce::Graphics& g)
+    {
+        auto bounds = getLocalBounds().toFloat();
+
+        // Numeric peak in mono, top right.
+        auto top = bounds.removeFromTop (12.0f);
+        g.setFont (TextureLookAndFeel::monoFont (10.0f));
+        g.setColour (peakReadoutDb >= 0.0f ? colours::error : colours::textMuted);
+        g.drawText (peakReadoutDb <= minDb ? juce::String ("-inf") : juce::String (peakReadoutDb, 1) + " dB",
+                    top, juce::Justification::centredRight, false);
+
+        g.setColour (colours::textMuted);
+        g.setFont (TextureLookAndFeel::labelFont());
+        g.drawText ("LEVEL", top, juce::Justification::centredLeft, false);
+
+        auto scale = bounds.removeFromBottom (10.0f);
+        bounds.removeFromTop (3.0f);
+
+        const auto width = bounds.getWidth();
+        const auto barHeight = juce::jmax (3.0f, (bounds.getHeight() - 2.0f) * 0.5f);
+
+        juce::ColourGradient gradient (colours::accentPro, bounds.getX(), 0.0f,
+                                       colours::error, bounds.getX() + width, 0.0f, false);
+        gradient.addColour (dbToX (-18.0f, width) / width, juce::Colour (0xffe8532a));
+        gradient.addColour (dbToX (-6.0f, width) / width, colours::warning);
+        gradient.addColour (dbToX (0.0f, width) / width, colours::error);
+
+        for (size_t i = 0; i < channels.size(); ++i)
+        {
+            const auto bar = juce::Rectangle<float> (bounds.getX(),
+                                                     bounds.getY() + static_cast<float> (i) * (barHeight + 2.0f),
+                                                     width, barHeight);
+
+            g.setColour (colours::panelEdge.withAlpha (0.6f));
+            g.fillRoundedRectangle (bar, 1.0f);
+
+            const auto fill = dbToX (channels[i].levelDb, width);
+
+            if (fill > 0.5f)
+            {
+                g.setGradientFill (gradient);
+                g.fillRoundedRectangle (bar.withWidth (fill), 1.0f);
+            }
+
+            if (channels[i].holdDb > minDb)
+            {
+                g.setColour (channels[i].holdDb >= 0.0f ? colours::error : colours::textPrimary);
+                g.fillRect (bar.getX() + dbToX (channels[i].holdDb, width) - 0.5f, bar.getY(), 1.0f, bar.getHeight());
+            }
+        }
+
+        // Ticks every 12 dB, plus 0 dB.
+        g.setFont (TextureLookAndFeel::monoFont (8.0f));
+
+        for (const auto db : { -48.0f, -36.0f, -24.0f, -12.0f, 0.0f })
+        {
+            const auto x = bounds.getX() + dbToX (db, width);
+            g.setColour (colours::textMuted.withAlpha (0.5f));
+            g.fillRect (x, scale.getY(), 1.0f, 2.0f);
+            g.drawText (juce::String (juce::roundToInt (db)),
+                        juce::Rectangle<float> (x - 12.0f, scale.getY() + 1.0f, 24.0f, 9.0f),
+                        juce::Justification::centred, false);
+        }
     }
 
     // =========================================================================
@@ -430,12 +794,22 @@ namespace texture
 
         lastLine = line;
         lines.push_back (line);
+        scrollOffset = juce::jmin (1.0f, scrollOffset + 1.0f);
 
         while (static_cast<int> (lines.size()) > visibleLines)
             lines.pop_front();
 
         repaint();
         return true;
+    }
+
+    void DataStreamView::tick()
+    {
+        if (scrollOffset <= 0.0f)
+            return;
+
+        scrollOffset = scrollOffset < 0.02f ? 0.0f : scrollOffset * 0.72f;
+        repaint();
     }
 
     void DataStreamView::clear()
@@ -474,7 +848,7 @@ namespace texture
 
             g.setColour (colours::dataStream.withAlpha (alpha));
             g.drawText (lines[static_cast<size_t> (i)],
-                        bounds.withY (bounds.getY() + static_cast<float> (i) * lineHeight)
+                        bounds.withY (bounds.getY() + (static_cast<float> (i) + scrollOffset) * lineHeight)
                               .withHeight (lineHeight),
                         juce::Justification::centredLeft,
                         false);
@@ -687,14 +1061,26 @@ namespace texture
     {
         auto colour = colours::textMuted;
 
+        const auto flashing = juce::Time::getMillisecondCounter() - flashStartMs < 100;
+
         if (! isEnabled())
             colour = colour.withAlpha (0.4f);
-        else if (shouldDrawButtonAsDown)
+        else if (shouldDrawButtonAsDown || flashing)
             colour = colours::accentPrimary;
         else if (shouldDrawButtonAsHighlighted)
             colour = colours::textPrimary;
 
         drawIcon (g, icon, getLocalBounds().toFloat().reduced (3.0f), colour);
+    }
+
+    void IconButton::clicked()
+    {
+        // 100 ms accent flash after every press (theme.md, momentary buttons).
+        flashStartMs = juce::Time::getMillisecondCounter();
+        repaint();
+
+        juce::Component::SafePointer<IconButton> safeThis (this);
+        juce::Timer::callAfterDelay (110, [safeThis] { if (safeThis != nullptr) safeThis->repaint(); });
     }
 
     void IconButton::drawIcon (juce::Graphics& g, Icon iconToDraw, juce::Rectangle<float> bounds,
@@ -778,6 +1164,19 @@ namespace texture
                 chevron.startNewSubPath (centre.x - radius * 0.5f, centre.y - radius * 0.22f);
                 chevron.lineTo (centre.x, centre.y + radius * 0.3f);
                 chevron.lineTo (centre.x + radius * 0.5f, centre.y - radius * 0.22f);
+                g.strokePath (chevron, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved,
+                                                             juce::PathStrokeType::rounded));
+                break;
+            }
+
+            case Icon::chevronLeft:
+            case Icon::chevronRight:
+            {
+                const auto direction = iconToDraw == Icon::chevronLeft ? -1.0f : 1.0f;
+                juce::Path chevron;
+                chevron.startNewSubPath (centre.x - direction * radius * 0.22f, centre.y - radius * 0.5f);
+                chevron.lineTo (centre.x + direction * radius * 0.3f, centre.y);
+                chevron.lineTo (centre.x - direction * radius * 0.22f, centre.y + radius * 0.5f);
                 g.strokePath (chevron, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved,
                                                              juce::PathStrokeType::rounded));
                 break;

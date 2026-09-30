@@ -47,6 +47,9 @@ namespace texture
         juce::TextButton supportButton { "Email support" };
         juce::TextButton dataFolderButton { "Open data folder" };
 
+        /** One button per manual section; clicking jumps the text there. */
+        juce::OwnedArray<juce::TextButton> sectionButtons;
+
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HelpPanel)
     };
 }

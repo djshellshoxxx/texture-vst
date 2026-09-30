@@ -25,6 +25,10 @@ namespace texture
 
         juce::Label* createSliderTextBox (juce::Slider& slider) override;
 
+        void drawLinearSlider (juce::Graphics& g, int x, int y, int width, int height,
+                               float sliderPos, float minSliderPos, float maxSliderPos,
+                               juce::Slider::SliderStyle style, juce::Slider& slider) override;
+
         // --- Buttons ----------------------------------------------------------
         void drawToggleButton (juce::Graphics& g,
                                juce::ToggleButton& button,

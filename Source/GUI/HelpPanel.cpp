@@ -52,9 +52,13 @@ namespace texture
         text.add ("HEADER");
         text.add ("  LED            Output level. Grey is silence, white is near 0 dBFS,");
         text.add ("                 red means the output is clipping - lower the Gain knob.");
-        text.add ("  TEXTURE        The wordmark. Click it for a surprise.");
-        text.add ("  Preset name    The patch you are on. An asterisk means unsaved edits.");
-        text.add ("  File menu      Save, Save As, Open, Export audio, Options.");
+        text.add ("  TEXTURE        The wordmark. Look very closely at it...");
+        text.add ("  < Preset >     The patch you are on. Click the name for the list, the");
+        text.add ("                 arrows for the previous or next preset. An asterisk");
+        text.add ("                 means unsaved edits.");
+        text.add ("  File menu      Open, Save, Save As, load or clear the sample, Export");
+        text.add ("                 audio, A/B copy, Options, Interface size (75-200%),");
+        text.add ("                 and Open location in file browser.");
         text.add ("  A / B          Two parameter snapshots. Click a letter to switch,");
         text.add ("                 use the File menu to copy one into the other.");
         text.add ("  Randomize      New settings every press. Each press starts from");
@@ -70,12 +74,16 @@ namespace texture
         text.add ("  reveal-in-file-browser. Once loaded you see the waveform, the file");
         text.add ("  name, its length, channel count and original sample rate, and a");
         text.add ("  magenta playhead showing where the engine is reading.");
+        text.add ("  Click the waveform to set where new notes start reading (a thin");
+        text.add ("  marker). Alt-click, or right-click > Reset start marker, clears it.");
+        text.add ("  The marker is saved with your session and cleared by a new sample.");
         text.add ("  Files longer than 30 seconds are truncated. Files above 100 MB are");
         text.add ("  rejected. More than two channels are folded to the first two.");
         text.add ("");
         text.add ("MORPH (right)");
-        text.add ("  The one knob. Drag vertically. Shift-drag is ten times finer,");
-        text.add ("  Ctrl/Cmd-drag is a hundred times finer. Double-click resets to 35%.");
+        text.add ("  The one knob. Drag vertically for fine control. Shift-drag is coarse");
+        text.add ("  (three times faster), Ctrl/Cmd-drag is ultra-fine (ten times slower).");
+        text.add ("  Double-click resets to 35%. Every knob in TEXTURE drags the same way.");
         text.add ("  Ctrl/Cmd-click steps through 0, 35, 70 and 100%. Right-click for");
         text.add ("  numeric entry, copy/paste and MIDI mapping.");
         text.add ("  MORPH simultaneously moves grain count, grain length, overlap,");
@@ -93,6 +101,17 @@ namespace texture
         text.add ("GAIN");
         text.add ("  Output level, -24 dB to +6 dB, applied after the effects.");
         text.add ("");
+        text.add ("LEVEL METER");
+        text.add ("  Left and right output. Teal is quiet, orange is healthy, yellow is");
+        text.add ("  close to clipping, red is over 0 dB. The thin line holds each peak");
+        text.add ("  for 1.5 seconds. The number is the highest peak so far - click the");
+        text.add ("  meter to reset it.");
+        text.add ("");
+        text.add ("DATA STREAM");
+        text.add ("  The faint green text beside the LFO is a live feed of what TEXTURE is");
+        text.add ("  doing: parameter changes, notes, controllers, voices and grains. It");
+        text.add ("  stops when nothing is changing. It is there to look at, not to read.");
+        text.add ("");
         text.add ("LFO (Pro)");
         text.add ("  A sine that offsets MORPH. Rate 0.05 to 8 Hz, or synced to host tempo");
         text.add ("  in note divisions. Depth 1 gives a swing of plus or minus 50% around");
@@ -107,10 +126,11 @@ namespace texture
         text.add ("  Reset to default");
         text.add ("  Enter value...");
         text.add ("  Copy value / Paste value");
-        text.add ("  Learn MIDI CC - then move a knob on your controller");
+        text.add ("  Learn MIDI CC - the knob pulses teal until you move a controller");
         text.add ("  Clear MIDI mapping");
         text.add ("CC 64 (sustain), 120 and 123 keep their standard meaning and cannot be");
-        text.add ("mapped. Mappings are saved globally, not per project.");
+        text.add ("mapped. Mappings are saved globally, not per project. The LFO division");
+        text.add ("dropdown offers reset and MIDI learn too.");
         text.add ("");
 
         text.add ("=== MIDI ===");
@@ -120,6 +140,18 @@ namespace texture
         text.add ("  Sustain pedal (CC64) holds notes after key-up.");
         text.add ("  16 voices. The oldest, quietest voice is stolen when they run out.");
         text.add ("  TEXTURE has no sequencer, so it neither imports nor exports MIDI.");
+        text.add ("");
+
+        text.add ("=== KEYBOARD SHORTCUTS ===");
+        text.add ("Click an empty part of the window first so TEXTURE has keyboard focus.");
+        text.add ("  Ctrl/Cmd+S         Save (Save as for factory or unnamed presets)");
+        text.add ("  Ctrl/Cmd+Shift+S   Save as");
+        text.add ("  Ctrl/Cmd+O         Open a preset file");
+        text.add ("  Ctrl/Cmd+R         Randomize");
+        text.add ("  F1                 This help page");
+        text.add ("  Esc                Close any open panel");
+        text.add ("  Tab / Shift+Tab    Move between controls");
+        text.add ("  Arrow keys         Nudge the focused knob");
         text.add ("");
 
         text.add ("=== EXPORT AUDIO (Pro) ===");
@@ -141,7 +173,8 @@ namespace texture
         text.add ("  Windows   %APPDATA%\\Texture\\");
         text.add ("  macOS     ~/Library/Application Support/Texture/");
         text.add ("  Linux     ~/.config/Texture/");
-        text.add ("Settings > Preferences > Open data folder takes you straight there.");
+        text.add ("File > Open location in file browser, or the Open data folder button");
+        text.add ("at the bottom of this page, takes you straight there.");
         text.add ("");
         text.add ("If a preset does not appear:");
         text.add ("  1. Check the extension is exactly .texture (not .texture.txt).");
@@ -196,7 +229,7 @@ namespace texture
         text.add ("  re-pitch the file before dropping it in.");
         text.add ("");
         text.add ("Everything is broken");
-        text.add ("  Settings > Debug > Reset all settings to default clears preferences,");
+        text.add ("  Help > Open debug window > Reset all settings to default clears preferences,");
         text.add ("  MIDI mappings, the licence and cached logs. It is destructive but it");
         text.add ("  fixes a corrupted install.");
         text.add ("");
@@ -288,6 +321,16 @@ namespace texture
         };
         addAndMakeVisible (dataFolderButton);
 
+        for (const auto* section : { "Quick start", "The workflow", "The interface", "Right-click",
+                                     "MIDI", "Keyboard shortcuts", "Export audio", "Presets",
+                                     "Installing", "Troubleshooting", "Files to send", "Licence", "Links" })
+        {
+            auto* button = sectionButtons.add (new juce::TextButton (section));
+            button->setTooltip ("Jump to " + juce::String (section));
+            button->onClick = [this, title = juce::String (section)] { scrollToSection (title); };
+            addAndMakeVisible (button);
+        }
+
         closeButton.setTooltip ("Close help (Esc)");
         closeButton.onClick = [this] { if (onClose) onClose(); };
         addAndMakeVisible (closeButton);
@@ -303,6 +346,8 @@ namespace texture
         if (index < 0)
             return;
 
+        // Scroll to the end first so the section lands at the top, not the bottom.
+        body.moveCaretToEnd();
         body.setCaretPosition (index);
         body.scrollEditorToPositionCaret (0, 0);
     }
@@ -367,6 +412,14 @@ namespace texture
         supportButton.setBounds (buttonRow.removeFromLeft (juce::jmin (110, buttonWidth)));
 
         bounds.removeFromBottom (layout::grid);
+
+        auto index = bounds.removeFromLeft (132);
+        bounds.removeFromLeft (layout::grid);
+        const auto rowHeight = juce::jmin (24, index.getHeight() / juce::jmax (1, sectionButtons.size()));
+
+        for (auto* button : sectionButtons)
+            button->setBounds (index.removeFromTop (rowHeight).reduced (0, 1));
+
         body.setBounds (bounds);
     }
 }

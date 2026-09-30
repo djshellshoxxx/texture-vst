@@ -34,6 +34,22 @@ namespace texture
 
         mainPanel = std::make_unique<MainPanel> (processorRef);
         mainPanel->onAudioSettingsRequested = [this] { showAudioSettings(); };
+
+        mainPanel->onTooltipsChanged = [this] (bool enabled)
+        {
+            if (! enabled)
+                tooltipWindow.reset();
+            else if (tooltipWindow == nullptr)
+                tooltipWindow = std::make_unique<juce::TooltipWindow> (this, 400);
+        };
+
+        mainPanel->onScaleRequested = [this] (float scale)
+        {
+            const auto width = juce::jlimit (layout::minimumWidth, layout::maximumWidth,
+                                             juce::roundToInt (static_cast<float> (layout::defaultWidth) * scale));
+            setSize (width, juce::roundToInt (width * static_cast<double> (layout::defaultHeight)
+                                                    / static_cast<double> (layout::defaultWidth)));
+        };
         addAndMakeVisible (*mainPanel);
 
         // Tooltips are a preference, so only create the window when they are wanted.
@@ -95,6 +111,7 @@ namespace texture
         const auto scale = static_cast<float> (getWidth())
                          / static_cast<float> (MainPanel::designWidth);
 
+        mainPanel->currentScale = scale;
         mainPanel->setTransform (juce::AffineTransform::scale (scale));
         mainPanel->setBounds (0, 0, MainPanel::designWidth, MainPanel::designHeight);
 

@@ -95,7 +95,8 @@ namespace texture
         voice.hardStop();
         voice.setAdsrParameters (attackMs, decayMs, sustainLevel, releaseMs);
         voice.setPitchBendRatio (pitchBendRatio);
-        voice.startNote (midiNote, velocity, midiChannel, ++noteCounter);
+        voice.startNote (midiNote, velocity, midiChannel, ++noteCounter,
+                         sampleStart.load (std::memory_order_relaxed));
     }
 
     void GranularEngine::noteOff (int midiChannel, int midiNote)

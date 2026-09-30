@@ -40,6 +40,7 @@ ctest --test-dir build/release -C Release --output-on-failure
 | 12 | CLAP build (`-DTEXTURE_BUILD_CLAP=ON`) | DONE — `Texture.clap` built on MSVC |
 | 13 | Linux / macOS / AU / AAX build paths verified in CMake | DONE for Windows, macOS and Linux; AAX unverified (no SDK) |
 | 14 | CI: three-platform matrix in `.github/workflows/build.yml` | DONE — all four jobs green |
+| 16 | GUI gap pass (`docs/GUI_GAP_SPEC.md`, B1-B6, M1-M14) | DONE - builds clean, ctest 100%, layout checked in standalone |
 | 15 | Fuzzer (`17_TESTING.md`) as its own `texture_fuzz` CTest entry | DONE |
 
 ## Deviations from `22_FILE_MANIFEST.md` (all deliberate, all documented in README)
@@ -157,3 +158,5 @@ ctest --test-dir build/release -C Release --output-on-failure
   constraints, the 320 px settings slide-in, toast timings, the preset dropdown,
   waveform click-to-mark and the accessibility titles all match. The one real gap was
   the tab order, now `MainPanel::applyFocusOrder`.
+
+- 2026-09-30: Audited GUI against specs/include.md + theme.md, wrote `docs/GUI_GAP_SPEC.md`, implemented all items. Spec sources 00-22 are no longer on disk; only include.md/theme.md remain.

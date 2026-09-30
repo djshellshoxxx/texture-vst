@@ -33,12 +33,9 @@ namespace texture
         TextureAudioProcessor& processor;
 
         SectionHeader header { "GRIT - hidden", colours::accentSecondary };
-        juce::Slider bitsKnob;
-        juce::Slider rateKnob;
-        juce::Slider mixKnob;
-        juce::Label bitsLabel { {}, "BITS" };
-        juce::Label rateLabel { {}, "RATE" };
-        juce::Label mixLabel { {}, "MIX" };
+        PlainKnob bitsKnob { "BITS", " bit" };
+        PlainKnob rateKnob { "RATE", "x" };
+        PlainKnob mixKnob { "MIX", "" };
         juce::TextButton closeButton { "Close" };
         juce::Label blurb;
 

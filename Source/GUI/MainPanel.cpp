@@ -20,6 +20,15 @@ namespace texture
            #endif
         }
 
+        /** theme.md: plugin name in 14 px semibold. */
+        juce::Font wordmarkFont()
+        {
+            return TextureLookAndFeel::interfaceFont (14.0f, true).withExtraKerningFactor (0.06f);
+        }
+
+        /** LED (12) + gap (8) after the edge padding. */
+        constexpr int wordmarkX = layout::windowEdgePadding + 14 + layout::grid;
+
         ToastBar::Severity toToastSeverity (SampleLoader::Severity severity)
         {
             switch (severity)
@@ -75,6 +84,12 @@ namespace texture
         presetNameButton.setColour (juce::TextButton::buttonColourId, colours::panel);
         presetNameButton.onClick = [this] { showPresetMenu(); };
         addAndMakeVisible (presetNameButton);
+
+        previousPresetButton.onClick = [this] { stepPreset (-1); };
+        addAndMakeVisible (previousPresetButton);
+
+        nextPresetButton.onClick = [this] { stepPreset (1); };
+        addAndMakeVisible (nextPresetButton);
 
         compareAButton.setTooltip ("Snapshot A. Click to switch to it; the slot you leave is kept.");
         compareAButton.onClick = [this]
@@ -176,14 +191,16 @@ namespace texture
                                                             "Lock the LFO to the host tempo. (Pro)");
         addAndMakeVisible (*lfoSyncToggle);
 
+        juce::StringArray divisions;
+
         for (const auto* name : params::divisionNames)
-            lfoDivisionBox.addItem (name, lfoDivisionBox.getNumItems() + 1);
+            divisions.add (name);
 
-        lfoDivisionBox.setTooltip ("Tempo division used while sync is on. (Pro)");
-        addAndMakeVisible (lfoDivisionBox);
+        lfoDivisionBox = std::make_unique<ParameterChoiceBox> (processor, params::lfoDivision, divisions,
+                                                               "Tempo division used while sync is on. (Pro)");
+        addAndMakeVisible (*lfoDivisionBox);
 
-        lfoDivisionAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
-            processor.getValueTreeState(), params::lfoDivision, lfoDivisionBox);
+        addAndMakeVisible (levelMeter);
 
         layerBlendKnob = std::make_unique<ParameterKnob> (processor, params::layerBlend, "BLEND",
                                                            "Blends the second sample layer in. Both layers "
@@ -215,6 +232,7 @@ namespace texture
             updateProGating();
             pluginStateChanged();
         };
+        settingsPanel->onTooltipsChanged = [this] (bool enabled) { setTooltipsEnabled (enabled); };
         settingsPanel->onAudioSettingsRequested = [this]
         {
             if (onAudioSettingsRequested)
@@ -267,13 +285,15 @@ namespace texture
         place (lfoRateKnob.get());
         place (lfoDepthKnob.get());
         place (lfoSyncToggle.get());
-        place (&lfoDivisionBox);
+        place (lfoDivisionBox.get());
 
         place (dropZoneA.get());
         place (dropZoneB.get());
         place (layerBlendKnob.get());
 
+        place (&previousPresetButton);
         place (&presetNameButton);
+        place (&nextPresetButton);
         place (&compareAButton);
         place (&compareBButton);
         place (&fileMenuButton);
@@ -292,22 +312,24 @@ namespace texture
     {
         // The layout below dereferences every control, and resized() can arrive
         // before they exist -- any setSize/setBounds during construction calls it.
-        if (morphKnob == nullptr)
+        if (morphKnob == nullptr || lfoDivisionBox == nullptr)
             return;
 
         auto bounds = getLocalBounds();
 
-        // --- Header -----------------------------------------------------------
+        // --- Header (theme.md: 32 px strip) -----------------------------------
         auto header = bounds.removeFromTop (headerHeight);
-        auto headerContent = header.reduced (layout::windowEdgePadding, layout::grid);
+        auto headerContent = header.reduced (layout::windowEdgePadding, 6);
 
         levelLed.setBounds (headerContent.removeFromLeft (14).withSizeKeepingCentre (12, 12));
         headerContent.removeFromLeft (layout::grid);
 
-        // The hidden effect lives behind one pixel at the foot of the wordmark.
-        const auto wordmarkArea = headerContent.removeFromLeft (100);
-        secretHotspot = juce::Rectangle<int> (wordmarkArea.getRight() - 4,
-                                              wordmarkArea.getBottom() - 4, 3, 3);
+        // The hidden effect lives behind one pixel just after the wordmark, where
+        // a full stop would sit.
+        const auto wordmarkWidth = juce::roundToInt (
+            juce::GlyphArrangement::getStringWidth (wordmarkFont(), "TEXTURE"));
+        headerContent.removeFromLeft (juce::jmax (90, wordmarkWidth + 8));
+        secretHotspot = juce::Rectangle<int> (wordmarkX + wordmarkWidth + 1, headerHeight / 2 + 3, 3, 3);
 
         headerContent.removeFromLeft (layout::grid);
 
@@ -328,8 +350,10 @@ namespace texture
         compareAButton.setBounds (headerContent.removeFromRight (26).withSizeKeepingCentre (26, 18));
         headerContent.removeFromRight (layout::grid);
 
-        presetNameButton.setBounds (headerContent.withSizeKeepingCentre (
-            juce::jmax (80, headerContent.getWidth()), 20));
+        previousPresetButton.setBounds (headerContent.removeFromLeft (20));
+        nextPresetButton.setBounds (headerContent.removeFromRight (20));
+        presetNameButton.setBounds (headerContent.reduced (2, 0).withSizeKeepingCentre (
+            juce::jmax (80, headerContent.getWidth() - 4), 20));
 
         // --- Footer -----------------------------------------------------------
         auto footer = bounds.removeFromBottom (footerHeight);
@@ -341,9 +365,6 @@ namespace texture
         auto topRow = body.removeFromTop (196);
         auto sampleArea = topRow.removeFromLeft (348);
         topRow.removeFromLeft (layout::grid * 2);
-
-        const auto layersVisible = secretPanel != nullptr && secretPanel->isVisible();
-        juce::ignoreUnused (layersVisible);
 
         // Layer 2 gets a slim strip under layer 1 so the Pro feature is discoverable.
         auto layerStrip = sampleArea.removeFromBottom (62);
@@ -364,34 +385,33 @@ namespace texture
         body.removeFromTop (layout::grid);
 
         // --- Envelope + output row --------------------------------------------
-        auto controlRow = body.removeFromTop (78);
+        auto controlRow = body.removeFromTop (88);
 
-        auto envelopeArea = controlRow.removeFromLeft (232);
+        auto envelopeArea = controlRow.removeFromLeft (280);
         envelopeHeader.setBounds (envelopeArea.removeFromTop (14));
         envelopeArea.removeFromTop (2);
 
         const auto adsrWidth = envelopeArea.getWidth() / 4;
 
         for (auto* knob : { attackKnob.get(), decayKnob.get(), sustainKnob.get(), releaseKnob.get() })
-            knob->setBounds (envelopeArea.removeFromLeft (adsrWidth).reduced (4, 0));
+            knob->setBounds (envelopeArea.removeFromLeft (adsrWidth).reduced (6, 0));
 
         controlRow.removeFromLeft (layout::grid * 2);
 
-        auto outputArea = controlRow.removeFromLeft (170);
+        auto outputArea = controlRow;
         outputHeader.setBounds (outputArea.removeFromTop (14));
         outputArea.removeFromTop (2);
 
-        reverbToggle->setBounds (outputArea.removeFromLeft (84).withSizeKeepingCentre (84, 26));
+        reverbToggle->setBounds (outputArea.removeFromLeft (84).withSizeKeepingCentre (84, 28));
         outputArea.removeFromLeft (layout::grid);
-        gainKnob->setBounds (outputArea.removeFromLeft (56).reduced (2, 0));
-
-        controlRow.removeFromLeft (layout::grid);
-        dataStream.setBounds (controlRow);
+        gainKnob->setBounds (outputArea.removeFromLeft (64).reduced (4, 0));
+        outputArea.removeFromLeft (layout::grid * 2);
+        levelMeter.setBounds (outputArea.withSizeKeepingCentre (outputArea.getWidth(), 44));
 
         body.removeFromTop (layout::grid);
 
-        // --- LFO section -------------------------------------------------------
-        auto lfoArea = body.removeFromTop (juce::jmax (52, body.getHeight()));
+        // --- LFO section + data stream ------------------------------------------
+        auto lfoArea = body;
 
         if (secretPanel != nullptr && secretPanel->isVisible())
         {
@@ -400,19 +420,26 @@ namespace texture
             lfoArea.removeFromRight (layout::grid);
         }
 
-        auto lfoHeaderRow = lfoArea.removeFromTop (14);
+        auto lfoControls = lfoArea.removeFromLeft (286);
+        lfoArea.removeFromLeft (layout::grid * 2);
+
+        // The stream fills the otherwise empty space right of the LFO (theme.md).
+        dataStream.setBounds (lfoArea);
+
+        auto lfoHeaderRow = lfoControls.removeFromTop (14);
         lfoHeader.setBounds (lfoHeaderRow.removeFromLeft (100));
         lfoProBadge.setBounds (lfoHeaderRow.removeFromLeft (150).withSizeKeepingCentre (150, 14));
 
-        lfoArea.removeFromTop (2);
+        lfoControls.removeFromTop (2);
+        lfoControls = lfoControls.withSizeKeepingCentre (lfoControls.getWidth(), juce::jmin (76, lfoControls.getHeight()));
 
-        lfoRateKnob->setBounds (lfoArea.removeFromLeft (56).reduced (2, 0));
-        lfoArea.removeFromLeft (4);
-        lfoDepthKnob->setBounds (lfoArea.removeFromLeft (56).reduced (2, 0));
-        lfoArea.removeFromLeft (layout::grid);
-        lfoSyncToggle->setBounds (lfoArea.removeFromLeft (70).withSizeKeepingCentre (70, 24));
-        lfoArea.removeFromLeft (layout::grid);
-        lfoDivisionBox.setBounds (lfoArea.removeFromLeft (76).withSizeKeepingCentre (76, 24));
+        lfoRateKnob->setBounds (lfoControls.removeFromLeft (60).reduced (2, 0));
+        lfoControls.removeFromLeft (4);
+        lfoDepthKnob->setBounds (lfoControls.removeFromLeft (60).reduced (2, 0));
+        lfoControls.removeFromLeft (layout::grid);
+        lfoSyncToggle->setBounds (lfoControls.removeFromLeft (70).withSizeKeepingCentre (70, 28));
+        lfoControls.removeFromLeft (layout::grid);
+        lfoDivisionBox->setBounds (lfoControls.removeFromLeft (76).withSizeKeepingCentre (76, 24));
 
         // --- Overlays ----------------------------------------------------------
         if (presetBrowser != nullptr)
@@ -448,9 +475,9 @@ namespace texture
 
         // Wordmark. Its last few pixels double as the hidden effect's trigger.
         g.setColour (colours::textPrimary);
-        g.setFont (TextureLookAndFeel::interfaceFont (22.0f, true));
+        g.setFont (wordmarkFont());
         g.drawText ("TEXTURE",
-                    juce::Rectangle<int> (layout::windowEdgePadding + 22, 0, 120, headerHeight),
+                    juce::Rectangle<int> (wordmarkX, 0, 120, headerHeight),
                     juce::Justification::centredLeft, false);
 
         // --- Footer separator ---------------------------------------------------
@@ -482,14 +509,14 @@ namespace texture
 
         // --- Pro gating veil ----------------------------------------------------
         // Same caveat as resized(): the veil is measured from the controls.
-        if (! processor.isPro() && dropZoneB != nullptr && layerBlendKnob != nullptr)
+        if (! processor.isPro() && dropZoneB != nullptr && layerBlendKnob != nullptr && lfoDivisionBox != nullptr)
         {
             g.setColour (colours::background.withAlpha (0.6f));
 
             const auto lfoVeil = juce::Rectangle<int> (layout::windowEdgePadding,
                                                        lfoHeader.getY(),
-                                                       juce::jmax (0, lfoDivisionBox.getRight() - layout::windowEdgePadding),
-                                                       juce::jmax (0, lfoDivisionBox.getBottom() - lfoHeader.getY()));
+                                                       juce::jmax (0, lfoDivisionBox->getRight() - layout::windowEdgePadding),
+                                                       juce::jmax (0, lfoDivisionBox->getBottom() - lfoHeader.getY()));
             g.fillRect (lfoVeil);
 
             const auto layerVeil = juce::Rectangle<int> (dropZoneB->getX(),
@@ -659,28 +686,53 @@ namespace texture
         juce::PopupMenu menu;
         menu.setLookAndFeel (&getLookAndFeel());
 
+        const auto addItem = [&menu] (int id, const juce::String& text, const juce::String& shortcut = {},
+                                      bool enabled = true, bool ticked = false)
+        {
+            juce::PopupMenu::Item item (text);
+            item.itemID = id;
+            item.isEnabled = enabled;
+            item.isTicked = ticked;
+            item.shortcutKeyDescription = shortcut;
+            menu.addItem (std::move (item));
+        };
+
+        const auto hasSample = processor.getSampleForLayer (0) != nullptr && processor.getSampleForLayer (0)->isValid();
+
         menu.addSectionHeader ("Presets");
-        menu.addItem (1, "Open preset...", true, false);
-        menu.addItem (2, "Save", true, false);
-        menu.addItem (3, "Save as...", true, false);
-        menu.addItem (4, processor.isPro() ? "Preset browser..." : "Preset browser...  (PRO)", true, false);
+        addItem (1, "Open preset...", "Ctrl+O");
+        addItem (2, "Save", "Ctrl+S");
+        addItem (3, "Save as...", "Ctrl+Shift+S");
+        addItem (4, processor.isPro() ? "Preset browser..." : "Preset browser...  (PRO)");
+        menu.addSeparator();
+
+        menu.addSectionHeader ("Sample");
+        addItem (13, "Load sample...");
+        addItem (14, "Clear sample", {}, hasSample);
         menu.addSeparator();
 
         menu.addSectionHeader ("Audio");
-        menu.addItem (5, processor.isPro() ? "Export audio..." : "Export audio...  (PRO)", true, false);
+        addItem (5, processor.isPro() ? "Export audio..." : "Export audio...  (PRO)");
         menu.addSeparator();
 
         menu.addSectionHeader ("Snapshots");
-        menu.addItem (6, "Copy A to B");
-        menu.addItem (7, "Copy B to A");
+        addItem (6, "Copy A to B");
+        addItem (7, "Copy B to A");
         menu.addSeparator();
 
+        juce::PopupMenu sizeMenu;
+
+        for (const auto percent : { 75, 100, 125, 150, 175, 200 })
+            sizeMenu.addItem (100 + percent, juce::String (percent) + "%", true,
+                              std::abs (currentScale * 100.0f - static_cast<float> (percent)) < 1.0f);
+
         menu.addSectionHeader ("General");
-        menu.addItem (8, "Randomize");
-        menu.addItem (9, "Reset all controls");
-        menu.addItem (10, "Options...");
-        menu.addItem (11, "Open location in file browser");
-        menu.addItem (12, "Help");
+        addItem (8, "Randomize", "Ctrl+R");
+        addItem (9, "Reset all controls");
+        addItem (10, "Options...");
+        menu.addSubMenu ("Interface size", sizeMenu);
+        addItem (11, "Open location in file browser");
+        addItem (12, "Help", "F1");
 
         juce::Component::SafePointer<MainPanel> safeThis (this);
 
@@ -689,6 +741,13 @@ namespace texture
         {
             if (safeThis == nullptr || result == 0)
                 return;
+
+            if (result > 100)
+            {
+                if (safeThis->onScaleRequested)
+                    safeThis->onScaleRequested (static_cast<float> (result - 100) / 100.0f);
+                return;
+            }
 
             switch (result)
             {
@@ -727,9 +786,42 @@ namespace texture
                 }
 
                 case 12: safeThis->openHelp(); break;
+
+                case 13:
+                    if (safeThis->dropZoneA != nullptr)
+                        safeThis->dropZoneA->openFileChooser();
+                    break;
+
+                case 14: safeThis->processor.clearLayer (0); break;
                 default: break;
             }
         });
+    }
+
+    void MainPanel::stepPreset (int delta)
+    {
+        auto& presets = processor.getPresetManager();
+        const auto& all = presets.getAllPresets();
+
+        if (all.empty())
+        {
+            processor.postToast ("No presets found. Save one, or rescan the preset folder.",
+                                 SampleLoader::Severity::info);
+            return;
+        }
+
+        const auto count = static_cast<int> (all.size());
+        int current = -1;
+
+        for (int i = 0; i < count; ++i)
+            if (all[static_cast<size_t> (i)].name == processor.getCurrentPresetName())
+                current = i;
+
+        // From an unnamed patch, "next" is the first preset and "previous" the last.
+        const auto next = current < 0 ? (delta > 0 ? 0 : count - 1)
+                                       : ((current + delta) % count + count) % count;
+
+        processor.loadPreset (all[static_cast<size_t> (next)].file);
     }
 
     void MainPanel::showPresetMenu()
@@ -1037,7 +1129,8 @@ namespace texture
             if (component != nullptr)
                 component->setEnabled (pro);
 
-        lfoDivisionBox.setEnabled (pro);
+        if (lfoDivisionBox != nullptr)
+            lfoDivisionBox->setEnabled (pro);
         lfoProBadge.setVisible (! pro);
         layerProBadge.setVisible (! pro);
 
@@ -1049,8 +1142,9 @@ namespace texture
 
     void MainPanel::setTooltipsEnabled (bool shouldBeEnabled)
     {
-        juce::ignoreUnused (shouldBeEnabled);
-        // The editor owns the TooltipWindow; it reads the same preference.
+        // The editor owns the TooltipWindow; this only forwards the preference.
+        if (onTooltipsChanged)
+            onTooltipsChanged (shouldBeEnabled);
     }
 
     // =========================================================================
@@ -1060,6 +1154,8 @@ namespace texture
     void MainPanel::timerCallback()
     {
         levelLed.setLevel (processor.getSmoothedOutputPeak());
+        levelMeter.pushLevels (processor.readChannelPeak (0), processor.readChannelPeak (1),
+                               juce::Time::getMillisecondCounterHiRes());
 
         const auto morph = processor.getEffectiveMorph();
         const auto ringColour = colours::morphRing (morph);
@@ -1082,65 +1178,114 @@ namespace texture
             morphKnob->setModulatedValue (morph);
         }
 
+        // Pulse whichever knob is waiting for a MIDI CC.
+        for (auto* knob : { static_cast<ParameterKnob*> (morphKnob.get()), attackKnob.get(), decayKnob.get(),
+                            sustainKnob.get(), releaseKnob.get(), gainKnob.get(), lfoRateKnob.get(),
+                            lfoDepthKnob.get(), layerBlendKnob.get() })
+            if (knob != nullptr)
+                knob->updateLearnIndicator();
+
         // The division dropdown only matters while sync is engaged (09_GUI_SPEC.md).
         if (const auto* sync = processor.getValueTreeState().getRawParameterValue (params::lfoSync))
-            lfoDivisionBox.setVisible (sync->load() > 0.5f);
+            if (lfoDivisionBox != nullptr)
+                lfoDivisionBox->setVisible (sync->load() > 0.5f);
 
         updateDataStream();
+        dataStream.tick();
     }
 
     void MainPanel::updateDataStream()
     {
-        // One line per tick, cycling through the internals worth watching. The view
-        // itself drops repeats, which is what makes the scroll stop when idle.
-        const auto morph = processor.getEffectiveMorph();
-        const auto targets = deriveMorphTargets (morph);
+        // Only real changes produce a line, so the stream stops when nothing is
+        // happening and runs while things are being played or tweaked (theme.md).
+        juce::StringArray fresh;
+        auto& state = processor.getValueTreeState();
 
-        juce::String line;
-
-        switch (streamCounter % 6)
+        for (int i = 0; i < params::numParameters; ++i)
         {
-            case 0:
-                line = "morph " + juce::String (morph, 3)
-                     + "  grains " + juce::String (targets.grainsPerVoice)
-                     + "  dur " + juce::String (juce::roundToInt (targets.grainDurationMs)) + "ms";
-                break;
+            const auto* id = params::allIDs[i];
+            const auto* raw = state.getRawParameterValue (id);
 
-            case 1:
-                line = "voices " + juce::String (processor.getActiveVoiceCount())
-                     + "/" + juce::String (GranularEngine::maxVoices)
-                     + "  cpu " + juce::String (processor.getMeasuredCpuLoad() * 100.0, 1) + "%";
-                break;
+            if (raw == nullptr)
+                continue;
 
-            case 2:
-                line = "note " + juce::String (processor.getLastMidiNote())
-                     + "  vel " + juce::String (processor.getLastMidiVelocity())
-                     + "  cc" + juce::String (processor.getLastMidiController())
-                     + " " + juce::String (processor.getLastMidiControllerValue());
-                break;
+            const auto value = raw->load();
+            auto& last = streamParameterValues[static_cast<size_t> (i)];
 
-            case 3:
-                line = "out " + juce::String (juce::Decibels::gainToDecibels (
-                           juce::jmax (1.0e-6f, processor.getSmoothedOutputPeak())), 1) + "dB"
-                     + "  pos " + juce::String (processor.getReadPosition(), 3);
-                break;
+            if (streamPrimed && std::abs (value - last) < 1.0e-4f)
+                continue;
 
-            case 4:
-                line = "verb " + juce::String (targets.reverbSend, 2)
-                     + "  chor " + juce::String (targets.chorusDepth, 2)
-                     + "  sat " + juce::String (targets.saturatorDrive, 2);
-                break;
+            last = value;
 
-            default:
-                line = juce::String (processor.getCurrentSampleRate() / 1000.0, 1) + "kHz"
-                     + "  blk " + juce::String (processor.getCurrentBlockSize())
-                     + "  " + (processor.isPro() ? "pro" : "free");
-                break;
+            if (const auto* parameter = state.getParameter (id))
+                fresh.add ("param " + juce::String (id) + " = " + parameter->getCurrentValueAsText());
         }
 
-        if (dataStream.push (line))
-            ++streamCounter;
-        else
-            ++streamCounter;
+        const auto note = processor.getLastMidiNote();
+        const auto velocity = processor.getLastMidiVelocity();
+
+        if (note != streamNote || velocity != streamVelocity)
+        {
+            streamNote = note;
+            streamVelocity = velocity;
+
+            if (note >= 0)
+                fresh.add ("midi note " + juce::MidiMessage::getMidiNoteName (note, true, true, 3)
+                           + " (" + juce::String (note) + ")  vel " + juce::String (velocity));
+        }
+
+        const auto controller = processor.getLastMidiController();
+        const auto controllerValue = processor.getLastMidiControllerValue();
+
+        if (controller != streamController || controllerValue != streamControllerValue)
+        {
+            streamController = controller;
+            streamControllerValue = controllerValue;
+
+            if (controller >= 0)
+                fresh.add ("midi cc" + juce::String (controller) + " = " + juce::String (controllerValue));
+        }
+
+        const auto voices = processor.getActiveVoiceCount();
+
+        if (voices != streamVoices)
+        {
+            streamVoices = voices;
+            const auto outDb = juce::Decibels::gainToDecibels (processor.getSmoothedOutputPeak(), -100.0f);
+            fresh.add ("voices " + juce::String (voices) + "  out "
+                       + (outDb <= -100.0f ? juce::String ("-inf") : juce::String (outDb, 1))
+                       + " dB  cpu " + juce::String (processor.getMeasuredCpuLoad() * 100.0, 1) + "%");
+        }
+
+        const auto targets = deriveMorphTargets (processor.getEffectiveMorph());
+
+        if (targets.grainsPerVoice != streamGrains)
+        {
+            streamGrains = targets.grainsPerVoice;
+            fresh.add ("grains " + juce::String (targets.grainsPerVoice)
+                       + "  dur " + juce::String (juce::roundToInt (targets.grainDurationMs)) + "ms"
+                       + "  verb " + juce::String (targets.reverbSend, 2)
+                       + "  chor " + juce::String (targets.chorusDepth, 2));
+        }
+
+        if (! juce::approximatelyEqual (processor.getCurrentSampleRate(), streamSampleRate)
+            || processor.getCurrentBlockSize() != streamBlockSize)
+        {
+            streamSampleRate = processor.getCurrentSampleRate();
+            streamBlockSize = processor.getCurrentBlockSize();
+            fresh.add ("audio " + juce::String (streamSampleRate / 1000.0, 1) + "kHz  block "
+                       + juce::String (streamBlockSize) + "  " + (processor.isPro() ? "pro" : "free"));
+        }
+
+        if (processor.getCurrentPresetName() != streamPresetName)
+        {
+            streamPresetName = processor.getCurrentPresetName();
+            fresh.add ("preset \"" + streamPresetName + "\"");
+        }
+
+        streamPrimed = true;
+
+        for (const auto& line : fresh)
+            dataStream.push (line);
     }
 }

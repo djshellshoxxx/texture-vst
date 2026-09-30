@@ -122,6 +122,19 @@ namespace texture
 
         // --- Preferences tab ---------------------------------------------------
         tooltipsToggle.setTooltip ("Turn the hover tooltips on or off");
+        tooltipsToggle.onClick = [this]
+        {
+            const auto enabled = tooltipsToggle.getToggleState();
+
+            if (auto* store = processor.getApplicationProperties().getUserSettings())
+            {
+                store->setValue (tooltipsKey, enabled);
+                store->saveIfNeeded();
+            }
+
+            if (onTooltipsChanged)
+                onTooltipsChanged (enabled);
+        };
         addAndMakeVisible (tooltipsToggle);
 
         styleBodyLabel (presetFolderLabel);
@@ -170,7 +183,8 @@ namespace texture
         defaultGainSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 56, 20);
         defaultGainSlider.setRange (params::gainMinDb, params::gainMaxDb, 0.1);
         defaultGainSlider.setTextValueSuffix (" dB");
-        defaultGainSlider.setTooltip ("Gain applied to new instances of TEXTURE");
+        defaultGainSlider.setTooltip ("Output gain every new instance of TEXTURE starts with. "
+                                      "Saved sessions keep their own gain.");
         defaultGainSlider.onValueChange = [this]
         {
             if (auto* store = processor.getApplicationProperties().getUserSettings())

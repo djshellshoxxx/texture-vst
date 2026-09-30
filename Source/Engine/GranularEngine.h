@@ -32,6 +32,10 @@ namespace texture
 
         // --- MIDI ------------------------------------------------------------
         void noteOn (int midiChannel, int midiNote, float velocity);
+
+        /** Where new notes start reading, as a fraction of the sample (waveform click). */
+        void setSampleStart (float normalised) noexcept { sampleStart.store (normalised, std::memory_order_relaxed); }
+        float getSampleStart() const noexcept { return sampleStart.load (std::memory_order_relaxed); }
         void noteOff (int midiChannel, int midiNote);
         void setSustainPedal (bool isDown);
         void setPitchBend (int pitchWheelValue);   // 0 .. 16383, 8192 = centre
@@ -86,6 +90,7 @@ namespace texture
 
         bool sustainPedalDown { false };
         float pitchBendRatio { 1.0f };
+        std::atomic<float> sampleStart { 0.0f };
         juce::int64 noteCounter { 0 };
 
         float attackMs { 250.0f };

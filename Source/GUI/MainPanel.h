@@ -36,6 +36,15 @@ namespace texture
         /** Raised when the standalone wrapper should show its device dialog. */
         std::function<void()> onAudioSettingsRequested;
 
+        /** Raised when Preferences > Show tooltips changes. The editor owns the tooltip window. */
+        std::function<void (bool)> onTooltipsChanged;
+
+        /** Raised by File > Interface size with a scale relative to 720 x 480. */
+        std::function<void (float)> onScaleRequested;
+
+        /** The current scale, so the menu can tick it. Set by the editor. */
+        float currentScale { 1.0f };
+
         void paint (juce::Graphics& g) override;
         void resized() override;
         void mouseDown (const juce::MouseEvent& event) override;
@@ -67,6 +76,7 @@ namespace texture
         void openPresetFile();
         void exportAudio();
         void showProUpsell (const juce::String& featureName);
+        void stepPreset (int delta);
         void updateProGating();
         void updateDataStream();
         void revealSecret();
@@ -82,6 +92,8 @@ namespace texture
         IconButton resetButton { IconButton::Icon::reset, "Reset every control to its default value" };
         IconButton fileMenuButton { IconButton::Icon::folder, "File: open, save, export audio and options" };
         juce::TextButton presetNameButton;
+        IconButton previousPresetButton { IconButton::Icon::chevronLeft, "Previous preset" };
+        IconButton nextPresetButton { IconButton::Icon::chevronRight, "Next preset" };
         juce::TextButton compareAButton { "A" };
         juce::TextButton compareBButton { "B" };
 
@@ -99,8 +111,8 @@ namespace texture
         std::unique_ptr<ParameterKnob> lfoDepthKnob;
         std::unique_ptr<ParameterToggle> lfoSyncToggle;
         std::unique_ptr<ParameterKnob> layerBlendKnob;
-        juce::ComboBox lfoDivisionBox;
-        std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> lfoDivisionAttachment;
+        std::unique_ptr<ParameterChoiceBox> lfoDivisionBox;
+        LevelMeter levelMeter;
 
         SectionHeader envelopeHeader { "Envelope" };
         SectionHeader outputHeader { "Output" };
@@ -123,7 +135,13 @@ namespace texture
         /** The pixel that reveals the hidden effect (include.md, "easter egg"). */
         juce::Rectangle<int> secretHotspot;
 
-        int streamCounter { 0 };
+        /** Last values the data stream reported, so it only speaks on change. */
+        std::array<float, params::numParameters> streamParameterValues {};
+        int streamNote { -2 }, streamVelocity { -1 }, streamController { -2 }, streamControllerValue { -1 };
+        int streamVoices { -1 }, streamGrains { -1 }, streamBlockSize { -1 };
+        double streamSampleRate { -1.0 };
+        juce::String streamPresetName;
+        bool streamPrimed { false };
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainPanel)
     };

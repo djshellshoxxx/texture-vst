@@ -16,8 +16,9 @@ namespace texture
     MorphKnob::MorphKnob (TextureAudioProcessor& processorToUse)
         : ParameterKnob (processorToUse, params::morph, "MORPH",
                          "MORPH transforms the sound from clean playback at 0% to a fully "
-                         "granular ambient wash at 100%. Double-click to reset, Shift-drag "
-                         "for fine control, Ctrl/Cmd-click to step 0 / 35 / 70 / 100%.")
+                         "granular ambient wash at 100%. Drag vertically; Shift-drag is coarse, "
+                         "Ctrl/Cmd-drag is ultra-fine. Double-click resets, Ctrl/Cmd-click "
+                         "steps 0 / 35 / 70 / 100%, right-click for more.")
     {
         setShowsLabel (false);
 
@@ -61,8 +62,9 @@ namespace texture
             return;
 
         const auto centre = dialArea.getCentre();
-        const auto value = static_cast<float> (valueToProportionOfLength (getValue()));
-        const auto accent = colours::morphRing (value);
+        const auto value = getDisplayedProportion();
+        const auto hovered = isEnabled() && isMouseOverOrDragging();
+        const auto accent = hovered ? colours::morphRing (value).brighter (0.08f) : colours::morphRing (value);
 
         const auto ringRadius = diameter * 0.5f - ringThickness * 0.5f;
         const auto bodyRadius = ringRadius - ringGap - ringThickness * 0.5f;
@@ -122,8 +124,10 @@ namespace texture
         g.setColour (colours::shadow);
         g.fillEllipse (body.translated (0.0f, 2.0f).expanded (1.0f));
 
-        g.setGradientFill (juce::ColourGradient (colours::knobTop, body.getCentreX(), body.getY(),
-                                                 colours::knobBottom, body.getCentreX(), body.getBottom(),
+        g.setGradientFill (juce::ColourGradient (hovered ? colours::knobTop.brighter (0.08f) : colours::knobTop,
+                                                 body.getCentreX(), body.getY(),
+                                                 hovered ? colours::knobBottom.brighter (0.08f) : colours::knobBottom,
+                                                 body.getCentreX(), body.getBottom(),
                                                  false));
         g.fillEllipse (body);
 
@@ -152,7 +156,9 @@ namespace texture
         // --- Percentage readout ------------------------------------------------
         g.setColour (accent);
         g.setFont (TextureLookAndFeel::interfaceFont (18.0f, true));
-        g.drawText (juce::String (juce::roundToInt (value * 100.0f)) + "%",
+        paintLearnRing (g, dialArea);
+
+        g.drawText (juce::String (juce::roundToInt (static_cast<float> (valueToProportionOfLength (getValue())) * 100.0f)) + "%",
                     bounds.removeFromBottom (readoutHeight),
                     juce::Justification::centredTop,
                     false);

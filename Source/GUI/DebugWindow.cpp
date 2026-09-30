@@ -151,8 +151,73 @@ namespace texture
         refreshNow();
     }
 
+    void DebugPanel::addEvent (const juce::String& text)
+    {
+        events.insert (0, juce::Time::getCurrentTime().formatted ("%H:%M:%S  ") + text);
+
+        while (events.size() > maxEvents)
+            events.remove (events.size() - 1);
+    }
+
+    void DebugPanel::recordEvents()
+    {
+        auto& state = processor.getValueTreeState();
+
+        for (int i = 0; i < params::numParameters; ++i)
+        {
+            const auto* id = params::allIDs[i];
+            const auto* raw = state.getRawParameterValue (id);
+
+            if (raw == nullptr)
+                continue;
+
+            const auto value = raw->load();
+            auto& last = lastParameterValues[static_cast<size_t> (i)];
+
+            if (eventsPrimed && std::abs (value - last) >= 1.0e-4f)
+                if (const auto* parameter = state.getParameter (id))
+                    addEvent ("param  " + juce::String (id) + " -> " + parameter->getCurrentValueAsText());
+
+            last = value;
+        }
+
+        const auto note = processor.getLastMidiNote();
+        const auto velocity = processor.getLastMidiVelocity();
+
+        if (eventsPrimed && (note != lastNote || velocity != lastVelocity) && note >= 0)
+            addEvent ("midi   note " + juce::String (note) + " vel " + juce::String (velocity));
+
+        lastNote = note;
+        lastVelocity = velocity;
+
+        const auto controller = processor.getLastMidiController();
+        const auto controllerValue = processor.getLastMidiControllerValue();
+
+        if (eventsPrimed && (controller != lastController || controllerValue != lastControllerValue) && controller >= 0)
+            addEvent ("midi   cc" + juce::String (controller) + " = " + juce::String (controllerValue));
+
+        lastController = controller;
+        lastControllerValue = controllerValue;
+
+        if (eventsPrimed && processor.getCurrentPresetName() != lastPresetName)
+            addEvent ("preset loaded \"" + processor.getCurrentPresetName() + "\"");
+
+        lastPresetName = processor.getCurrentPresetName();
+
+        const auto sample = processor.getSampleForLayer (0);
+        const auto sampleName = sample != nullptr && sample->isValid() ? sample->getName() : juce::String ("(empty)");
+
+        if (eventsPrimed && sampleName != lastSampleName)
+            addEvent ("sample layer 1 -> " + sampleName);
+
+        lastSampleName = sampleName;
+        eventsPrimed = true;
+    }
+
     void DebugPanel::refreshNow()
     {
+        recordEvents();
+
         juce::StringArray lines;
 
         lines.add ("=== LIVE STATE ===");
@@ -166,6 +231,15 @@ namespace texture
         lines.add ("output peak      : " + juce::String (juce::Decibels::gainToDecibels (
                                                 juce::jmax (1.0e-6f, processor.getSmoothedOutputPeak())), 1) + " dBFS");
         lines.add ("read position    : " + juce::String (processor.getReadPosition(), 4));
+        lines.add ("");
+
+        lines.add ("=== EVENTS (newest first, polled every 200 ms) ===");
+
+        if (events.isEmpty())
+            lines.add ("(nothing yet - move a control or play a note)");
+        else
+            lines.addArray (events, 0, 12);
+
         lines.add ("");
 
         lines.add ("=== MORPH ===");

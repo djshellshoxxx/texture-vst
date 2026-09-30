@@ -154,8 +154,17 @@ namespace texture
         const auto bodyRadius = juce::jmax (4.0f, arcRadius - knobGapToArc - valueArcThickness * 0.5f);
 
         const auto isEnabled = slider.isEnabled();
-        const auto accent = slider.findColour (juce::Slider::rotarySliderFillColourId);
+        const auto hovered = isEnabled && slider.isMouseOverOrDragging();
+
+        // Hover brightens the control by about 8% (theme.md, interaction feel).
+        auto accent = slider.findColour (juce::Slider::rotarySliderFillColourId);
+
+        if (hovered)
+            accent = accent.brighter (0.08f);
+
         const auto activeColour = isEnabled ? accent : accent.withAlpha (0.35f);
+        const auto bodyTop = hovered ? colours::knobTop.brighter (0.08f) : colours::knobTop;
+        const auto bodyBottom = hovered ? colours::knobBottom.brighter (0.08f) : colours::knobBottom;
 
         const auto angle = rotaryStart + sliderPosProportional * (rotaryEnd - rotaryStart);
 
@@ -188,8 +197,8 @@ namespace texture
         const juce::Rectangle<float> body (centre.x - bodyRadius, centre.y - bodyRadius,
                                            bodyRadius * 2.0f, bodyRadius * 2.0f);
 
-        g.setGradientFill (juce::ColourGradient (colours::knobTop, body.getCentreX(), body.getY(),
-                                                 colours::knobBottom, body.getCentreX(), body.getBottom(),
+        g.setGradientFill (juce::ColourGradient (bodyTop, body.getCentreX(), body.getY(),
+                                                 bodyBottom, body.getCentreX(), body.getBottom(),
                                                  false));
         g.fillEllipse (body);
 
@@ -218,6 +227,52 @@ namespace texture
             g.setColour (atDefault ? colours::textMuted.withAlpha (0.6f) : activeColour);
             g.fillEllipse (juce::Rectangle<float> (4.0f, 4.0f).withCentre (centre));
         }
+    }
+
+    void TextureLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int width, int height,
+                                               float sliderPos, float minSliderPos, float maxSliderPos,
+                                               juce::Slider::SliderStyle style, juce::Slider& slider)
+    {
+        if (style != juce::Slider::LinearHorizontal)
+        {
+            juce::LookAndFeel_V4::drawLinearSlider (g, x, y, width, height, sliderPos,
+                                                    minSliderPos, maxSliderPos, style, slider);
+            return;
+        }
+
+        juce::ignoreUnused (minSliderPos, maxSliderPos);
+
+        // theme.md sliders: 4 px track, accent fill, 16 x 24 thumb, ticks outside the track.
+        const auto bounds = juce::Rectangle<int> (x, y, width, height).toFloat();
+        const auto centreY = bounds.getCentreY();
+        const auto track = juce::Rectangle<float> (bounds.getX(), centreY - 2.0f, bounds.getWidth(), 4.0f);
+        const auto accent = slider.isEnabled() ? colours::accentPrimary : colours::accentPrimary.withAlpha (0.35f);
+
+        g.setColour (colours::textMuted.withAlpha (0.4f));
+
+        for (int i = 0; i <= 5; ++i)
+        {
+            const auto tickX = track.getX() + track.getWidth() * static_cast<float> (i) / 5.0f;
+            g.fillRect (tickX, track.getBottom() + 6.0f, 1.0f, 3.0f);
+        }
+
+        g.setColour (colours::panelEdge);
+        g.fillRoundedRectangle (track, 2.0f);
+
+        g.setColour (accent);
+        g.fillRoundedRectangle (track.withRight (sliderPos), 2.0f);
+
+        const auto thumbHeight = juce::jmin (24.0f, bounds.getHeight());
+        const auto thumb = juce::Rectangle<float> (16.0f, thumbHeight).withCentre ({ sliderPos, centreY });
+        const auto hovered = slider.isMouseOverOrDragging();
+
+        g.setGradientFill (juce::ColourGradient (hovered ? colours::knobTop.brighter (0.08f) : colours::knobTop,
+                                                 thumb.getCentreX(), thumb.getY(),
+                                                 colours::knobBottom, thumb.getCentreX(), thumb.getBottom(), false));
+        g.fillRoundedRectangle (thumb, layout::controlCornerRadius);
+
+        g.setColour (accent);
+        g.drawRoundedRectangle (thumb.reduced (0.5f), layout::controlCornerRadius, 1.0f);
     }
 
     juce::Label* TextureLookAndFeel::createSliderTextBox (juce::Slider& slider)

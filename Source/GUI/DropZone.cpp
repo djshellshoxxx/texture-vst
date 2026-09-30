@@ -8,6 +8,16 @@ namespace texture
     namespace
     {
         constexpr const char* lastDirectoryKey = "last_sample_directory";
+        constexpr const char* sampleFolderKey = "sample_folder";
+
+        /** juce::String decodes a plain char* as ASCII, one code point per byte, so
+            a UTF-8 literal has to be wrapped or its bytes arrive as Latin-1 -- the
+            middot used to reach the screen as "A-circumflex plus dot". JUCE asserts
+            on this in Debug; Release silently draws the wrong glyphs. */
+        juce::String separator()
+        {
+            return juce::String::fromUTF8 ("  \xc2\xb7  ");
+        }
     }
 
     DropZone::DropZone (TextureAudioProcessor& processorToUse, int layerIndexToUse)
@@ -17,7 +27,8 @@ namespace texture
         waveform = std::make_unique<WaveformDisplay>();
         addAndMakeVisible (*waveform);
 
-        setTooltip ("Drop an audio file or a .texture preset here, or click to browse. "
+        setTooltip ("Drop an audio file or a .texture preset here, or click to browse. Once loaded, "
+                    "click the waveform to set where notes start (Alt-click clears it). "
                     "Right-click for more options.");
         setTitle ("Sample slot " + juce::String (layerIndex + 1));
         setAccessible (true);
@@ -35,10 +46,11 @@ namespace texture
         if (buffer != nullptr && buffer->isValid())
         {
             sampleName = buffer->getName();
-            sampleDetails = juce::String (buffer->getLengthSeconds(), 2) + " s  ·  "
-                          + juce::String (buffer->getOriginalChannelCount()) + " ch  ·  "
+            sampleDetails = juce::String (buffer->getLengthSeconds(), 2) + " s" + separator()
+                          + juce::String (buffer->getOriginalChannelCount()) + " ch" + separator()
                           + juce::String (buffer->getOriginalSampleRate() / 1000.0, 1) + " kHz";
             waveform->setSample (buffer);
+            waveform->setStartMarker (processor.getSampleStart (layerIndex));
         }
         else
         {
@@ -98,11 +110,13 @@ namespace texture
                                    : "Drop a sample or click to browse",
                         bounds, juce::Justification::centred, false);
 
-            if (! isDragOver)
+            // The slim layer-2 slot has no room for the format hint.
+            if (! isDragOver && bounds.getHeight() >= 80.0f)
             {
                 g.setColour (colours::textMuted.withAlpha (0.6f));
                 g.setFont (TextureLookAndFeel::interfaceFont (10.0f));
-                g.drawText ("WAV · AIFF · FLAC · MP3 · OGG · .texture",
+                g.drawText (juce::String::fromUTF8 ("WAV \xc2\xb7 AIFF \xc2\xb7 FLAC \xc2\xb7 "
+                                                    "MP3 \xc2\xb7 OGG \xc2\xb7 .texture"),
                             bounds.withTrimmedTop (bounds.getHeight() * 0.5f + 18.0f),
                             juce::Justification::centredTop, false);
             }
@@ -156,14 +170,17 @@ namespace texture
             return;
         }
 
-        // Clicking a loaded waveform sets the visual start marker; the engine picks
-        // it up on the next note trigger (09_GUI_SPEC.md).
+        // Clicking a loaded waveform sets where notes start reading; the engine
+        // picks it up on the next note (09_GUI_SPEC.md). Alt-click clears it.
         const auto area = waveform->getBounds();
 
         if (area.contains (event.getPosition()))
         {
-            const auto normalised = static_cast<float> (event.x - area.getX())
-                                  / juce::jmax (1.0f, static_cast<float> (area.getWidth()));
+            const auto normalised = event.mods.isAltDown()
+                                        ? 0.0f
+                                        : static_cast<float> (event.x - area.getX())
+                                              / juce::jmax (1.0f, static_cast<float> (area.getWidth()));
+            processor.setSampleStart (layerIndex, normalised);
             waveform->setStartMarker (normalised);
         }
     }
@@ -177,6 +194,7 @@ namespace texture
 
         menu.addItem (1, "Load sample...");
         menu.addItem (2, "Clear sample", hasSample);
+        menu.addItem (5, "Reset start marker", hasSample && processor.getSampleStart (layerIndex) > 0.0f);
         menu.addSeparator();
         menu.addItem (3, "Show sample in file browser", hasSample);
         menu.addItem (4, "Open factory samples folder");
@@ -211,6 +229,11 @@ namespace texture
                     PresetManager::getFactorySampleDirectory().revealToUser();
                     break;
 
+                case 5:
+                    safeThis->processor.setSampleStart (safeThis->layerIndex, 0.0f);
+                    safeThis->waveform->setStartMarker (0.0f);
+                    break;
+
                 default:
                     break;
             }
@@ -219,14 +242,18 @@ namespace texture
 
     void DropZone::openFileChooser()
     {
+        // Last folder used, else the sample folder from Preferences, else the factory pads.
         auto startDirectory = PresetManager::getFactorySampleDirectory();
 
         if (auto* store = processor.getApplicationProperties().getUserSettings())
         {
+            const juce::File configured (store->getValue (sampleFolderKey));
             const juce::File remembered (store->getValue (lastDirectoryKey));
 
             if (remembered.isDirectory())
                 startDirectory = remembered;
+            else if (configured.isDirectory())
+                startDirectory = configured;
         }
 
         const auto wildcard = processor.getSampleLoader().getSupportedWildcard() + ";*.texture";

@@ -1,7 +1,9 @@
 #pragma once
 
 #include "Widgets.h"
+#include "../Utility/ParameterIDs.h"
 
+#include <array>
 #include <memory>
 
 namespace texture
@@ -48,6 +50,18 @@ namespace texture
 
         void timerCallback() override;
         void refreshNow();
+
+        /** Compares against the last poll and records what changed (include.md:
+            "show the data as features are invoked and settings are changed"). */
+        void recordEvents();
+        void addEvent (const juce::String& text);
+
+        static constexpr int maxEvents = 60;
+        juce::StringArray events;
+        std::array<float, params::numParameters> lastParameterValues {};
+        int lastNote { -2 }, lastVelocity { -1 }, lastController { -2 }, lastControllerValue { -1 };
+        juce::String lastPresetName, lastSampleName;
+        bool eventsPrimed { false };
         void exportTroubleshootingFile();
         void confirmHardReset();
 

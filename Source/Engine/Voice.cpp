@@ -45,7 +45,7 @@ namespace texture
         samplesUntilNextGrain = 0.0;
     }
 
-    void Voice::startNote (int midiNote, float velocity, int midiChannel, juce::int64 noteStamp)
+    void Voice::startNote (int midiNote, float velocity, int midiChannel, juce::int64 noteStamp, float startNormalised)
     {
         for (auto& grain : grains)
             grain.stop();
@@ -61,8 +61,10 @@ namespace texture
         basePitchRatio = dsp::semitonesToRatio (static_cast<float> (midiNote - rootMidiNote));
 
         readPosition = 0.0;
+        pendingStart = juce::jlimit (0.0f, 1.0f, startNormalised);
+        startPending = pendingStart > 0.0f;
         samplesUntilNextGrain = 0.0;
-        normalisedReadPosition = 0.0f;
+        normalisedReadPosition = pendingStart;
         lastEnvelopeLevel = 0.0f;
 
         // Deterministic within a note, varied across notes (06_MORPH_KNOB_BEHAVIOUR.md).
@@ -166,6 +168,12 @@ namespace texture
 
         if (sourceLength <= 0 || scratch.getNumChannels() < 2 || scratch.getNumSamples() < numSamples)
             return;
+
+        if (startPending)
+        {
+            startPending = false;
+            readPosition = static_cast<double> (pendingStart) * static_cast<double> (sourceLength - 1);
+        }
 
         auto* scratchLeft = scratch.getWritePointer (0);
         auto* scratchRight = scratch.getWritePointer (1);

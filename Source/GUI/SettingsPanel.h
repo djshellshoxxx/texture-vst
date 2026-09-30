@@ -37,6 +37,9 @@ namespace texture
         /** Raised when the user asks for the audio/MIDI device setup (standalone). */
         std::function<void()> onAudioSettingsRequested;
 
+        /** Raised when the tooltip preference changes. */
+        std::function<void (bool)> onTooltipsChanged;
+
         /** Raised whenever the licence tier changes so the header can update. */
         std::function<void()> onTierChanged;
 

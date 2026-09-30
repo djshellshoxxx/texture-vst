@@ -188,6 +188,13 @@ namespace texture
         });
 
         cacheParameterPointers();
+
+        // Settings > Preferences > Default output gain applies to every new instance;
+        // a restored session overrides it in setStateInformation.
+        if (auto* store = applicationProperties.getUserSettings())
+            if (store->containsKey ("default_gain_db"))
+                setParameterValue (params::gainDb, static_cast<float> (store->getDoubleValue ("default_gain_db", params::gainDefaultDb)));
+
         enforceTierLimits();
 
         for (auto& slot : compareSlots)
@@ -520,7 +527,14 @@ namespace texture
         float peak = 0.0f;
 
         for (int ch = 0; ch < juce::jmin (2, numOutputChannels); ++ch)
-            peak = juce::jmax (peak, buffer.getMagnitude (ch, 0, numSamples));
+        {
+            const auto channelPeak = buffer.getMagnitude (ch, 0, numSamples);
+            channelPeaks[static_cast<size_t> (ch)].push (channelPeak);
+            peak = juce::jmax (peak, channelPeak);
+        }
+
+        if (numOutputChannels == 1)
+            channelPeaks[1].push (peak);
 
         outputPeak.push (peak);
 
@@ -764,6 +778,7 @@ namespace texture
         }
 
         activeLayer = layer;
+        setSampleStart (layer, 0.0f);   // a new sample starts from its beginning
         logInfo ("loader", "Loading " + file.getFullPathName() + " into layer " + juce::String (layer + 1));
         sampleLoader.loadAsync (file);
     }
@@ -850,8 +865,21 @@ namespace texture
         return layers[index].file;
     }
 
+    void TextureAudioProcessor::setSampleStart (int layerIndex, float normalised)
+    {
+        const auto index = static_cast<size_t> (juce::jlimit (0, numLayers - 1, layerIndex));
+        engines[index].setSampleStart (juce::jlimit (0.0f, 1.0f, normalised));
+    }
+
+    float TextureAudioProcessor::getSampleStart (int layerIndex) const noexcept
+    {
+        return engines[static_cast<size_t> (juce::jlimit (0, numLayers - 1, layerIndex))].getSampleStart();
+    }
+
     void TextureAudioProcessor::clearLayer (int layerIndex)
     {
+        setSampleStart (layerIndex, 0.0f);
+
         const auto index = static_cast<size_t> (juce::jlimit (0, numLayers - 1, layerIndex));
         auto& layer = layers[index];
 
@@ -1208,6 +1236,7 @@ namespace texture
             sample.setProperty ("index", i, nullptr);
             sample.setProperty ("path", layers[static_cast<size_t> (i)].file.getFullPathName(), nullptr);
             sample.setProperty ("originalName", layers[static_cast<size_t> (i)].originalName, nullptr);
+            sample.setProperty ("start", getSampleStart (i), nullptr);
             root.appendChild (sample, nullptr);
         }
 
@@ -1291,6 +1320,7 @@ namespace texture
             const auto index = juce::jlimit (0, numLayers - 1, static_cast<int> (child.getProperty ("index", 0)));
             const auto path = child.getProperty ("path", "").toString();
             const auto originalName = child.getProperty ("originalName", "").toString();
+            setSampleStart (index, static_cast<float> (static_cast<double> (child.getProperty ("start", 0.0))));
 
             if (path.isEmpty())
                 continue;

@@ -30,7 +30,10 @@ namespace texture
         /** Clears the envelope and all grains without a release stage. */
         void reset();
 
-        void startNote (int midiNote, float velocity, int midiChannel, juce::int64 noteStamp);
+        /** `startNormalised` is where the read head begins, as a fraction of the
+            sample; it is resolved against the source length on the first render. */
+        void startNote (int midiNote, float velocity, int midiChannel, juce::int64 noteStamp,
+                        float startNormalised = 0.0f);
 
         /** Begins the release stage. The voice keeps rendering until the tail ends. */
         void stopNote();
@@ -98,6 +101,8 @@ namespace texture
         float normalisedReadPosition { 0.0f };
 
         double readPosition { 0.0 };       // in source samples
+        float pendingStart { 0.0f };
+        bool startPending { false };
         double samplesUntilNextGrain { 0.0 };
         double preparedSampleRate { 44100.0 };
 
