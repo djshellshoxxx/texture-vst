@@ -17,6 +17,20 @@ namespace texture::dsp
     inline constexpr float minusSixtyDb = 0.001f;        // 10^(-60/20)
     inline constexpr float minusEightyDb = 0.0001f;      // 10^(-80/20)
 
+    /** Exponential coefficient that reaches targetRatio after targetSeconds.
+        Useful for block-size-independent meter and state decay. */
+    inline double decayCoefficient (double elapsedSeconds,
+                                    double targetSeconds,
+                                    double targetRatio) noexcept
+    {
+        if (elapsedSeconds <= 0.0)
+            return 1.0;
+
+        const auto safeSeconds = juce::jmax (1.0e-6, targetSeconds);
+        const auto safeRatio = juce::jlimit (1.0e-12, 0.999999, targetRatio);
+        return std::exp (std::log (safeRatio) * elapsedSeconds / safeSeconds);
+    }
+
     /** Converts decibels to a linear gain, clamping -100 dB and below to silence. */
     inline float dbToGain (float db) noexcept
     {
