@@ -2,6 +2,8 @@
 
 #include "../Source/Utility/ControlValueClipboard.h"
 
+#include <limits>
+
 namespace texture::tests
 {
     class ControlValueClipboardTests : public juce::UnitTest
