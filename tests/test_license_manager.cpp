@@ -318,6 +318,22 @@ namespace texture::tests
             expectEquals (learn.getControllerForParameter (params::morph), -1);
             expectEquals (learn.describeMappings(), juce::String ("(none)"));
 
+            beginTest ("clearing one parameter mapping persists across recreation");
+
+            learn.setMapping (31, params::gainDb);
+            expectEquals (learn.getControllerForParameter (params::gainDb), 31);
+            learn.clearMappingFor (params::gainDb);
+            expectEquals (learn.getControllerForParameter (params::gainDb), -1);
+
+            if (auto* store = properties.get().getUserSettings())
+                store->saveIfNeeded();
+
+            {
+                MidiLearn reloaded (&properties.get());
+                expectEquals (reloaded.getControllerForParameter (params::gainDb), -1,
+                              "cleared mapping must not reappear after restart");
+            }
+
             beginTest ("cancelling a learn binds nothing");
 
             learn.startLearning (params::gainDb);
