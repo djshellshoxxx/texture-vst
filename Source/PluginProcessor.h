@@ -33,6 +33,7 @@ namespace texture
     */
     class TextureAudioProcessor final : public juce::AudioProcessor,
                                         private juce::AsyncUpdater,
+                                        private juce::Timer,
                                         private juce::AudioProcessorValueTreeState::Listener
     {
     public:
@@ -272,6 +273,7 @@ namespace texture
 
         void installFactoryContentAsync();
         void handleAsyncUpdate() override;
+        void timerCallback() override;
         void parameterChanged (const juce::String& parameterID, float newValue) override;
         void handleMidiEvent (const juce::MidiMessage& message);
         void applyMidiLearnedController (int ccNumber, int value);
