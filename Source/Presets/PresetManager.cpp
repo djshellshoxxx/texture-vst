@@ -414,6 +414,47 @@ namespace texture
         parsedData.author = parsed.getProperty ("author", "User").toString();
         parsedData.samplePath = parsed.getProperty ("sample_path", "").toString();
 
+        if (schema == 1)
+        {
+            parsedData.samplePaths[0] = parsedData.samplePath;
+        }
+        else if (const auto* samples = parsed.getProperty ("samples", juce::var()).getArray())
+        {
+            if (samples->size() > 2)
+            {
+                errorMessage = "Preset contains too many sample layers.";
+                return Status::invalidData;
+            }
+
+            for (int layer = 0; layer < samples->size(); ++layer)
+            {
+                const auto& sampleVar = samples->getReference (layer);
+                auto* sampleObject = sampleVar.getDynamicObject();
+
+                if (sampleObject == nullptr)
+                {
+                    errorMessage = "Preset sample data is malformed.";
+                    return Status::invalidData;
+                }
+
+                parsedData.samplePaths[static_cast<size_t> (layer)]
+                    = sampleVar.getProperty ("path", "").toString();
+
+                const auto startVar = sampleVar.getProperty ("start", 0.0);
+                double start = 0.0;
+
+                if (! readNumericParameter (startVar, start) || start < 0.0 || start > 1.0)
+                {
+                    errorMessage = "Preset sample start position is invalid.";
+                    return Status::invalidData;
+                }
+
+                parsedData.sampleStarts[static_cast<size_t> (layer)] = static_cast<float> (start);
+            }
+
+            parsedData.samplePath = parsedData.samplePaths[0];
+        }
+
         if (const auto* tagArray = parsed.getProperty ("tags", juce::var()).getArray())
             for (const auto& tag : *tagArray)
                 parsedData.tags.add (tag.toString());
@@ -469,7 +510,36 @@ namespace texture
             tagArray.add (tag);
 
         root->setProperty ("tags", tagArray);
-        root->setProperty ("sample_path", data.samplePath);
+
+        juce::Array<juce::var> sampleArray;
+
+        for (int layer = 0; layer < 2; ++layer)
+        {
+            juce::DynamicObject::Ptr sampleObject (new juce::DynamicObject());
+            auto path = data.samplePaths[static_cast<size_t> (layer)];
+
+            if (layer == 0 && path.isEmpty())
+                path = data.samplePath;
+
+            const auto start = data.sampleStarts[static_cast<size_t> (layer)];
+
+            if (! std::isfinite (start) || start < 0.0f || start > 1.0f)
+            {
+                errorMessage = "Preset sample start position is invalid.";
+                return Status::invalidData;
+            }
+
+            sampleObject->setProperty ("path", path);
+            sampleObject->setProperty ("start", start);
+            sampleArray.add (juce::var (sampleObject.get()));
+        }
+
+        root->setProperty ("samples", sampleArray);
+
+        // Retain the schema-1 field as a human-readable compatibility hint.
+        root->setProperty ("sample_path", data.samplePaths[0].isNotEmpty()
+                                              ? data.samplePaths[0]
+                                              : data.samplePath);
 
         juce::DynamicObject::Ptr parameterObject (new juce::DynamicObject());
 
