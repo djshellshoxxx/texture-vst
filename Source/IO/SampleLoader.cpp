@@ -3,6 +3,7 @@
 #include "../Utility/DspHelpers.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace texture
 {
@@ -18,7 +19,9 @@ namespace texture
             if (framesToRead <= 0)
                 return false;
 
-            const auto channelsToRead = static_cast<int> (juce::jmax (1u, reader.numChannels));
+            // TEXTURE is stereo internally. Never allocate all channels from an
+            // untrusted multichannel file only to discard channel 3+ immediately.
+            const auto channelsToRead = juce::jlimit (1, 2, static_cast<int> (reader.numChannels));
 
             try
             {
@@ -252,6 +255,13 @@ namespace texture
 
         const auto sourceRate = reader->sampleRate > 0.0 ? reader->sampleRate : targetSampleRateAtomic.load();
         const auto sourceChannels = static_cast<int> (reader->numChannels);
+
+        if (! std::isfinite (sourceRate) || sourceRate < 1000.0 || sourceRate > 768000.0)
+        {
+            result.message = "Could not decode file. Its sample rate is invalid.";
+            result.severity = Severity::warning;
+            return result;
+        }
 
         if (reader->lengthInSamples <= 0 || sourceChannels <= 0)
         {
