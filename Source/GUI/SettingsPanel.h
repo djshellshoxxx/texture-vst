@@ -85,6 +85,7 @@ namespace texture
 
         // Preferences tab
         juce::ToggleButton tooltipsToggle { "Show tooltips" };
+        juce::ToggleButton reducedMotionToggle { "Reduce interface motion" };
         juce::Label presetFolderLabel;
         juce::TextButton presetFolderButton { "Choose preset folder..." };
         juce::TextButton revealPresetFolderButton { "Open in file browser" };
@@ -98,9 +99,9 @@ namespace texture
 
         // About tab
         juce::Label aboutText;
-        juce::TextButton aboutHomepageButton { "Homepage" };
+        juce::TextButton aboutHomepageButton { "Circuit Drift Labs" };
         juce::TextButton aboutGithubButton { "Source" };
-        juce::TextButton aboutSupportButton { "Support" };
+        juce::TextButton aboutSupportButton { "Contact" };
         juce::TextButton aboutCloudButton { "Community presets" };
 
         std::unique_ptr<juce::FileChooser> fileChooser;

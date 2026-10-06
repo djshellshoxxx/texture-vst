@@ -333,8 +333,9 @@ licence, audit, or accidentally infringe.
 
 ## Licence
 
-MIT for the code, proprietary for the factory content, SIL OFL for Inter. Full
-text in [LICENSE.md](LICENSE.md).
+TEXTURE source code is proprietary. Inter remains under the SIL Open Font License.
+See [LICENSE](LICENSE), [LICENSE.md](LICENSE.md), and
+[COPYRIGHT-TRADEMARK.md](COPYRIGHT-TRADEMARK.md).
 
 TEXTURE makes no network connections. No telemetry, no analytics, no update
 checks, no crash reporting.
@@ -342,4 +343,6 @@ checks, no crash reporting.
 
 ## Required shared plug-in standard
 
-This project follows the [Circuit Drift Labs Shared Audio Plugin Standard](docs/standards/CDL_PLUGIN_BASELINE.md). It is required for the plug-in target; standalone-only requirements apply only when a standalone target is included. The product-specific specification supplements the shared standard and records the applicable profiles, compliance status, and any exceptions.
+This project follows the [Circuit Drift Labs Shared Audio Plugin Standard](docs/standards/CDL_PLUGIN_BASELINE.md). It is required for the plug-in target; standalone-only requirements apply only when a standalone target is included. The [product specification](docs/PRODUCT_SPEC.md) supplements the shared standard.
+Current implementation status and exceptions are tracked in the
+[baseline compliance record](docs/BASELINE_COMPLIANCE.md).

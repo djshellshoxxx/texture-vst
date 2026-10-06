@@ -7,6 +7,7 @@
 
 #include "PluginEditor.h"
 #include "Utility/DspHelpers.h"
+#include "Utility/StateSchema.h"
 
 #include <cmath>
 
@@ -14,13 +15,6 @@ namespace texture
 {
     namespace
     {
-        constexpr const char* stateRootTag = "TexturePluginState";
-        constexpr const char* parametersTag = "Parameters";
-        constexpr const char* sampleTag = "Sample";
-        constexpr const char* presetTag = "Preset";
-        constexpr const char* secretTag = "Grit";
-        constexpr const char* versionAttribute = "pluginVersion";
-
         /** Morph is ramped over this long so a sweep never zips (06_MORPH_KNOB_BEHAVIOUR.md). */
         constexpr double morphSmoothingSeconds = 0.02;
 
@@ -1228,16 +1222,16 @@ namespace texture
 
     void TextureAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     {
-        juce::ValueTree root (stateRootTag);
-        root.setProperty (versionAttribute, pluginVersionString(), nullptr);
+        juce::ValueTree root (StateSchema::rootTag);
+        root.setProperty (StateSchema::versionAttribute, pluginVersionString(), nullptr);
 
-        juce::ValueTree parameters (parametersTag);
+        juce::ValueTree parameters (StateSchema::parametersTag);
         parameters.appendChild (apvts.copyState(), nullptr);
         root.appendChild (parameters, nullptr);
 
         for (int i = 0; i < numLayers; ++i)
         {
-            juce::ValueTree sample (sampleTag);
+            juce::ValueTree sample (StateSchema::sampleTag);
             sample.setProperty ("index", i, nullptr);
             sample.setProperty ("path", layers[static_cast<size_t> (i)].file.getFullPathName(), nullptr);
             sample.setProperty ("originalName", layers[static_cast<size_t> (i)].originalName, nullptr);
@@ -1245,13 +1239,13 @@ namespace texture
             root.appendChild (sample, nullptr);
         }
 
-        juce::ValueTree preset (presetTag);
+        juce::ValueTree preset (StateSchema::presetTag);
         preset.setProperty ("name", currentPresetName, nullptr);
         preset.setProperty ("category", currentPresetCategory, nullptr);
         root.appendChild (preset, nullptr);
 
         const auto secret = getSecretSettings();
-        juce::ValueTree secretState (secretTag);
+        juce::ValueTree secretState (StateSchema::secretTag);
         secretState.setProperty ("bits", secret.bitDepth, nullptr);
         secretState.setProperty ("downsample", secret.downsample, nullptr);
         secretState.setProperty ("mix", secret.mix, nullptr);
@@ -1273,24 +1267,18 @@ namespace texture
         }
 
         const auto root = juce::ValueTree::fromXml (*xml);
+        const auto validation = StateSchema::validate (root);
 
-        if (! root.isValid() || root.getType().toString() != stateRootTag)
+        if (! validation.isOk())
         {
-            logWarn ("state", "Unexpected plugin state root; ignoring.");
+            logWarn ("state", validation.message + " Leaving current state untouched.");
             return;
         }
 
-        const auto version = root.getProperty (versionAttribute, "1.0.0").toString();
+        const auto parameters = root.getChildWithName (StateSchema::parametersTag);
+        apvts.replaceState (parameters.getChild (0).createCopy());
 
-        if (! version.startsWith ("1."))
-            logWarn ("state", "State written by version " + version + "; reading on a best-effort basis.");
-
-        const auto parameters = root.getChildWithName (parametersTag);
-
-        if (parameters.isValid() && parameters.getNumChildren() > 0)
-            apvts.replaceState (parameters.getChild (0).createCopy());
-
-        const auto preset = root.getChildWithName (presetTag);
+        const auto preset = root.getChildWithName (StateSchema::presetTag);
 
         if (preset.isValid())
         {
@@ -1298,7 +1286,7 @@ namespace texture
             currentPresetCategory = preset.getProperty ("category", "Cinematic").toString();
         }
 
-        if (const auto secretState = root.getChildWithName (secretTag); secretState.isValid())
+        if (const auto secretState = root.getChildWithName (StateSchema::secretTag); secretState.isValid())
         {
             SecretSettings secret;
             secret.bitDepth = static_cast<float> (static_cast<double> (
@@ -1319,7 +1307,7 @@ namespace texture
         // return promptly (13_STATE_SAVING.md, 21_WHAT_NOT_TO_DO.md item 24).
         for (const auto& child : root)
         {
-            if (child.getType().toString() != sampleTag)
+            if (child.getType() != StateSchema::sampleTag)
                 continue;
 
             const auto index = juce::jlimit (0, numLayers - 1, static_cast<int> (child.getProperty ("index", 0)));

@@ -7,6 +7,7 @@ namespace texture
     namespace
     {
         constexpr const char* homepageUrl = "https://texture-synth.com";
+        constexpr const char* circuitDriftUrl = "https://djshellshoxxx.github.io/circuitdriftlabs/";
         constexpr const char* githubUrl = "https://github.com/djshellshoxxx/texture-vst";
         constexpr const char* supportEmail = "support@texture-synth.com";
 
@@ -66,6 +67,7 @@ namespace texture
         text.add ("  Reset          Every control back to its default value.");
         text.add ("  Help           This page.");
         text.add ("  Gear           Settings: licence, folders, preferences, about.");
+        text.add ("                 Preferences also includes Reduce interface motion.");
         text.add ("  FREE / PRO     Your licence tier. Click to open the licence panel.");
         text.add ("");
         text.add ("SAMPLE PANEL (left)");
@@ -126,7 +128,9 @@ namespace texture
         text.add ("  Reset to default");
         text.add ("  Enter value...");
         text.add ("  Copy value / Paste value");
-        text.add ("  Learn MIDI CC - the knob pulses teal until you move a controller");
+        text.add ("  Learn MIDI CC - learn mode stays visible in the header for up to 15 s.");
+        text.add ("  Knobs also pulse teal while learning; reduced-motion mode makes the ring steady.");
+        text.add ("  Right-click any mappable control and choose Cancel MIDI Learn to stop early.");
         text.add ("  Clear MIDI mapping");
         text.add ("CC 64 (sustain), 120 and 123 keep their standard meaning and cannot be");
         text.add ("mapped. Mappings are saved globally, not per project. The LFO division");
@@ -217,8 +221,9 @@ namespace texture
         text.add ("  a bug. Drop a file. Then check the Gain knob and the LED.");
         text.add ("");
         text.add ("A note hangs");
-        text.add ("  Send All Notes Off from your DAW, or press Reset. If your controller");
-        text.add ("  has a stuck sustain pedal, CC64 is the usual cause.");
+        text.add ("  Send All Notes Off or All Sound Off from your DAW. Reset only restores");
+        text.add ("  control values; it is not a panic button. If your controller has a");
+        text.add ("  stuck sustain pedal, CC64 is the usual cause.");
         text.add ("");
         text.add ("Crackles or high CPU");
         text.add ("  Raise your audio buffer size. MORPH near 100% with sixteen voices is");
@@ -255,17 +260,18 @@ namespace texture
         text.add ("");
 
         text.add ("=== LICENCE ===");
-        text.add ("Plugin code: MIT. Factory samples: proprietary, licensed for use in your");
-        text.add ("own music, not for redistribution as samples. Inter is licensed under");
-        text.add ("the SIL Open Font License. JUCE is used under its own terms.");
+        text.add ("TEXTURE source code and original project materials are proprietary.");
+        text.add ("Third-party components remain under their own licences. Inter is under");
+        text.add ("the SIL Open Font License and JUCE is used under its own terms.");
         text.add ("Activation is entirely offline - TEXTURE never contacts a server and");
         text.add ("collects no analytics of any kind.");
         text.add ("");
 
         text.add ("=== LINKS ===");
-        text.add ("  Homepage  " + juce::String (homepageUrl));
-        text.add ("  Source    " + juce::String (githubUrl));
-        text.add ("  Support   " + juce::String (supportEmail));
+        text.add ("  Circuit Drift Labs  " + juce::String (circuitDriftUrl));
+        text.add ("  Product site        " + juce::String (homepageUrl));
+        text.add ("  Source              " + juce::String (githubUrl));
+        text.add ("  Developer contact   " + juce::String (supportEmail));
         text.add ("");
         text.add ("TEXTURE " + versionString() + " - drop a sample, play a chord, it sounds finished.");
 
@@ -299,15 +305,15 @@ namespace texture
         githubButton.onClick = [] { juce::URL (githubUrl).launchInDefaultBrowser(); };
         addAndMakeVisible (githubButton);
 
-        homepageButton.setTooltip (homepageUrl);
-        homepageButton.onClick = [] { juce::URL (homepageUrl).launchInDefaultBrowser(); };
+        homepageButton.setTooltip (circuitDriftUrl);
+        homepageButton.onClick = [] { juce::URL (circuitDriftUrl).launchInDefaultBrowser(); };
         addAndMakeVisible (homepageButton);
 
         supportButton.setTooltip (supportEmail);
         supportButton.onClick = []
         {
             juce::URL (juce::String ("mailto:") + supportEmail
-                       + "?subject=TEXTURE%20" + versionString() + "%20support")
+                       + "?subject=TEXTURE%20" + versionString() + "%20contact")
                 .launchInDefaultBrowser();
         };
         addAndMakeVisible (supportButton);

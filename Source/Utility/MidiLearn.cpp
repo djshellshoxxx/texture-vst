@@ -2,6 +2,8 @@
 
 #include "ParameterIDs.h"
 
+#include <utility>
+
 namespace texture
 {
     namespace
@@ -36,8 +38,10 @@ namespace texture
         return ids;
     }
 
-    MidiLearn::MidiLearn (juce::ApplicationProperties* properties)
-        : applicationProperties (properties)
+    MidiLearn::MidiLearn (juce::ApplicationProperties* properties,
+                          std::function<double()> clockToUse)
+        : applicationProperties (properties),
+          clock (std::move (clockToUse))
     {
         for (auto& slot : table)
             slot.store (-1, std::memory_order_relaxed);
@@ -50,6 +54,11 @@ namespace texture
         return getMappableParameterIDs().indexOf (parameterID);
     }
 
+    double MidiLearn::nowMs() const
+    {
+        return clock ? clock() : juce::Time::getMillisecondCounterHiRes();
+    }
+
     void MidiLearn::startLearning (const juce::String& parameterID)
     {
         {
@@ -58,6 +67,7 @@ namespace texture
         }
 
         pendingController.store (-1, std::memory_order_release);
+        learningStartedMs = nowMs();
         learning.store (true, std::memory_order_release);
     }
 
@@ -65,9 +75,22 @@ namespace texture
     {
         learning.store (false, std::memory_order_release);
         pendingController.store (-1, std::memory_order_release);
+        learningStartedMs = 0.0;
 
         const juce::ScopedLock lock (learnLock);
         learningParameterID.clear();
+    }
+
+    bool MidiLearn::cancelLearningIfTimedOut()
+    {
+        if (! isLearning())
+            return false;
+
+        if (nowMs() - learningStartedMs < learnTimeoutMs)
+            return false;
+
+        cancelLearning();
+        return true;
     }
 
     juce::String MidiLearn::getLearningParameterID() const
@@ -108,6 +131,7 @@ namespace texture
         }
 
         learning.store (false, std::memory_order_release);
+        learningStartedMs = 0.0;
 
         if (parameterID.isEmpty())
             return false;
@@ -126,8 +150,11 @@ namespace texture
         if (slot < 0)
             return;
 
-        // One CC per parameter: drop any previous binding for this parameter.
-        clearMappingFor (parameterID);
+        // One CC per parameter: drop any previous binding for this parameter
+        // in memory, then persist the finished mapping table once.
+        for (auto& entry : table)
+            if (entry.load (std::memory_order_relaxed) == slot)
+                entry.store (-1, std::memory_order_release);
 
         table[static_cast<size_t> (ccNumber)].store (slot, std::memory_order_release);
         save();
@@ -149,9 +176,19 @@ namespace texture
         if (slot < 0)
             return;
 
+        bool changed = false;
+
         for (auto& entry : table)
-            if (entry.load (std::memory_order_relaxed) == slot)
-                entry.store (-1, std::memory_order_release);
+        {
+            if (entry.load (std::memory_order_relaxed) != slot)
+                continue;
+
+            entry.store (-1, std::memory_order_release);
+            changed = true;
+        }
+
+        if (changed)
+            save();
     }
 
     void MidiLearn::clearAll()

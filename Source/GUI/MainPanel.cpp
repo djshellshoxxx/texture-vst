@@ -107,6 +107,14 @@ namespace texture
         };
         addAndMakeVisible (compareBButton);
 
+        midiLearnStatus.setFont (TextureLookAndFeel::labelFont());
+        midiLearnStatus.setColour (juce::Label::textColourId, colours::accentPro);
+        midiLearnStatus.setJustificationType (juce::Justification::centred);
+        midiLearnStatus.setText ("MIDI LEARN", juce::dontSendNotification);
+        midiLearnStatus.setTooltip ("MIDI Learn is armed. Right-click a control and choose Cancel MIDI Learn, or wait 15 seconds.");
+        midiLearnStatus.setVisible (false);
+        addAndMakeVisible (midiLearnStatus);
+
         fileMenuButton.onClick = [this] { showFileMenu(); };
         addAndMakeVisible (fileMenuButton);
 
@@ -348,6 +356,9 @@ namespace texture
 
         compareBButton.setBounds (headerContent.removeFromRight (26).withSizeKeepingCentre (26, 18));
         compareAButton.setBounds (headerContent.removeFromRight (26).withSizeKeepingCentre (26, 18));
+        headerContent.removeFromRight (layout::grid);
+
+        midiLearnStatus.setBounds (headerContent.removeFromRight (88).withSizeKeepingCentre (88, 18));
         headerContent.removeFromRight (layout::grid);
 
         previousPresetButton.setBounds (headerContent.removeFromLeft (20));
@@ -1177,6 +1188,16 @@ namespace texture
             morphKnob->setModulationVisible (lfoActive);
             morphKnob->setModulatedValue (morph);
         }
+
+        if (processor.getMidiLearn().cancelLearningIfTimedOut())
+            processor.postToast ("MIDI learn timed out after 15 seconds.", SampleLoader::Severity::info);
+
+        const auto learningParameter = processor.getMidiLearn().getLearningParameterID();
+        midiLearnStatus.setVisible (processor.getMidiLearn().isLearning());
+        midiLearnStatus.setText (learningParameter.isNotEmpty()
+                                     ? "LEARN " + params::displayNameFor (learningParameter).toUpperCase()
+                                     : "MIDI LEARN",
+                                 juce::dontSendNotification);
 
         // Pulse whichever knob is waiting for a MIDI CC.
         for (auto* knob : { static_cast<ParameterKnob*> (morphKnob.get()), attackKnob.get(), decayKnob.get(),

@@ -1,6 +1,9 @@
 #include "Widgets.h"
 
 #include "../PluginProcessor.h"
+#include "../Utility/MotionPreferences.h"
+#include "../Utility/ControlValueParser.h"
+#include "../Utility/ControlValueClipboard.h"
 
 #include <cmath>
 
@@ -56,38 +59,45 @@ namespace texture
                 [safeSlider, editorWindow] (int choice)
                 {
                     std::unique_ptr<juce::AlertWindow> owned (editorWindow);
-                    const auto text = editorWindow->getTextEditorContents ("value").trim();
+                    if (choice != 1 || safeSlider == nullptr)
+                        return;
 
-                    // Ignore text with no digits rather than silently setting 0.
-                    if (choice == 1 && safeSlider != nullptr && text.containsAnyOf ("0123456789"))
-                        safeSlider->setValue (text.getDoubleValue(), juce::sendNotificationSync);
+                    const auto text = editorWindow->getTextEditorContents ("value");
+                    const auto parsed = ControlValueParser::parse (text,
+                                                                   safeSlider->getMinimum(),
+                                                                   safeSlider->getMaximum());
+
+                    if (! parsed.has_value())
+                    {
+                        juce::AlertWindow::showMessageBoxAsync (
+                            juce::MessageBoxIconType::WarningIcon,
+                            "Invalid value",
+                            "Enter a numeric value from "
+                                + juce::String (safeSlider->getMinimum(), 3)
+                                + " to "
+                                + juce::String (safeSlider->getMaximum(), 3)
+                                + ".",
+                            "OK",
+                            safeSlider.getComponent());
+                        return;
+                    }
+
+                    safeSlider->setValue (*parsed, juce::sendNotificationSync);
                 }), false);
         }
-
-        double& clipboardSlot()
-        {
-            static double value = 0.0;
-            return value;
-        }
-
-        bool& clipboardHasValue()
-        {
-            static bool hasValue = false;
-            return hasValue;
-        }
-
         /** Builds the shared right-click menu entries for a parameter. */
         void addCommonItems (juce::PopupMenu& menu,
                              TextureAudioProcessor& processor,
                              const juce::String& parameterID,
-                             bool includeValueItems)
+                             bool includeValueItems,
+                             bool canPasteValue = false)
         {
             if (includeValueItems)
             {
                 menu.addItem (1, "Reset to default");
                 menu.addItem (2, "Enter value...");
                 menu.addItem (3, "Copy value");
-                menu.addItem (4, "Paste value", ControlContextMenu::hasClipboardValue());
+                menu.addItem (4, "Paste value", canPasteValue);
                 menu.addSeparator();
             }
             else
@@ -107,29 +117,15 @@ namespace texture
             {
                 menu.addItem (5, "Learn MIDI CC...");
             }
+
+            if (processor.getMidiLearn().isLearning())
+                menu.addItem (7, "Cancel MIDI Learn");
         }
     }
 
     // =========================================================================
     //  ControlContextMenu
     // =========================================================================
-
-    void ControlContextMenu::setClipboardValue (double value)
-    {
-        clipboardSlot() = value;
-        clipboardHasValue() = true;
-    }
-
-    double ControlContextMenu::getClipboardValue()
-    {
-        return clipboardSlot();
-    }
-
-    bool ControlContextMenu::hasClipboardValue()
-    {
-        return clipboardHasValue();
-    }
-
     void ControlContextMenu::showFor (juce::Slider& slider,
                                       TextureAudioProcessor& processor,
                                       const juce::String& parameterID,
@@ -137,7 +133,10 @@ namespace texture
     {
         juce::PopupMenu menu;
         menu.setLookAndFeel (&slider.getLookAndFeel());
-        addCommonItems (menu, processor, parameterID, true);
+        addCommonItems (menu, processor, parameterID, true,
+                        ControlValueClipboard::canPaste (parameterID,
+                                                         slider.getMinimum(),
+                                                         slider.getMaximum()));
 
         auto* sliderPointer = &slider;
         juce::Component::SafePointer<juce::Slider> safeSlider (sliderPointer);
@@ -160,13 +159,24 @@ namespace texture
                     break;
 
                 case 3:
-                    setClipboardValue (safeSlider->getValue());
+                    ControlValueClipboard::copy (parameterID, safeSlider->getValue());
+                    processor.postToast ("Value copied for " + params::displayNameFor (parameterID) + ".",
+                                         SampleLoader::Severity::info);
                     break;
 
                 case 4:
-                    if (hasClipboardValue())
-                        safeSlider->setValue (getClipboardValue(), juce::sendNotificationSync);
+                {
+                    const auto pasted = ControlValueClipboard::valueFor (parameterID,
+                                                                         safeSlider->getMinimum(),
+                                                                         safeSlider->getMaximum());
+
+                    if (pasted.has_value())
+                        safeSlider->setValue (*pasted, juce::sendNotificationSync);
+                    else
+                        processor.postToast ("Copied value is not compatible with this control.",
+                                             SampleLoader::Severity::warning);
                     break;
+                }
 
                 case 5:
                     processor.getMidiLearn().startLearning (parameterID);
@@ -178,6 +188,11 @@ namespace texture
                 case 6:
                     processor.getMidiLearn().clearMappingFor (parameterID);
                     processor.postToast ("MIDI mapping cleared.", SampleLoader::Severity::info);
+                    break;
+
+                case 7:
+                    processor.getMidiLearn().cancelLearning();
+                    processor.postToast ("MIDI learn cancelled.", SampleLoader::Severity::info);
                     break;
 
                 default:
@@ -224,6 +239,11 @@ namespace texture
                     processor.postToast ("MIDI mapping cleared.", SampleLoader::Severity::info);
                     break;
 
+                case 7:
+                    processor.getMidiLearn().cancelLearning();
+                    processor.postToast ("MIDI learn cancelled.", SampleLoader::Severity::info);
+                    break;
+
                 default:
                     break;
             }
@@ -264,6 +284,11 @@ namespace texture
                 case 6:
                     processor.getMidiLearn().clearMappingFor (parameterID);
                     processor.postToast ("MIDI mapping cleared.", SampleLoader::Severity::info);
+                    break;
+
+                case 7:
+                    processor.getMidiLearn().cancelLearning();
+                    processor.postToast ("MIDI learn cancelled.", SampleLoader::Severity::info);
                     break;
 
                 default:
@@ -315,7 +340,7 @@ namespace texture
 
         // The user's own gestures track the mouse exactly; everything else
         // (presets, reset, randomise, A/B, automation) eases in over 80 ms.
-        if (isMouseButtonDown() || ! isShowing())
+        if (isMouseButtonDown() || ! isShowing() || MotionPreferences::isReducedMotion())
         {
             stopTimer();
             displayedProportion = animationTo = target;
@@ -363,7 +388,9 @@ namespace texture
             return;
 
         const auto phase = static_cast<float> (juce::Time::getMillisecondCounter() % 1000) / 1000.0f;
-        const auto pulse = 0.5f + 0.5f * std::sin (phase * juce::MathConstants<float>::twoPi);
+        const auto pulse = MotionPreferences::isReducedMotion()
+                         ? 0.5f
+                         : 0.5f + 0.5f * std::sin (phase * juce::MathConstants<float>::twoPi);
         const auto size = juce::jmin (area.getWidth(), area.getHeight());
 
         g.setColour (colours::accentPro.withAlpha (0.35f + 0.5f * pulse));
@@ -794,7 +821,9 @@ namespace texture
 
         lastLine = line;
         lines.push_back (line);
-        scrollOffset = juce::jmin (1.0f, scrollOffset + 1.0f);
+        scrollOffset = MotionPreferences::isReducedMotion()
+                     ? 0.0f
+                     : juce::jmin (1.0f, scrollOffset + 1.0f);
 
         while (static_cast<int> (lines.size()) > visibleLines)
             lines.pop_front();
@@ -805,6 +834,17 @@ namespace texture
 
     void DataStreamView::tick()
     {
+        if (MotionPreferences::isReducedMotion())
+        {
+            if (scrollOffset != 0.0f)
+            {
+                scrollOffset = 0.0f;
+                repaint();
+            }
+
+            return;
+        }
+
         if (scrollOffset <= 0.0f)
             return;
 
@@ -877,9 +917,18 @@ namespace texture
         // A new toast replaces the current one immediately: they never stack.
         text = message;
         severity = newSeverity;
-        phase = Phase::fadingIn;
         elapsedMs = 0;
-        opacity = 0.0f;
+
+        if (MotionPreferences::isReducedMotion())
+        {
+            phase = Phase::holding;
+            opacity = 1.0f;
+        }
+        else
+        {
+            phase = Phase::fadingIn;
+            opacity = 0.0f;
+        }
 
         startTimer (tickMs);
         repaint();
@@ -889,6 +938,16 @@ namespace texture
     {
         if (phase == Phase::idle)
             return;
+
+        if (MotionPreferences::isReducedMotion())
+        {
+            phase = Phase::idle;
+            opacity = 0.0f;
+            text.clear();
+            stopTimer();
+            repaint();
+            return;
+        }
 
         phase = Phase::fadingOut;
         elapsedMs = 0;
@@ -1061,7 +1120,8 @@ namespace texture
     {
         auto colour = colours::textMuted;
 
-        const auto flashing = juce::Time::getMillisecondCounter() - flashStartMs < 100;
+        const auto flashing = ! MotionPreferences::isReducedMotion()
+                           && juce::Time::getMillisecondCounter() - flashStartMs < 100;
 
         if (! isEnabled())
             colour = colour.withAlpha (0.4f);
@@ -1076,6 +1136,9 @@ namespace texture
     void IconButton::clicked()
     {
         // 100 ms accent flash after every press (theme.md, momentary buttons).
+        if (MotionPreferences::isReducedMotion())
+            return;
+
         flashStartMs = juce::Time::getMillisecondCounter();
         repaint();
 

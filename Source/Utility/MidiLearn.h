@@ -4,6 +4,7 @@
 
 #include <array>
 #include <atomic>
+#include <functional>
 
 namespace texture
 {
@@ -17,17 +18,23 @@ namespace texture
     {
     public:
         static constexpr int numControllers = 128;
+        static constexpr double learnTimeoutMs = 15000.0;
 
         /** Controllers reserved by the MIDI spec that we never map. */
         static bool isReservedController (int ccNumber) noexcept;
 
-        explicit MidiLearn (juce::ApplicationProperties* properties);
+        explicit MidiLearn (juce::ApplicationProperties* properties,
+                            std::function<double()> clock = {});
 
         /** Arms learning: the next CC received is bound to `parameterID`. */
         void startLearning (const juce::String& parameterID);
 
         /** Cancels an armed learn without binding anything. */
         void cancelLearning();
+
+        /** Message thread: cancels learning once the 15-second learn window expires.
+            Returns true only when this call performed the timeout cancellation. */
+        bool cancelLearningIfTimedOut();
 
         bool isLearning() const noexcept { return learning.load (std::memory_order_acquire); }
 
@@ -66,8 +73,11 @@ namespace texture
         void load();
         void save() const;
         int slotForParameter (const juce::String& parameterID) const;
+        double nowMs() const;
 
         juce::ApplicationProperties* applicationProperties { nullptr };
+        std::function<double()> clock;
+        double learningStartedMs { 0.0 };
 
         /** ccNumber -> slot index into getMappableParameterIDs, or -1. */
         std::array<std::atomic<int>, numControllers> table {};

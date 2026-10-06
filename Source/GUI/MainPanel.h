@@ -96,6 +96,7 @@ namespace texture
         IconButton nextPresetButton { IconButton::Icon::chevronRight, "Next preset" };
         juce::TextButton compareAButton { "A" };
         juce::TextButton compareBButton { "B" };
+        juce::Label midiLearnStatus;
 
         // Controls
         std::unique_ptr<DropZone> dropZoneA;
