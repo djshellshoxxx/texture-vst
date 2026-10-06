@@ -31,7 +31,8 @@ namespace texture
         the effects chain and the GUI (20_BEST_PRACTICES.md, "Testability").
     */
     class TextureAudioProcessor final : public juce::AudioProcessor,
-                                        private juce::AsyncUpdater
+                                        private juce::AsyncUpdater,
+                                        private juce::AudioProcessorValueTreeState::Listener
     {
     public:
         /** Layer 2 exists in every build but is inaudible outside Pro. */
@@ -264,6 +265,7 @@ namespace texture
 
         void installFactoryContentAsync();
         void handleAsyncUpdate() override;
+        void parameterChanged (const juce::String& parameterID, float newValue) override;
         void handleMidiEvent (const juce::MidiMessage& message);
         void applyMidiLearnedController (int ccNumber, int value);
         void updatePerBlockParameters (int numSamples);
@@ -348,6 +350,8 @@ namespace texture
         juce::String currentPresetName;
         juce::String currentPresetCategory { "Cinematic" };
         bool presetDirty { false };
+        std::atomic<bool> presetDirtyPending { false };
+        std::atomic<bool> suppressPresetDirtyTracking { false };
 
         // --- A/B --------------------------------------------------------------
         std::array<juce::ValueTree, numCompareSlots> compareSlots;
