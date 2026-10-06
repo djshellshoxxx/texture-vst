@@ -1,6 +1,9 @@
 #include "TestHelpers.h"
 
 #include "../Source/IO/OfflineRenderTimeline.h"
+#include "../Source/IO/OfflinePatchMath.h"
+
+#include <cmath>
 
 namespace texture::tests
 {
@@ -32,6 +35,20 @@ namespace texture::tests
 
             beginTest ("events outside the current block do not shorten it");
             expectEquals (Timeline::nextBoundary (0, 64, events), static_cast<juce::int64> (64));
+
+            beginTest ("dual-layer export uses the same normalized blend law as live playback");
+            const auto dry = OfflinePatchMath::layerGains (0.0f);
+            expectWithinAbsoluteError (dry[0], 1.0f, 1.0e-6f);
+            expectWithinAbsoluteError (dry[1], 0.0f, 1.0e-6f);
+
+            const auto full = OfflinePatchMath::layerGains (1.0f);
+            const auto expected = static_cast<float> (1.0 / std::sqrt (2.0));
+            expectWithinAbsoluteError (full[0], expected, 1.0e-6f);
+            expectWithinAbsoluteError (full[1], expected, 1.0e-6f);
+
+            const auto clamped = OfflinePatchMath::layerGains (2.0f);
+            expectWithinAbsoluteError (clamped[0], expected, 1.0e-6f);
+            expectWithinAbsoluteError (clamped[1], expected, 1.0e-6f);
         }
     };
 
