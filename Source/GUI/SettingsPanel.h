@@ -99,9 +99,9 @@ namespace texture
 
         // About tab
         juce::Label aboutText;
-        juce::TextButton aboutHomepageButton { "Homepage" };
+        juce::TextButton aboutHomepageButton { "Circuit Drift Labs" };
         juce::TextButton aboutGithubButton { "Source" };
-        juce::TextButton aboutSupportButton { "Support" };
+        juce::TextButton aboutSupportButton { "Contact" };
         juce::TextButton aboutCloudButton { "Community presets" };
 
         std::unique_ptr<juce::FileChooser> fileChooser;
