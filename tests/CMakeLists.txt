@@ -12,6 +12,7 @@ set(TEXTURE_TEST_SOURCES
     test_motion_preferences.cpp
     test_state_schema.cpp
     test_control_value_parser.cpp
+    test_control_value_clipboard.cpp
     test_midi_learn.cpp
     test_granular_engine.cpp
     test_sample_loader.cpp
