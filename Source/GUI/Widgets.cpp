@@ -128,6 +128,9 @@ namespace texture
             {
                 menu.addItem (5, "Learn MIDI CC...");
             }
+
+            if (processor.getMidiLearn().isLearning())
+                menu.addItem (7, "Cancel MIDI Learn");
         }
     }
 
@@ -201,6 +204,11 @@ namespace texture
                     processor.postToast ("MIDI mapping cleared.", SampleLoader::Severity::info);
                     break;
 
+                case 7:
+                    processor.getMidiLearn().cancelLearning();
+                    processor.postToast ("MIDI learn cancelled.", SampleLoader::Severity::info);
+                    break;
+
                 default:
                     break;
             }
@@ -245,6 +253,11 @@ namespace texture
                     processor.postToast ("MIDI mapping cleared.", SampleLoader::Severity::info);
                     break;
 
+                case 7:
+                    processor.getMidiLearn().cancelLearning();
+                    processor.postToast ("MIDI learn cancelled.", SampleLoader::Severity::info);
+                    break;
+
                 default:
                     break;
             }
@@ -285,6 +298,11 @@ namespace texture
                 case 6:
                     processor.getMidiLearn().clearMappingFor (parameterID);
                     processor.postToast ("MIDI mapping cleared.", SampleLoader::Severity::info);
+                    break;
+
+                case 7:
+                    processor.getMidiLearn().cancelLearning();
+                    processor.postToast ("MIDI learn cancelled.", SampleLoader::Severity::info);
                     break;
 
                 default:
