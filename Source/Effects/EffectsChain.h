@@ -50,7 +50,7 @@ namespace texture
         float getCurrentOutputGain() const noexcept { return outputGain.getCurrentValue(); }
 
         /** True while the reverb tail still carries audible energy. */
-        bool hasTailEnergy() const noexcept { return ! tailEnergy.isSilent(); }
+        bool hasTailEnergy() const noexcept { return ! tailEnergy.isSilent() || reverb.hasTailEnergy(); }
 
         const Saturator& getSaturator() const noexcept { return saturator; }
         const Chorus& getChorus() const noexcept { return chorus; }
