@@ -198,3 +198,9 @@ ctest --test-dir build/release -C Release --output-on-failure
   Reconciled the stale legacy `LICENSE.md` with the repository's proprietary
   `LICENSE`. Current CI execution remains unavailable for new test evidence because
   jobs fail before returning executable steps on both branch and base.
+
+- 2026-10-06: MIDI audit found and fixed a persistence bug: `clearMappingFor()`
+  removed a CC assignment only in memory, so the mapping could reappear after restart.
+  Added a recreation regression test, persisted single-parameter clears, and adjusted
+  remapping so the completed mapping table is written once instead of saving an
+  intermediate empty state.
