@@ -36,8 +36,10 @@ namespace texture
         return ids;
     }
 
-    MidiLearn::MidiLearn (juce::ApplicationProperties* properties)
-        : applicationProperties (properties)
+    MidiLearn::MidiLearn (juce::ApplicationProperties* properties,
+                          std::function<double()> clockToUse)
+        : applicationProperties (properties),
+          clock (std::move (clockToUse))
     {
         for (auto& slot : table)
             slot.store (-1, std::memory_order_relaxed);
@@ -50,6 +52,11 @@ namespace texture
         return getMappableParameterIDs().indexOf (parameterID);
     }
 
+    double MidiLearn::nowMs() const
+    {
+        return clock ? clock() : juce::Time::getMillisecondCounterHiRes();
+    }
+
     void MidiLearn::startLearning (const juce::String& parameterID)
     {
         {
@@ -58,6 +65,7 @@ namespace texture
         }
 
         pendingController.store (-1, std::memory_order_release);
+        learningStartedMs = nowMs();
         learning.store (true, std::memory_order_release);
     }
 
@@ -65,9 +73,22 @@ namespace texture
     {
         learning.store (false, std::memory_order_release);
         pendingController.store (-1, std::memory_order_release);
+        learningStartedMs = 0.0;
 
         const juce::ScopedLock lock (learnLock);
         learningParameterID.clear();
+    }
+
+    bool MidiLearn::cancelLearningIfTimedOut()
+    {
+        if (! isLearning())
+            return false;
+
+        if (nowMs() - learningStartedMs < learnTimeoutMs)
+            return false;
+
+        cancelLearning();
+        return true;
     }
 
     juce::String MidiLearn::getLearningParameterID() const
@@ -108,6 +129,7 @@ namespace texture
         }
 
         learning.store (false, std::memory_order_release);
+        learningStartedMs = 0.0;
 
         if (parameterID.isEmpty())
             return false;
