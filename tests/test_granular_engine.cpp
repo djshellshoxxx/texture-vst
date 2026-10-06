@@ -78,6 +78,7 @@ namespace texture::tests
             testEffectsChainStaysFinite();
             testReverbBypassSmoothing();
             testOutputGainInitialisesAtUnity();
+            testEnergyTrackerUsesElapsedTime();
         }
 
     private:
@@ -623,6 +624,38 @@ namespace texture::tests
             effects.setOutputGainDb (-6.0f);
             expectWithinAbsoluteError (effects.getCurrentOutputGain(), 1.0f, 1.0e-6f,
                                        "gain changes should ramp from the established current value");
+        }
+
+
+        void testEnergyTrackerUsesElapsedTime()
+        {
+            beginTest ("tail energy decay depends on elapsed audio time, not host block size");
+
+            dsp::EnergyTracker smallBlocks;
+            dsp::EnergyTracker largeBlocks;
+            smallBlocks.prepare (48000.0, 1.5);
+            largeBlocks.prepare (48000.0, 1.5);
+
+            smallBlocks.push (1.0f, 64);
+            largeBlocks.push (1.0f, 1024);
+
+            for (int samples = 0; samples < 48000; samples += 64)
+                smallBlocks.push (0.0f, 64);
+
+            for (int samples = 0; samples < 48000; samples += 1024)
+                largeBlocks.push (0.0f, juce::jmin (1024, 48000 - samples));
+
+            expectWithinAbsoluteError (smallBlocks.getEnergy(), largeBlocks.getEnergy(), 0.002f);
+
+            beginTest ("silent tail retires within the configured decay window");
+            dsp::EnergyTracker tracker;
+            tracker.prepare (48000.0, 1.5);
+            tracker.push (1.0f, 512);
+
+            for (int samples = 0; samples < 96000; samples += 512)
+                tracker.push (0.0f, juce::jmin (512, 96000 - samples));
+
+            expect (tracker.isSilent());
         }
 
         void testEffectsChainStaysFinite()
