@@ -1198,6 +1198,19 @@ namespace texture
         settings.releaseMs = getParameterValue (params::release, params::releaseDefaultMs);
         settings.reverbOn = getParameterValue (params::reverbOn, 1.0f) > 0.5f;
         settings.gainDb = getParameterValue (params::gainDb, params::gainDefaultDb);
+        settings.lfoRateHz = morphLfo.getEffectiveRateHz();
+        settings.lfoDepth = licenseManager.isPro()
+                                ? getParameterValue (params::lfoDepth, params::lfoDepthDefault)
+                                : 0.0f;
+        settings.layerBlend = licenseManager.isPro()
+                                  ? getParameterValue (params::layerBlend, params::layerBlendDefault)
+                                  : 0.0f;
+        settings.sampleStart = { getSampleStart (0), getSampleStart (1) };
+
+        const auto secret = getSecretSettings();
+        settings.gritBits = secret.bitDepth;
+        settings.gritDownsample = secret.downsample;
+        settings.gritMix = secret.mix;
 
         return settings;
     }
