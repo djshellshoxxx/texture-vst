@@ -22,10 +22,11 @@ namespace texture
         /** Wet level in [0, 1], driven by MORPH (0.15 .. 0.65). */
         void setWetLevel (float newWetLevel) noexcept;
 
-        void setEnabled (bool shouldBeEnabled) noexcept { enabled = shouldBeEnabled; }
+        void setEnabled (bool shouldBeEnabled) noexcept;
         bool isEnabled() const noexcept { return enabled; }
 
         float getWetLevel() const noexcept { return wetLevel; }
+        float getEnableMix() const noexcept { return enableMix.getCurrentValue(); }
 
         /** Processes in place. When disabled the buffer is left untouched, with no
             dry-level modification either (07_EFFECTS_CHAIN.md).
@@ -39,9 +40,12 @@ namespace texture
         static constexpr float fixedDamping = 0.4f;
         static constexpr float fixedWidth = 1.0f;
         static constexpr float fixedFreezeMode = 0.0f;
+        static constexpr double bypassSmoothingSeconds = 0.02;
 
         juce::dsp::Reverb reverb;
         juce::dsp::Reverb::Parameters parameters;
+        juce::AudioBuffer<float> wetBuffer;
+        juce::SmoothedValue<float> enableMix;
         float wetLevel { 0.15f };
         bool enabled { true };
         bool isPrepared { false };
