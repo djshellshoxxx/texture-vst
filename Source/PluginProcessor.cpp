@@ -902,9 +902,11 @@ namespace texture
 
     void TextureAudioProcessor::clearLayer (int layerIndex)
     {
-        setSampleStart (layerIndex, 0.0f);
+        const auto lane = juce::jlimit (0, numLayers - 1, layerIndex);
+        sampleLoader.cancelPendingLoad (lane);
+        setSampleStart (lane, 0.0f);
 
-        const auto index = static_cast<size_t> (juce::jlimit (0, numLayers - 1, layerIndex));
+        const auto index = static_cast<size_t> (lane);
         auto& layer = layers[index];
 
         publishSample (layer, SampleBuffer::makeEmpty());
