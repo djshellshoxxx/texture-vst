@@ -188,6 +188,9 @@ namespace texture
 
         cacheParameterPointers();
 
+        for (const auto* id : params::allIDs)
+            apvts.addParameterListener (id, this);
+
         // Settings > Preferences > Default output gain applies to every new instance;
         // a restored session overrides it in setStateInformation.
         if (auto* store = applicationProperties.getUserSettings())
@@ -204,6 +207,9 @@ namespace texture
 
     TextureAudioProcessor::~TextureAudioProcessor()
     {
+        for (const auto* id : params::allIDs)
+            apvts.removeParameterListener (id, this);
+
         // Shut the loader down before anything it might call back into goes away
         // (19_DEBUGGING.md, common bug 6).
         sampleLoader.setCallback (nullptr);
@@ -623,8 +629,19 @@ namespace texture
     //  Message-thread work queued from the audio thread
     // =========================================================================
 
+    void TextureAudioProcessor::parameterChanged (const juce::String&, float)
+    {
+        if (suppressPresetDirtyTracking.load (std::memory_order_relaxed))
+            return;
+
+        presetDirtyPending.store (true, std::memory_order_release);
+        triggerAsyncUpdate();
+    }
+
     void TextureAudioProcessor::handleAsyncUpdate()
     {
+        if (presetDirtyPending.exchange (false, std::memory_order_acq_rel))
+            markPresetDirty();
         const auto written = factorySamplesWritten.exchange (-1, std::memory_order_acq_rel);
 
         if (written > 0)
@@ -972,8 +989,13 @@ namespace texture
             return false;
         }
 
+        suppressPresetDirtyTracking.store (true, std::memory_order_release);
+
         for (const auto* id : params::allIDs)
             setParameterValue (id, data.getParameter (id, params::defaultValueFor (id)));
+
+        suppressPresetDirtyTracking.store (false, std::memory_order_release);
+        presetDirtyPending.store (false, std::memory_order_release);
 
         currentPresetName = data.name;
         currentPresetCategory = data.category;
@@ -1321,7 +1343,10 @@ namespace texture
         }
 
         const auto parameters = root.getChildWithName (StateSchema::parametersTag);
+        suppressPresetDirtyTracking.store (true, std::memory_order_release);
         apvts.replaceState (parameters.getChild (0).createCopy());
+        suppressPresetDirtyTracking.store (false, std::memory_order_release);
+        presetDirtyPending.store (false, std::memory_order_release);
 
         const auto preset = root.getChildWithName (StateSchema::presetTag);
 
