@@ -86,6 +86,30 @@ namespace texture::tests
             expectEquals (StateSchema::validate (badGrit).status,
                           StateSchema::Status::invalidSecretData);
 
+            beginTest ("A/B compare state validates slot identity and active index");
+            auto compareValid = makeRoot ("1.0.0", true);
+            juce::ValueTree compare (StateSchema::compareTag);
+            compare.setProperty ("active", 1, nullptr);
+
+            for (int index = 0; index < 2; ++index)
+            {
+                juce::ValueTree slot (StateSchema::compareSlotTag);
+                slot.setProperty ("index", index, nullptr);
+                slot.setProperty ("morph", index == 0 ? 0.25 : 0.75, nullptr);
+                compare.appendChild (slot, nullptr);
+            }
+
+            compareValid.appendChild (compare, nullptr);
+            expectEquals (StateSchema::validate (compareValid).status, StateSchema::Status::ok);
+
+            beginTest ("invalid compare active slot is rejected");
+            auto badCompare = makeRoot ("1.0.0", true);
+            juce::ValueTree invalidCompare (StateSchema::compareTag);
+            invalidCompare.setProperty ("active", 7, nullptr);
+            badCompare.appendChild (invalidCompare, nullptr);
+            expectEquals (StateSchema::validate (badCompare).status,
+                          StateSchema::Status::invalidCompareData);
+
             beginTest ("empty parameter wrapper is rejected atomically");
             juce::ValueTree emptyWrapper (StateSchema::rootTag);
             emptyWrapper.setProperty (StateSchema::versionAttribute, "1.0.0", nullptr);
