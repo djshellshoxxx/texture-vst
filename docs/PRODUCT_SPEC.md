@@ -97,7 +97,9 @@ Reduced motion is a user preference, not part of host project state or sound sta
 
 Host project state is version-tagged. It includes APVTS parameter state plus non-parameter state needed to recreate the sound, including loaded sample references, start positions, preset identity, and GRIT settings. Validation must complete before any state is mutated. The detailed compatibility and rejection policy is defined in [STATE_COMPATIBILITY_SPEC.md](STATE_COMPATIBILITY_SPEC.md).
 
-Preset load must be atomic from the user perspective: failed validation keeps the current sound. Known parameter values are type-checked and range-checked before application or serialization; unknown parameter metadata is ignored rather than entering the active parameter set. File loading and state-triggered sample reloads must not perform file I/O on the real-time audio callback.
+Preset load must be atomic from the user perspective: failed validation keeps the current sound. Portable preset schema 2 stores both sample-layer references, both normalized start positions and all documented host parameters. Schema 1 presets remain readable by migrating the legacy `sample_path` field to Layer 1. Known parameter values are type-checked and range-checked before application or serialization; unknown parameter metadata is ignored rather than entering the active parameter set. Loading a preset makes its media state authoritative: an empty or missing reference leaves that layer empty rather than inheriting the previous patch. File loading and state-triggered sample reloads must not perform file I/O on the real-time audio callback.
+
+Host state also persists both A/B parameter snapshots and the active comparison slot. Older host state without A/B data initializes both snapshots from the restored current parameter state.
 
 ## 8. Offline export
 
@@ -105,11 +107,11 @@ Pro WAV export reproduces the audible patch rather than only the first sample la
 
 Export uses stereo WAV at the user-selected supported sample rate and integer bit depth. It renders two C3 notes using the documented hold/gap/tail pattern. Note events are split at exact sample positions rather than rounded to render-block boundaries. The offline LFO starts from phase zero for deterministic output. Export performs no normalization or limiting beyond the instrument's normal DSP chain and output-gain setting.
 
-## 8. Real-time requirements
+## 9. Real-time requirements
 
 Reverb enable/disable transitions are crossfaded over 20 ms so bypass does not hard-switch between processed and dry audio. Output gain is smoothed over 30 ms; MORPH is smoothed over 20 ms. Effect-tail retirement uses elapsed audio time rather than callback count so idle optimization behaves consistently at different host block sizes. The audio callback must remain free of file I/O, network I/O, blocking locks, UI calls, logging, and avoidable heap allocation. Cross-thread sample replacement must preserve lifetime until the audio thread has advanced beyond the old pointer. Outputs must remain finite under supported parameter values and hostile-but-parseable MIDI/event sequences.
 
-## 9. Quality gates
+## 10. Quality gates
 
 Release evidence is tracked in [RELEASE_VALIDATION.md](RELEASE_VALIDATION.md).
 
