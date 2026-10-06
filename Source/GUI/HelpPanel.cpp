@@ -128,9 +128,9 @@ namespace texture
         text.add ("  Reset to default");
         text.add ("  Enter value...");
         text.add ("  Copy value / Paste value");
-        text.add ("  Learn MIDI CC - the knob pulses teal until you move a controller");
-        text.add ("  With Reduce interface motion enabled, the learn ring stays steady");
-        text.add ("  instead of pulsing and other optional UI animation is removed.");
+        text.add ("  Learn MIDI CC - learn mode stays visible in the header for up to 15 s.");
+        text.add ("  Knobs also pulse teal while learning; reduced-motion mode makes the ring steady.");
+        text.add ("  Right-click any mappable control and choose Cancel MIDI Learn to stop early.");
         text.add ("  Clear MIDI mapping");
         text.add ("CC 64 (sustain), 120 and 123 keep their standard meaning and cannot be");
         text.add ("mapped. Mappings are saved globally, not per project. The LFO division");
