@@ -41,7 +41,7 @@ ctest --test-dir build/release -C Release --output-on-failure
 | 13 | Linux / macOS / AU / AAX build paths verified in CMake | DONE for Windows, macOS and Linux; AAX unverified (no SDK) |
 | 14 | CI: three-platform matrix in `.github/workflows/build.yml` | DONE — all four jobs green |
 | 16 | GUI gap pass (`docs/GUI_GAP_SPEC.md`, B1-B6, M1-M14) | DONE - builds clean, ctest 100%, layout checked in standalone |
-| 17 | CDL baseline reconciliation: product spec, state hardening, controls, MIDI Learn, reduced motion | IN PROGRESS - implementation committed on `codex/spec-compliance-motion`; CI currently fails before any job steps on both this branch and its master base |
+| 17 | CDL baseline reconciliation: product spec, state hardening, controls, MIDI Learn, reduced motion | DONE - merged to master in PR #1 (`3e78b7e9`) |
 | 15 | Fuzzer (`17_TESTING.md`) as its own `texture_fuzz` CTest entry | DONE |
 
 ## Deviations from `22_FILE_MANIFEST.md` (all deliberate, all documented in README)
@@ -204,3 +204,20 @@ ctest --test-dir build/release -C Release --output-on-failure
   Added a recreation regression test, persisted single-parameter clears, and adjusted
   remapping so the completed mapping table is written once instead of saving an
   intermediate empty state.
+
+- 2026-10-06: **Post-merge development continued on `codex/post-merge-development`.**
+  Hardened portable preset validation so known parameters are type/range checked on
+  both load and save, invalid presets remain atomic, and unknown future metadata
+  cannot enter the active parameter set. Defined deterministic synced-LFO behavior
+  for stop, missing PPQ, seeks/loops and invalid tempo. Extended host-state validation
+  to reject invalid sample start positions, duplicate singleton metadata and invalid
+  GRIT payloads.
+- 2026-10-06: Reworked offline WAV rendering so scheduled note events are split at
+  exact sample positions instead of 512-sample boundaries. Export now captures both
+  sample layers, sample-start positions, dual-layer blend, effective MORPH-LFO
+  rate/depth and GRIT settings. The product spec now states that export does not
+  normalize or limit beyond the normal signal chain.
+- 2026-10-06: Reverb enable/disable now crossfades over 20 ms while its tail continues
+  to evolve behind bypass, avoiding the previous hard processed/dry switch. Fixed
+  EffectsChain startup so the 0 dB output-gain default begins at unity instead of
+  unintentionally ramping from silence over the first 30 ms.
