@@ -1062,7 +1062,12 @@ namespace texture
                 if (destination == juce::File())
                     return;
 
-                const auto renderResult = WavExporter::render (safeThis->processor.getSampleForLayer (0),
+                const std::array<SampleBufferPtr, 2> samples {
+                    safeThis->processor.getSampleForLayer (0),
+                    safeThis->processor.getSampleForLayer (1)
+                };
+
+                const auto renderResult = WavExporter::render (samples,
                                                                safeThis->processor.captureRenderSettings(),
                                                                options,
                                                                destination);
