@@ -22,6 +22,7 @@ namespace texture::tests
             testDownmixesMultiChannel();
             testResampling();
             testConcurrentLoads();
+            testIndependentRequestLanes();
             testWaveformCache();
             testPresetRouting();
         }
@@ -267,6 +268,57 @@ namespace texture::tests
             expectEquals (callbackCount.load(), 1, "stale results must be dropped");
             expectEquals (lastDelivered, files.getLast().getFileName(),
                           "the newest request must win");
+
+            loader.setCallback (nullptr);
+            loader.waitForPendingLoads();
+        }
+
+
+        void testIndependentRequestLanes()
+        {
+            beginTest ("independent request lanes both deliver their newest result");
+
+            TemporaryDirectory temp;
+            const auto layerAOld = temp.child ("layer_a_old.wav");
+            const auto layerANew = temp.child ("layer_a_new.wav");
+            const auto layerB = temp.child ("layer_b.wav");
+
+            expect (writeTestAudioFile (layerAOld, 44100.0, 0.2, 2));
+            expect (writeTestAudioFile (layerANew, 44100.0, 0.2, 2));
+            expect (writeTestAudioFile (layerB, 44100.0, 0.2, 2));
+
+            SampleLoader loader;
+            loader.prepare (48000.0);
+
+            juce::StringArray delivered;
+            juce::Array<int> tags;
+
+            loader.setCallback ([&] (const SampleLoader::LoadResult& result)
+            {
+                if (result.succeeded)
+                {
+                    delivered.add (result.file.getFileName());
+                    tags.add (result.requestTag);
+                }
+            });
+
+            loader.loadAsync (layerAOld, 0);
+            loader.loadAsync (layerB, 1);
+            loader.loadAsync (layerANew, 0);
+
+            const auto finished = waitForCondition ([&]
+            {
+                return ! loader.isBusy() && delivered.size() >= 2;
+            });
+
+            expect (finished);
+            expectEquals (delivered.size(), 2,
+                          "one newest result per independent lane must be delivered");
+            expect (delivered.contains (layerANew.getFileName()));
+            expect (delivered.contains (layerB.getFileName()));
+            expect (! delivered.contains (layerAOld.getFileName()));
+            expect (tags.contains (0));
+            expect (tags.contains (1));
 
             loader.setCallback (nullptr);
             loader.waitForPendingLoads();
