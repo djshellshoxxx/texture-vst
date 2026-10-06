@@ -2,6 +2,8 @@
 
 #include "ParameterIDs.h"
 
+#include <utility>
+
 namespace texture
 {
     namespace
