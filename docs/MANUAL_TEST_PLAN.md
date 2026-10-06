@@ -41,7 +41,7 @@ The definition-of-done list in `00_MASTER_PROMPT.md`.
 - [ ] Drag a 0-byte file — error toast, previous sample intact.
 - [ ] Drag a file over 100 MB — refused with the size message.
 - [ ] Drag a 60-second file — truncated to 30 s, no click at the join.
-- [ ] Drag a 4-channel file — downmixed to stereo.
+- [ ] Drag a 4-channel file — channels 1 and 2 are used, the extra channels are ignored, and the informational toast explains this.
 - [ ] Drag a 44.1 kHz file into a 96 kHz session — correct pitch, correct length.
 - [ ] Click the drop zone — the file browser opens; cancelling changes nothing.
 - [ ] Drag a new sample **while a chord is sustaining** — the swap is seamless, no
