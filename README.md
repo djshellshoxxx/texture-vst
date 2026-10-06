@@ -254,9 +254,10 @@ screens, no time limit. Pro is a genuine upgrade, not a nag remover.
 | MORPH LFO | — | ✅ |
 | WAV export | — | ✅ |
 
-Pro parameters exist in the parameter tree in both tiers; the free tier clamps
-LFO depth and layer blend to zero, so a project made in Pro opens in Free without
-its parameter list changing shape.
+Pro parameters exist in the parameter tree in both tiers. In the Free tier the
+DSP ignores MORPH-LFO depth and Layer Blend while preserving their stored values,
+so a Pro project can be opened and saved without destroying those settings and
+they return immediately after Pro activation.
 
 Activation is offline: the key is a base32 HMAC-SHA256 of your email. There is no
 server, no phone-home, and no obfuscation — the check exists to keep honest users
