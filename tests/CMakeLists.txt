@@ -38,6 +38,7 @@ set(TEXTURE_TEST_SOURCES
 
     ../Source/IO/FactoryContent.cpp
     ../Source/IO/SampleLoader.cpp
+    ../Source/IO/WavExporter.cpp
 
     ../Source/Presets/PresetManager.cpp
 
