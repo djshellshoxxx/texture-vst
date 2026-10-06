@@ -81,6 +81,7 @@ namespace texture::tests
             testBypassedReverbTailStillRetires();
             testOutputGainInitialisesAtUnity();
             testEnergyTrackerUsesElapsedTime();
+            testTimeBasedDecayCoefficient();
         }
 
     private:
@@ -723,6 +724,32 @@ namespace texture::tests
                 tracker.push (0.0f, juce::jmin (512, 96000 - samples));
 
             expect (tracker.isSilent());
+        }
+
+
+        void testTimeBasedDecayCoefficient()
+        {
+            beginTest ("time-based decay is invariant to host callback size");
+
+            const auto targetSeconds = 0.37;
+            const auto small = dsp::decayCoefficient (64.0 / 48000.0, targetSeconds, 0.001);
+            const auto large = dsp::decayCoefficient (1024.0 / 48000.0, targetSeconds, 0.001);
+
+            double smallAccum = 1.0;
+            for (int samples = 0; samples < 48000; samples += 64)
+                smallAccum *= dsp::decayCoefficient (
+                    static_cast<double> (juce::jmin (64, 48000 - samples)) / 48000.0,
+                    targetSeconds, 0.001);
+
+            double largeAccum = 1.0;
+            for (int samples = 0; samples < 48000; samples += 1024)
+                largeAccum *= dsp::decayCoefficient (
+                    static_cast<double> (juce::jmin (1024, 48000 - samples)) / 48000.0,
+                    targetSeconds, 0.001);
+
+            expect (small > 0.0 && small < 1.0);
+            expect (large > 0.0 && large < 1.0);
+            expectWithinAbsoluteError (smallAccum, largeAccum, 1.0e-6);
         }
 
         void testEffectsChainStaysFinite()
