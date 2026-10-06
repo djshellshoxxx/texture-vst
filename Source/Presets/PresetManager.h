@@ -61,6 +61,7 @@ namespace texture
             tooLarge,
             parseError,
             schemaTooNew,
+            invalidData,
             writeFailed
         };
 
