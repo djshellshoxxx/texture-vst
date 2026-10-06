@@ -8,14 +8,13 @@ namespace texture
 {
     namespace
     {
-        /** PLACEHOLDER SECRET.
-
-            !!! REPLACE THIS BEFORE RELEASE !!!
-            Every build that ships with this constant produces the same keys as every
-            other build, so any key generated against it works everywhere. Swap it for
-            a private per-release value and regenerate the customer key database.
-        */
-        constexpr const char* PRO_LICENSE_SECRET = "TEXTURE-PLACEHOLDER-SECRET-REPLACE-ME";
+       #if defined (TEXTURE_LICENSE_SECRET)
+        constexpr const char* PRO_LICENSE_SECRET = TEXTURE_LICENSE_SECRET;
+       #else
+        // Development fallback. Release configuration must provide a distinct secret
+        // through CMake; the build emits a warning when this fallback is in use.
+        constexpr const char* PRO_LICENSE_SECRET = "TEXTURE-DEVELOPMENT-ONLY-NOT-FOR-RELEASE";
+       #endif
 
         constexpr const char* storageKeyName = "pro_license";
         constexpr const char* base32Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
@@ -127,7 +126,7 @@ namespace texture
         return key.removeCharacters (" -\t\r\n").toUpperCase().substring (0, maxFieldLength);
     }
 
-    juce::String LicenseManager::generateKey (const juce::String& email)
+    juce::String LicenseManager::generateKeyInternal (const juce::String& email)
     {
         const auto normalised = normaliseEmail (email);
 
@@ -180,7 +179,7 @@ namespace texture
         if (! isWellFormedKey (cleanKey))
             return Result::malformedKey;
 
-        const auto expected = normaliseKey (generateKey (cleanEmail));
+        const auto expected = normaliseKey (generateKeyInternal (cleanEmail));
 
         if (! equalsInConstantTime (expected, cleanKey))
             return Result::signatureMismatch;
@@ -269,7 +268,7 @@ namespace texture
             return;
         }
 
-        proActivated = equalsInConstantTime (normaliseKey (generateKey (storedEmail)), storedKey);
+        proActivated = equalsInConstantTime (normaliseKey (generateKeyInternal (storedEmail)), storedKey);
     }
 
     juce::String LicenseManager::getMaskedKey() const
@@ -284,10 +283,12 @@ namespace texture
              + storedKey.getLastCharacters (4);
     }
 
-    juce::String LicenseManager::getExpectedKeyForStoredEmail() const
+   #if defined (TEXTURE_ENABLE_LICENSE_ISSUER) && TEXTURE_ENABLE_LICENSE_ISSUER
+    juce::String LicenseManager::generateKey (const juce::String& email)
     {
-        return storedEmail.isEmpty() ? juce::String ("(no email stored)") : generateKey (storedEmail);
+        return generateKeyInternal (email);
     }
+   #endif
 
     juce::String LicenseManager::describe (Result result)
     {
