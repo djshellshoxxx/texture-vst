@@ -1004,14 +1004,14 @@ namespace texture
         for (const auto* id : params::allIDs)
             setParameterValue (id, data.getParameter (id, params::defaultValueFor (id)));
 
-        suppressPresetDirtyTracking.store (false, std::memory_order_release);
-        presetDirtyPending.store (false, std::memory_order_release);
-
         currentPresetName = data.name;
         currentPresetCategory = data.category;
         presetDirty = false;
 
         enforceTierLimits();
+
+        suppressPresetDirtyTracking.store (false, std::memory_order_release);
+        presetDirtyPending.store (false, std::memory_order_release);
 
         // Preset sample state is authoritative. Clear both layers first so an
         // empty/missing reference cannot accidentally inherit audio from the prior patch.
@@ -1356,8 +1356,6 @@ namespace texture
         const auto parameters = root.getChildWithName (StateSchema::parametersTag);
         suppressPresetDirtyTracking.store (true, std::memory_order_release);
         apvts.replaceState (parameters.getChild (0).createCopy());
-        suppressPresetDirtyTracking.store (false, std::memory_order_release);
-        presetDirtyPending.store (false, std::memory_order_release);
 
         const auto preset = root.getChildWithName (StateSchema::presetTag);
 
@@ -1383,6 +1381,23 @@ namespace texture
 
         cacheParameterPointers();
         enforceTierLimits();
+        suppressPresetDirtyTracking.store (false, std::memory_order_release);
+        presetDirtyPending.store (false, std::memory_order_release);
+
+        // Host state is authoritative for media too. Empty both slots first so
+        // missing or absent sample records cannot inherit audio from prior state.
+        for (int layerIndex = 0; layerIndex < numLayers; ++layerIndex)
+        {
+            sampleLoader.cancelPendingLoad (layerIndex);
+            const auto index = static_cast<size_t> (layerIndex);
+            auto& layer = layers[index];
+            publishSample (layer, SampleBuffer::makeEmpty());
+            layer.file = {};
+            layer.originalName.clear();
+            engines[index].allSoundOff();
+            setSampleStart (layerIndex, 0.0f, false);
+            notifyListeners (&Listener::sampleChanged, layerIndex);
+        }
 
         // Sample loads are queued, never performed inline: setStateInformation must
         // return promptly (13_STATE_SAVING.md, 21_WHAT_NOT_TO_DO.md item 24).
