@@ -16,6 +16,8 @@ namespace texture
         wetBuffer.setSize (preparedChannels, juce::jmax (1, maximumBlockSize), false, true, true);
         enableMix.reset (spec.sampleRate, bypassSmoothingSeconds);
         enableMix.setCurrentAndTargetValue (enabled ? 1.0f : 0.0f);
+        tailEnergy.prepare (spec.sampleRate, 2.5);
+        tailEnergy.reset();
         updateParameters();
         reverb.reset();
         isPrepared = true;
@@ -28,6 +30,7 @@ namespace texture
 
         wetBuffer.clear();
         enableMix.setCurrentAndTargetValue (enabled ? 1.0f : 0.0f);
+        tailEnergy.reset();
     }
 
     void Reverb::clearTail()
@@ -91,6 +94,11 @@ namespace texture
 
         juce::dsp::ProcessContextReplacing<float> context (block);
         reverb.process (context);
+
+        float wetPeak = 0.0f;
+        for (int ch = 0; ch < numChannels; ++ch)
+            wetPeak = juce::jmax (wetPeak, wetBuffer.getMagnitude (ch, 0, numSamples));
+        tailEnergy.push (wetPeak, numSamples);
 
         for (int i = 0; i < numSamples; ++i)
         {
