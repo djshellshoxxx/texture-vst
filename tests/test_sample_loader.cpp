@@ -23,6 +23,7 @@ namespace texture::tests
             testResampling();
             testConcurrentLoads();
             testIndependentRequestLanes();
+            testLaneCancellation();
             testWaveformCache();
             testPresetRouting();
         }
@@ -319,6 +320,44 @@ namespace texture::tests
             expect (! delivered.contains (layerAOld.getFileName()));
             expect (tags.contains (0));
             expect (tags.contains (1));
+
+            loader.setCallback (nullptr);
+            loader.waitForPendingLoads();
+        }
+
+
+        void testLaneCancellation()
+        {
+            beginTest ("cancelling one request lane does not cancel another");
+
+            TemporaryDirectory temp;
+            const auto layerA = temp.child ("cancel_a.wav");
+            const auto layerB = temp.child ("keep_b.wav");
+            expect (writeTestAudioFile (layerA, 44100.0, 0.4, 2));
+            expect (writeTestAudioFile (layerB, 44100.0, 0.4, 2));
+
+            SampleLoader loader;
+            loader.prepare (48000.0);
+
+            juce::Array<int> deliveredTags;
+            loader.setCallback ([&] (const SampleLoader::LoadResult& result)
+            {
+                if (result.succeeded)
+                    deliveredTags.add (result.requestTag);
+            });
+
+            loader.loadAsync (layerA, 0);
+            loader.loadAsync (layerB, 1);
+            loader.cancelPendingLoad (0);
+
+            const auto finished = waitForCondition ([&]
+            {
+                return ! loader.isBusy() && deliveredTags.size() >= 1;
+            });
+
+            expect (finished);
+            expect (! deliveredTags.contains (0));
+            expect (deliveredTags.contains (1));
 
             loader.setCallback (nullptr);
             loader.waitForPendingLoads();
