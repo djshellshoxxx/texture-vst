@@ -64,7 +64,7 @@ Reduced motion is a user preference, not part of host project state or sound sta
 
 ## 6. State and files
 
-Host project state is version-tagged. It includes APVTS parameter state plus non-parameter state needed to recreate the sound, including loaded sample references, start positions, preset identity, and GRIT settings. Invalid top-level state must be ignored safely.
+Host project state is version-tagged. It includes APVTS parameter state plus non-parameter state needed to recreate the sound, including loaded sample references, start positions, preset identity, and GRIT settings. Validation must complete before any state is mutated. The detailed compatibility and rejection policy is defined in [STATE_COMPATIBILITY_SPEC.md](STATE_COMPATIBILITY_SPEC.md).
 
 Preset load must be atomic from the user perspective: failed validation keeps the current sound. File loading and state-triggered sample reloads must not perform file I/O on the real-time audio callback.
 
@@ -73,6 +73,8 @@ Preset load must be atomic from the user perspective: failed validation keeps th
 The audio callback must remain free of file I/O, network I/O, blocking locks, UI calls, logging, and avoidable heap allocation. Cross-thread sample replacement must preserve lifetime until the audio thread has advanced beyond the old pointer. Outputs must remain finite under supported parameter values and hostile-but-parseable MIDI/event sequences.
 
 ## 8. Quality gates
+
+Release evidence is tracked in [RELEASE_VALIDATION.md](RELEASE_VALIDATION.md).
 
 Before beta:
 
