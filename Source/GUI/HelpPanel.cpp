@@ -7,6 +7,7 @@ namespace texture
     namespace
     {
         constexpr const char* homepageUrl = "https://texture-synth.com";
+        constexpr const char* circuitDriftUrl = "https://djshellshoxxx.github.io/circuitdriftlabs/";
         constexpr const char* githubUrl = "https://github.com/djshellshoxxx/texture-vst";
         constexpr const char* supportEmail = "support@texture-synth.com";
 
@@ -267,9 +268,10 @@ namespace texture
         text.add ("");
 
         text.add ("=== LINKS ===");
-        text.add ("  Homepage  " + juce::String (homepageUrl));
-        text.add ("  Source    " + juce::String (githubUrl));
-        text.add ("  Support   " + juce::String (supportEmail));
+        text.add ("  Circuit Drift Labs  " + juce::String (circuitDriftUrl));
+        text.add ("  Product site        " + juce::String (homepageUrl));
+        text.add ("  Source              " + juce::String (githubUrl));
+        text.add ("  Developer contact   " + juce::String (supportEmail));
         text.add ("");
         text.add ("TEXTURE " + versionString() + " - drop a sample, play a chord, it sounds finished.");
 
@@ -303,15 +305,15 @@ namespace texture
         githubButton.onClick = [] { juce::URL (githubUrl).launchInDefaultBrowser(); };
         addAndMakeVisible (githubButton);
 
-        homepageButton.setTooltip (homepageUrl);
-        homepageButton.onClick = [] { juce::URL (homepageUrl).launchInDefaultBrowser(); };
+        homepageButton.setTooltip (circuitDriftUrl);
+        homepageButton.onClick = [] { juce::URL (circuitDriftUrl).launchInDefaultBrowser(); };
         addAndMakeVisible (homepageButton);
 
         supportButton.setTooltip (supportEmail);
         supportButton.onClick = []
         {
             juce::URL (juce::String ("mailto:") + supportEmail
-                       + "?subject=TEXTURE%20" + versionString() + "%20support")
+                       + "?subject=TEXTURE%20" + versionString() + "%20contact")
                 .launchInDefaultBrowser();
         };
         addAndMakeVisible (supportButton);
