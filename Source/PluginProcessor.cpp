@@ -1188,16 +1188,10 @@ namespace texture
 
     void TextureAudioProcessor::enforceTierLimits()
     {
-        if (licenseManager.isPro())
-            return;
-
-        // Pro parameters stay in the tree but are pinned to their inert values
-        // (11_FREE_VS_PRO.md, "Gating enforcement").
-        if (getParameterValue (params::lfoDepth, 0.0f) > 0.0f)
-            setParameterValue (params::lfoDepth, 0.0f);
-
-        if (getParameterValue (params::layerBlend, 0.0f) > 0.0f)
-            setParameterValue (params::layerBlend, 0.0f);
+        // Do not rewrite Pro parameter values in the Free tier. updatePerBlockParameters()
+        // gates LFO depth and layer blend to zero in the DSP while preserving the host
+        // state, so a Pro project opened or saved while unlicensed can recover its
+        // settings immediately after activation.
     }
 
     // =========================================================================
