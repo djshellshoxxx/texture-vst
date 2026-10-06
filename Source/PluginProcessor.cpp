@@ -1426,6 +1426,8 @@ namespace texture
         const auto preset = root.getChildWithName (StateSchema::presetTag);
 
         currentPresetFile = {};
+        currentPresetName.clear();
+        currentPresetCategory = "Cinematic";
 
         if (preset.isValid())
         {
@@ -1470,9 +1472,10 @@ namespace texture
                 slot = snapshot.createCopy();
         }
 
+        SecretSettings secret;
+
         if (const auto secretState = root.getChildWithName (StateSchema::secretTag); secretState.isValid())
         {
-            SecretSettings secret;
             secret.bitDepth = static_cast<float> (static_cast<double> (
                 secretState.getProperty ("bits", SecretEffect::defaultBits)));
             secret.downsample = static_cast<float> (static_cast<double> (
@@ -1480,9 +1483,9 @@ namespace texture
             secret.mix = static_cast<float> (static_cast<double> (
                 secretState.getProperty ("mix", SecretEffect::defaultMix)));
             secret.revealed = static_cast<bool> (secretState.getProperty ("revealed", false));
-
-            setSecretSettings (secret);
         }
+
+        setSecretSettings (secret);
 
         cacheParameterPointers();
         enforceTierLimits();
