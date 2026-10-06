@@ -173,9 +173,19 @@ namespace texture
         if (slot < 0)
             return;
 
+        bool changed = false;
+
         for (auto& entry : table)
-            if (entry.load (std::memory_order_relaxed) == slot)
-                entry.store (-1, std::memory_order_release);
+        {
+            if (entry.load (std::memory_order_relaxed) != slot)
+                continue;
+
+            entry.store (-1, std::memory_order_release);
+            changed = true;
+        }
+
+        if (changed)
+            save();
     }
 
     void MidiLearn::clearAll()
