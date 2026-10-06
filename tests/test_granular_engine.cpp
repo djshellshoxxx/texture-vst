@@ -82,6 +82,7 @@ namespace texture::tests
             testOutputGainInitialisesAtUnity();
             testEnergyTrackerUsesElapsedTime();
             testTimeBasedDecayCoefficient();
+            testDefensiveClampRejectsNonFinite();
         }
 
     private:
@@ -750,6 +751,25 @@ namespace texture::tests
             expect (small > 0.0 && small < 1.0);
             expect (large > 0.0 && large < 1.0);
             expectWithinAbsoluteError (smallAccum, largeAccum, 1.0e-6);
+        }
+
+
+        void testDefensiveClampRejectsNonFinite()
+        {
+            beginTest ("DSP clamp maps non-finite floating values to the lower bound");
+
+            expectWithinAbsoluteError (
+                dsp::clamp (std::numeric_limits<float>::quiet_NaN(), 0.0f, 1.0f),
+                0.0f, 0.0f);
+            expectWithinAbsoluteError (
+                dsp::clamp (std::numeric_limits<float>::infinity(), -1.0f, 1.0f),
+                -1.0f, 0.0f);
+            expectWithinAbsoluteError (
+                dsp::clamp (-std::numeric_limits<float>::infinity(), -1.0f, 1.0f),
+                -1.0f, 0.0f);
+
+            expectEquals (dsp::clamp (12, 0, 10), 10);
+            expectEquals (dsp::clamp (-2, 0, 10), 0);
         }
 
         void testEffectsChainStaysFinite()
