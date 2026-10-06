@@ -656,7 +656,9 @@ namespace texture
         // AsyncUpdater::triggerAsyncUpdate() from processBlock/parameterChanged.
         if (presetDirtyPending.load (std::memory_order_acquire)
             || midiLearnBindingPending.load (std::memory_order_acquire)
-            || hasPendingControllerValues.load (std::memory_order_acquire))
+            || hasPendingControllerValues.load (std::memory_order_acquire)
+            || deferredSampleNotifications.load (std::memory_order_acquire) != 0
+            || deferredPluginStateNotification.load (std::memory_order_acquire))
         {
             handleAsyncUpdate();
         }
@@ -702,6 +704,14 @@ namespace texture
                 applyMidiLearnedController (cc, value);
             }
         }
+
+        const auto sampleMask = deferredSampleNotifications.exchange (0, std::memory_order_acq_rel);
+        for (int layerIndex = 0; layerIndex < numLayers; ++layerIndex)
+            if ((sampleMask & (1u << static_cast<unsigned int> (layerIndex))) != 0)
+                notifyListeners (&Listener::sampleChanged, layerIndex);
+
+        if (deferredPluginStateNotification.exchange (false, std::memory_order_acq_rel))
+            notifyPluginStateChanged();
 
         juce::String message;
         SampleLoader::Severity severity = SampleLoader::Severity::info;
@@ -1491,7 +1501,8 @@ namespace texture
             layer.originalName.clear();
             engines[index].allSoundOff();
             setSampleStart (layerIndex, 0.0f, false);
-            notifyListeners (&Listener::sampleChanged, layerIndex);
+            deferredSampleNotifications.fetch_or (
+                1u << static_cast<unsigned int> (layerIndex), std::memory_order_release);
         }
 
         // Sample loads are queued, never performed inline: setStateInformation must
@@ -1534,7 +1545,7 @@ namespace texture
         }
 
         presetDirty = false;
-        notifyPluginStateChanged();
+        deferredPluginStateNotification.store (true, std::memory_order_release);
     }
 
     // =========================================================================
