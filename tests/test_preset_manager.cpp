@@ -49,6 +49,7 @@ namespace texture::tests
             testInvalidSchemaRejected();
             testInvalidParameterDataRejected();
             testInvalidPresetCannotBeSaved();
+            testDualLayerPresetRoundTrip();
             testOversizedPresetRejected();
             testMissingSampleStillLoadsParameters();
             testSamplePathResolution();
@@ -251,6 +252,52 @@ namespace texture::tests
             expectEquals (presets.save (file, data, error), PresetManager::Status::ok);
             const auto text = file.loadFileAsString();
             expect (! text.contains ("future_hint"));
+        }
+
+
+        void testDualLayerPresetRoundTrip()
+        {
+            beginTest ("schema 2 preserves both sample layers and start positions");
+
+            TemporaryDirectory temp;
+            PresetManager presets (nullptr);
+            auto data = makeFullPreset ("Dual", "Ambient");
+            data.samplePaths[0] = "factory/Pad_01.wav";
+            data.samplePaths[1] = "factory/Pad_02.wav";
+            data.sampleStarts[0] = 0.125f;
+            data.sampleStarts[1] = 0.875f;
+
+            juce::String error;
+            const auto file = temp.child ("dual.texture");
+            expectEquals (presets.save (file, data, error), PresetManager::Status::ok);
+
+            PresetManager::PresetData loaded;
+            expectEquals (presets.load (file, loaded, error), PresetManager::Status::ok);
+            expectEquals (loaded.samplePaths[0], juce::String ("factory/Pad_01.wav"));
+            expectEquals (loaded.samplePaths[1], juce::String ("factory/Pad_02.wav"));
+            expectWithinAbsoluteError (loaded.sampleStarts[0], 0.125f, 1.0e-6f);
+            expectWithinAbsoluteError (loaded.sampleStarts[1], 0.875f, 1.0e-6f);
+
+            beginTest ("legacy schema 1 sample_path migrates to layer 1");
+            const auto legacy = temp.child ("legacy.texture");
+            legacy.replaceWithText (
+                R"({"schema_version":1,"preset_name":"Legacy","sample_path":"factory/Pad_03.wav","parameters":{"morph":0.5}})");
+
+            PresetManager::PresetData migrated;
+            expectEquals (presets.load (legacy, migrated, error), PresetManager::Status::ok);
+            expectEquals (migrated.samplePaths[0], juce::String ("factory/Pad_03.wav"));
+            expect (migrated.samplePaths[1].isEmpty());
+            expectWithinAbsoluteError (migrated.sampleStarts[0], 0.0f, 1.0e-6f);
+            expectWithinAbsoluteError (migrated.sampleStarts[1], 0.0f, 1.0e-6f);
+
+            beginTest ("invalid sample start values are rejected atomically");
+            const auto invalid = temp.child ("invalid_start.texture");
+            invalid.replaceWithText (
+                R"({"schema_version":2,"preset_name":"Bad","samples":[{"path":"x.wav","start":1.5},{}],"parameters":{"morph":0.5}})");
+
+            auto unchanged = makeFullPreset ("Keep", "Ambient");
+            expectEquals (presets.load (invalid, unchanged, error), PresetManager::Status::invalidData);
+            expectEquals (unchanged.name, juce::String ("Keep"));
         }
 
         void testOversizedPresetRejected()
