@@ -986,8 +986,8 @@ namespace texture
         data.name = name;
         data.category = category;
         data.tags = tags;
-        data.author = licenseManager.getStoredEmail().isNotEmpty() ? licenseManager.getStoredEmail()
-                                                                   : juce::String ("User");
+        // Never copy licensing/account identifiers into a shareable preset file.
+        data.author = "User";
         data.samplePath = presetManager.makeStorablePath (getSampleFileForLayer (0));
 
         for (int layer = 0; layer < numLayers; ++layer)
