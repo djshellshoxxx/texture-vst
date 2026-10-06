@@ -78,6 +78,7 @@ namespace texture::tests
             testLfoTransportSync();
             testEffectsChainStaysFinite();
             testReverbBypassSmoothing();
+            testBypassedReverbTailStillRetires();
             testOutputGainInitialisesAtUnity();
             testEnergyTrackerUsesElapsedTime();
         }
@@ -639,6 +640,44 @@ namespace texture::tests
             expectWithinAbsoluteError (reverb.getEnableMix(), 0.0f, 1.0e-4f);
         }
 
+
+
+        void testBypassedReverbTailStillRetires()
+        {
+            beginTest ("bypassed reverb tracks and retires its hidden tail");
+
+            Reverb reverb;
+            reverb.prepare (testRate, blockSize, 2);
+            reverb.setWetLevel (0.65f);
+            reverb.setEnabled (true);
+
+            juce::AudioBuffer<float> buffer (2, blockSize);
+            buffer.clear();
+            buffer.setSample (0, 0, 1.0f);
+            buffer.setSample (1, 0, 1.0f);
+
+            reverb.process (buffer, 0, blockSize);
+            reverb.setEnabled (false);
+
+            bool sawHiddenTail = false;
+
+            for (int i = 0; i < 8; ++i)
+            {
+                buffer.clear();
+                reverb.process (buffer, 0, blockSize);
+                sawHiddenTail = sawHiddenTail || reverb.hasTailEnergy();
+            }
+
+            expect (sawHiddenTail, "tail must remain tracked after bypass reaches dry");
+
+            for (int i = 0; i < 2000 && reverb.hasTailEnergy(); ++i)
+            {
+                buffer.clear();
+                reverb.process (buffer, 0, blockSize);
+            }
+
+            expect (! reverb.hasTailEnergy(), "hidden tail must eventually retire");
+        }
 
         void testOutputGainInitialisesAtUnity()
         {
