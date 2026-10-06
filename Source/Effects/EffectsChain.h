@@ -47,6 +47,7 @@ namespace texture
 
         /** Peak magnitude of the most recent processed block, for the level LED. */
         float getLastBlockPeak() const noexcept { return lastBlockPeak; }
+        float getCurrentOutputGain() const noexcept { return outputGain.getCurrentValue(); }
 
         /** True while the reverb tail still carries audible energy. */
         bool hasTailEnergy() const noexcept { return ! tailEnergy.isSilent(); }
