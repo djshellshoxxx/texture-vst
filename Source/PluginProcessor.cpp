@@ -191,6 +191,7 @@ namespace texture
         });
 
         cacheParameterPointers();
+        startTimerHz (60);
 
         for (const auto* id : params::allIDs)
             apvts.addParameterListener (id, this);
@@ -211,6 +212,8 @@ namespace texture
 
     TextureAudioProcessor::~TextureAudioProcessor()
     {
+        stopTimer();
+
         for (const auto* id : params::allIDs)
             apvts.removeParameterListener (id, this);
 
@@ -622,7 +625,6 @@ namespace texture
             {
                 midiLearn.requestBinding (controller);
                 midiLearnBindingPending.store (true, std::memory_order_release);
-                triggerAsyncUpdate();
             }
             else if (midiLearn.getMappedSlotForController (controller) >= 0)
             {
@@ -631,7 +633,6 @@ namespace texture
                 pendingControllerValues[static_cast<size_t> (controller)]
                     .store (value, std::memory_order_release);
                 hasPendingControllerValues.store (true, std::memory_order_release);
-                triggerAsyncUpdate();
             }
         }
     }
@@ -646,7 +647,18 @@ namespace texture
             return;
 
         presetDirtyPending.store (true, std::memory_order_release);
-        triggerAsyncUpdate();
+    }
+
+    void TextureAudioProcessor::timerCallback()
+    {
+        // Message-thread poll for work latched by real-time callbacks. Avoid calling
+        // AsyncUpdater::triggerAsyncUpdate() from processBlock/parameterChanged.
+        if (presetDirtyPending.load (std::memory_order_acquire)
+            || midiLearnBindingPending.load (std::memory_order_acquire)
+            || hasPendingControllerValues.load (std::memory_order_acquire))
+        {
+            handleAsyncUpdate();
+        }
     }
 
     void TextureAudioProcessor::handleAsyncUpdate()
