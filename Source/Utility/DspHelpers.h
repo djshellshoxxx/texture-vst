@@ -159,16 +159,35 @@ namespace texture::dsp
         float y1 { 0.0f };
     };
 
-    /** Tracks decaying energy so the processor knows when a reverb tail has died. */
+    /** Tracks decaying energy so the processor knows when a reverb tail has died.
+        Decay is based on elapsed audio time rather than callback count, so hosts with
+        different block sizes retire tails consistently.
+    */
     class EnergyTracker
     {
     public:
+        void prepare (double sampleRateToUse, double decaySecondsToUse = 1.5) noexcept
+        {
+            sampleRate = sampleRateToUse > 0.0 ? sampleRateToUse : 44100.0;
+            decaySeconds = decaySecondsToUse > 0.01 ? decaySecondsToUse : 0.01;
+        }
+
         void reset() noexcept { energy = 0.0f; }
 
-        /** Feeds the peak magnitude of a block and decays the running estimate. */
+        /** Feeds the peak magnitude of a block and decays the running estimate over
+            exactly numSamples of elapsed audio time. */
+        void push (float blockPeak, int numSamples) noexcept
+        {
+            const auto elapsed = static_cast<double> (juce::jmax (0, numSamples)) / sampleRate;
+            const auto coefficient = static_cast<float> (
+                std::exp (std::log (1.0e-4) * elapsed / decaySeconds));
+            energy = juce::jmax (blockPeak, energy * coefficient);
+        }
+
+        /** Compatibility overload for legacy callers that do not yet supply a block size. */
         void push (float blockPeak) noexcept
         {
-            energy = juce::jmax (blockPeak, energy * decayPerBlock);
+            push (blockPeak, 64);
         }
 
         bool isSilent (float threshold = minusEightyDb) const noexcept { return energy < threshold; }
@@ -176,7 +195,8 @@ namespace texture::dsp
         float getEnergy() const noexcept { return energy; }
 
     private:
-        static constexpr float decayPerBlock = 0.999f;
+        double sampleRate { 44100.0 };
+        double decaySeconds { 1.5 };
         float energy { 0.0f };
     };
 
