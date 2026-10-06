@@ -59,6 +59,9 @@ namespace texture
         /** Drops any queued or in-flight results without waiting. */
         void cancelPendingLoads();
 
+        /** Invalidates only one caller-defined request lane. */
+        void cancelPendingLoad (int requestTag);
+
         bool isBusy() const;
 
         /** Decodes on the calling thread. Used by tests and by preset loading. */
