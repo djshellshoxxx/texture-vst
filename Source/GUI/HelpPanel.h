@@ -43,8 +43,8 @@ namespace texture
         juce::TextButton closeButton { "Close" };
         juce::TextButton debugButton { "Open debug window" };
         juce::TextButton githubButton { "GitHub" };
-        juce::TextButton homepageButton { "Homepage" };
-        juce::TextButton supportButton { "Email support" };
+        juce::TextButton homepageButton { "Circuit Drift Labs" };
+        juce::TextButton supportButton { "Contact" };
         juce::TextButton dataFolderButton { "Open data folder" };
 
         /** One button per manual section; clicking jumps the text there. */
