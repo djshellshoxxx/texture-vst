@@ -2,6 +2,8 @@
 
 #include "../Utility/DspHelpers.h"
 
+#include <algorithm>
+
 namespace texture
 {
     namespace
@@ -167,6 +169,18 @@ namespace texture
 
         const juce::ScopedLock lock (resultLock);
         pendingResults.clear();
+    }
+
+    void SampleLoader::cancelPendingLoad (int requestTag)
+    {
+        const auto tag = sanitiseRequestTag (requestTag);
+        ++requestGenerations[static_cast<size_t> (tag)];
+
+        const juce::ScopedLock lock (resultLock);
+        pendingResults.erase (
+            std::remove_if (pendingResults.begin(), pendingResults.end(),
+                            [tag] (const LoadResult& result) { return result.requestTag == tag; }),
+            pendingResults.end());
     }
 
     bool SampleLoader::isBusy() const
