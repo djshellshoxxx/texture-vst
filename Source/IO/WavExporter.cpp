@@ -1,4 +1,5 @@
 #include "WavExporter.h"
+#include "OfflineRenderTimeline.h"
 
 #include "../Effects/EffectsChain.h"
 #include "../Engine/GranularEngine.h"
@@ -141,38 +142,51 @@ namespace texture
         bool secondNoteStopped = false;
         bool writeFailed = false;
 
+        using Timeline = OfflineRenderTimeline<4>;
+        const Timeline::Events eventPositions {
+            firstNoteOn, firstNoteOff, secondNoteOn, secondNoteOff
+        };
+
         while (position < totalSamples && ! writeFailed)
         {
-            const auto numSamples = static_cast<int> (juce::jmin (static_cast<juce::int64> (renderBlockSize),
-                                                                  totalSamples - position));
-            block.clear();
-
-            // Events land on block boundaries; at 512 samples that is ~10 ms of jitter
-            // on a bounce whose envelope is measured in hundreds of milliseconds.
-            if (! firstNoteStarted && position >= firstNoteOn)
+            // Apply every event scheduled exactly at this sample before rendering
+            // the following span.
+            if (! firstNoteStarted && position == firstNoteOn)
             {
                 engine->noteOn (1, settings.midiNote, settings.velocity);
                 firstNoteStarted = true;
             }
 
-            if (firstNoteStarted && ! firstNoteStopped && position >= firstNoteOff)
+            if (firstNoteStarted && ! firstNoteStopped && position == firstNoteOff)
             {
                 engine->noteOff (1, settings.midiNote);
                 firstNoteStopped = true;
             }
 
-            if (! secondNoteStarted && position >= secondNoteOn)
+            if (! secondNoteStarted && position == secondNoteOn)
             {
                 engine->noteOn (1, settings.midiNote, settings.velocity);
                 secondNoteStarted = true;
             }
 
-            if (secondNoteStarted && ! secondNoteStopped && position >= secondNoteOff)
+            if (secondNoteStarted && ! secondNoteStopped && position == secondNoteOff)
             {
                 engine->noteOff (1, settings.midiNote);
                 secondNoteStopped = true;
             }
 
+            const auto nominalBlockEnd = juce::jmin (position + static_cast<juce::int64> (renderBlockSize),
+                                                     totalSamples);
+            const auto boundary = Timeline::nextBoundary (position, nominalBlockEnd, eventPositions);
+            const auto numSamples = static_cast<int> (boundary - position);
+
+            if (numSamples <= 0)
+            {
+                position = nominalBlockEnd;
+                continue;
+            }
+
+            block.clear();
             engine->renderNextBlock (sample, targets, block, 0, numSamples);
             effects->process (block, 0, numSamples);
             dsp::sanitiseBuffer (block);
@@ -180,7 +194,7 @@ namespace texture
             if (! writer->writeFromAudioSampleBuffer (block, 0, numSamples))
                 writeFailed = true;
 
-            position += numSamples;
+            position = boundary;
         }
 
         writer->flush();
