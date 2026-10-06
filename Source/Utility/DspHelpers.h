@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <limits>
+#include <type_traits>
 
 /** Header-only DSP primitives. Everything here is `constexpr` or `inline` and
     allocation-free so it is safe to call from the audio thread.
@@ -64,8 +65,12 @@ namespace texture::dsp
 
     /** Clamps to [lo, hi] without branching surprises on NaN (NaN maps to lo). */
     template <typename T>
-    inline constexpr T clamp (T v, T lo, T hi) noexcept
+    inline T clamp (T v, T lo, T hi) noexcept
     {
+        if constexpr (std::is_floating_point_v<T>)
+            if (! std::isfinite (v))
+                return lo;
+
         return v < lo ? lo : (v > hi ? hi : v);
     }
 
