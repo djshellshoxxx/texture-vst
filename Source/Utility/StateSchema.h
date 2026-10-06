@@ -2,6 +2,8 @@
 
 #include <juce_data_structures/juce_data_structures.h>
 
+#include <cmath>
+
 namespace texture
 {
     struct StateSchema final
@@ -24,7 +26,10 @@ namespace texture
             futureVersion,
             missingParameters,
             invalidSampleIndex,
-            duplicateSampleIndex
+            duplicateSampleIndex,
+            invalidSampleData,
+            duplicateSingleton,
+            invalidSecretData
         };
 
         struct Result
@@ -74,23 +79,90 @@ namespace texture
             }
 
             bool seenSamples[2] { false, false };
+            bool seenPreset = false;
+            bool seenSecret = false;
+
+            const auto readFiniteNumber = [] (const juce::var& value, double& result)
+            {
+                if (! (value.isInt() || value.isInt64() || value.isDouble() || value.isBool()))
+                    return false;
+
+                result = static_cast<double> (value);
+                return std::isfinite (result);
+            };
 
             for (const auto& child : root)
             {
-                if (child.getType() != sampleTag)
+                if (child.getType() == sampleTag)
+                {
+                    const auto index = static_cast<int> (child.getProperty ("index", -1));
+
+                    if (index < 0 || index >= 2)
+                        return { Status::invalidSampleIndex,
+                                 "Plugin state contains an invalid sample layer index." };
+
+                    if (seenSamples[index])
+                        return { Status::duplicateSampleIndex,
+                                 "Plugin state contains duplicate sample layer records." };
+
+                    seenSamples[index] = true;
+
+                    if (child.hasProperty ("start"))
+                    {
+                        double start = 0.0;
+
+                        if (! readFiniteNumber (child.getProperty ("start"), start)
+                            || start < 0.0 || start > 1.0)
+                        {
+                            return { Status::invalidSampleData,
+                                     "Plugin state contains an invalid sample start position." };
+                        }
+                    }
+
                     continue;
+                }
 
-                const auto index = static_cast<int> (child.getProperty ("index", -1));
+                if (child.getType() == presetTag)
+                {
+                    if (seenPreset)
+                        return { Status::duplicateSingleton,
+                                 "Plugin state contains duplicate preset metadata." };
 
-                if (index < 0 || index >= 2)
-                    return { Status::invalidSampleIndex,
-                             "Plugin state contains an invalid sample layer index." };
+                    seenPreset = true;
+                    continue;
+                }
 
-                if (seenSamples[index])
-                    return { Status::duplicateSampleIndex,
-                             "Plugin state contains duplicate sample layer records." };
+                if (child.getType() == secretTag)
+                {
+                    if (seenSecret)
+                        return { Status::duplicateSingleton,
+                                 "Plugin state contains duplicate GRIT state." };
 
-                seenSamples[index] = true;
+                    seenSecret = true;
+
+                    const auto validateRange = [&] (const char* property, double fallback,
+                                                    double minimum, double maximum)
+                    {
+                        if (! child.hasProperty (property))
+                            return true;
+
+                        double value = fallback;
+                        return readFiniteNumber (child.getProperty (property), value)
+                            && value >= minimum && value <= maximum;
+                    };
+
+                    if (! validateRange ("bits", 12.0, 2.0, 16.0)
+                        || ! validateRange ("downsample", 4.0, 1.0, 64.0)
+                        || ! validateRange ("mix", 0.0, 0.0, 1.0))
+                    {
+                        return { Status::invalidSecretData,
+                                 "Plugin state contains invalid GRIT settings." };
+                    }
+
+                    if (child.hasProperty ("revealed") && ! child.getProperty ("revealed").isBool())
+                        return { Status::invalidSecretData,
+                                 "Plugin state contains an invalid GRIT visibility flag." };
+                }
             }
 
             return {};
