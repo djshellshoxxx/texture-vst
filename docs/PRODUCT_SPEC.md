@@ -107,7 +107,7 @@ Export uses stereo WAV at the user-selected supported sample rate and integer bi
 
 ## 8. Real-time requirements
 
-Reverb enable/disable transitions are crossfaded over 20 ms so bypass does not hard-switch between processed and dry audio. Output gain is smoothed over 30 ms; MORPH is smoothed over 20 ms. The audio callback must remain free of file I/O, network I/O, blocking locks, UI calls, logging, and avoidable heap allocation. Cross-thread sample replacement must preserve lifetime until the audio thread has advanced beyond the old pointer. Outputs must remain finite under supported parameter values and hostile-but-parseable MIDI/event sequences.
+Reverb enable/disable transitions are crossfaded over 20 ms so bypass does not hard-switch between processed and dry audio. Output gain is smoothed over 30 ms; MORPH is smoothed over 20 ms. Effect-tail retirement uses elapsed audio time rather than callback count so idle optimization behaves consistently at different host block sizes. The audio callback must remain free of file I/O, network I/O, blocking locks, UI calls, logging, and avoidable heap allocation. Cross-thread sample replacement must preserve lifetime until the audio thread has advanced beyond the old pointer. Outputs must remain finite under supported parameter values and hostile-but-parseable MIDI/event sequences.
 
 ## 9. Quality gates
 
