@@ -22,7 +22,9 @@ namespace texture
             wrongRoot,
             invalidVersion,
             futureVersion,
-            missingParameters
+            missingParameters,
+            invalidSampleIndex,
+            duplicateSampleIndex
         };
 
         struct Result
@@ -69,6 +71,26 @@ namespace texture
             {
                 return { Status::missingParameters,
                          "Plugin state is incomplete because its parameter state is missing." };
+            }
+
+            bool seenSamples[2] { false, false };
+
+            for (const auto& child : root)
+            {
+                if (child.getType() != sampleTag)
+                    continue;
+
+                const auto index = static_cast<int> (child.getProperty ("index", -1));
+
+                if (index < 0 || index >= 2)
+                    return { Status::invalidSampleIndex,
+                             "Plugin state contains an invalid sample layer index." };
+
+                if (seenSamples[index])
+                    return { Status::duplicateSampleIndex,
+                             "Plugin state contains duplicate sample layer records." };
+
+                seenSamples[index] = true;
             }
 
             return {};
