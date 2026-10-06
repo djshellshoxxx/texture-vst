@@ -13,6 +13,8 @@ namespace texture
         inline static const juce::Identifier sampleTag { "Sample" };
         inline static const juce::Identifier presetTag { "Preset" };
         inline static const juce::Identifier secretTag { "Grit" };
+        inline static const juce::Identifier compareTag { "Compare" };
+        inline static const juce::Identifier compareSlotTag { "Slot" };
         inline static const juce::Identifier versionAttribute { "pluginVersion" };
 
         static constexpr int currentMajorVersion = 1;
@@ -29,7 +31,8 @@ namespace texture
             duplicateSampleIndex,
             invalidSampleData,
             duplicateSingleton,
-            invalidSecretData
+            invalidSecretData,
+            invalidCompareData
         };
 
         struct Result
@@ -81,6 +84,7 @@ namespace texture
             bool seenSamples[2] { false, false };
             bool seenPreset = false;
             bool seenSecret = false;
+            bool seenCompare = false;
 
             const auto readFiniteNumber = [] (const juce::var& value, double& result)
             {
@@ -129,6 +133,51 @@ namespace texture
                                  "Plugin state contains duplicate preset metadata." };
 
                     seenPreset = true;
+                    continue;
+                }
+
+                if (child.getType() == compareTag)
+                {
+                    if (seenCompare)
+                        return { Status::duplicateSingleton,
+                                 "Plugin state contains duplicate A/B comparison state." };
+
+                    seenCompare = true;
+
+                    const auto active = static_cast<int> (child.getProperty ("active", 0));
+                    if (active < 0 || active >= 2)
+                        return { Status::invalidCompareData,
+                                 "Plugin state contains an invalid active A/B slot." };
+
+                    bool seenSlots[2] { false, false };
+
+                    for (const auto& slot : child)
+                    {
+                        if (slot.getType() != compareSlotTag)
+                            return { Status::invalidCompareData,
+                                     "Plugin state contains malformed A/B slot data." };
+
+                        const auto index = static_cast<int> (slot.getProperty ("index", -1));
+                        if (index < 0 || index >= 2 || seenSlots[index])
+                            return { Status::invalidCompareData,
+                                     "Plugin state contains invalid or duplicate A/B slots." };
+
+                        seenSlots[index] = true;
+
+                        for (int propertyIndex = 0; propertyIndex < slot.getNumProperties(); ++propertyIndex)
+                        {
+                            const auto name = slot.getPropertyName (propertyIndex).toString();
+
+                            if (name == "index")
+                                continue;
+
+                            double value = 0.0;
+                            if (! readFiniteNumber (slot.getProperty (slot.getPropertyName (propertyIndex)), value))
+                                return { Status::invalidCompareData,
+                                         "Plugin state contains non-numeric A/B parameter data." };
+                        }
+                    }
+
                     continue;
                 }
 
