@@ -1338,6 +1338,9 @@ namespace texture
         preset.setProperty ("category", currentPresetCategory, nullptr);
         root.appendChild (preset, nullptr);
 
+        // The active slot may have been edited since the last A/B switch.
+        compareSlots[static_cast<size_t> (activeCompareSlot)] = captureParameterTree();
+
         juce::ValueTree compare (StateSchema::compareTag);
         compare.setProperty ("active", activeCompareSlot, nullptr);
 
