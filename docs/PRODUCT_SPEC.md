@@ -59,7 +59,23 @@ TEXTURE uses one shared interaction contract for rotary controls:
 - malformed or out-of-range numeric entry is rejected and must not be silently clamped;
 - hidden GRIT controls provide reset and strict numeric entry but no MIDI Learn because they are deliberately outside host automation.
 
-## 5. Motion and accessibility
+## 5. MIDI and automation contract
+
+- MIDI input is omni.
+- Note velocity scales voice amplitude.
+- Pitch bend range is plus/minus two semitones.
+- CC64 retains sustain-pedal behavior.
+- CC120/121/122/123/124/125/126/127 are reserved and cannot be learned.
+- All Notes Off stops voices; All Sound Off stops voices and clears effect tails.
+- MIDI Learn arms one target parameter at a time. The interface must show a persistent global learn state for every target type.
+- Learn mode can be cancelled explicitly from a control context menu and automatically expires after 15 seconds.
+- The next non-reserved CC received while learning becomes the mapping and is consumed by the learn operation rather than immediately changing the target.
+- One parameter maps to at most one CC and one CC maps to at most one parameter. A new mapping replaces the previous mapping occupying either side of that relationship.
+- Learned CC changes are transferred to the message thread and applied with `setValueNotifyingHost`; the audio callback never writes host parameters.
+- MIDI CC and host automation operate on the same base parameter value. Whichever valid update is applied last wins. Internal MORPH LFO modulation is additive to the base parameter and does not overwrite it.
+- Mappings are global user preferences, not host-project sound state.
+
+## 6. Motion and accessibility
 
 TEXTURE uses optional interface motion for control easing, MIDI-learn pulsing, panel transitions, transient button flashes, toast fades, and the background data stream. Preferences MUST provide **Reduce interface motion**.
 
@@ -75,17 +91,17 @@ When reduced motion is enabled:
 
 Reduced motion is a user preference, not part of host project state or sound state.
 
-## 6. State and files
+## 7. State and files
 
 Host project state is version-tagged. It includes APVTS parameter state plus non-parameter state needed to recreate the sound, including loaded sample references, start positions, preset identity, and GRIT settings. Validation must complete before any state is mutated. The detailed compatibility and rejection policy is defined in [STATE_COMPATIBILITY_SPEC.md](STATE_COMPATIBILITY_SPEC.md).
 
 Preset load must be atomic from the user perspective: failed validation keeps the current sound. File loading and state-triggered sample reloads must not perform file I/O on the real-time audio callback.
 
-## 7. Real-time requirements
+## 8. Real-time requirements
 
 The audio callback must remain free of file I/O, network I/O, blocking locks, UI calls, logging, and avoidable heap allocation. Cross-thread sample replacement must preserve lifetime until the audio thread has advanced beyond the old pointer. Outputs must remain finite under supported parameter values and hostile-but-parseable MIDI/event sequences.
 
-## 8. Quality gates
+## 9. Quality gates
 
 Release evidence is tracked in [RELEASE_VALIDATION.md](RELEASE_VALIDATION.md).
 
