@@ -1606,10 +1606,7 @@ namespace texture
         lines.add ("");
         lines.add ("--- License ---");
         lines.add ("Tier: " + juce::String (licenseManager.isPro() ? "PRO" : "FREE"));
-        lines.add ("Email: " + (licenseManager.getStoredEmail().isNotEmpty()
-                                    ? licenseManager.getStoredEmail() : juce::String ("(none)")));
-        lines.add ("Key (masked): " + licenseManager.getMaskedKey());
-        lines.add ("Signature matches: " + juce::String (licenseManager.isPro() ? "yes" : "no"));
+        lines.add ("Activation valid: " + juce::String (licenseManager.isPro() ? "yes" : "no"));
         lines.add ("");
 
         lines.add ("--- Preset ---");
