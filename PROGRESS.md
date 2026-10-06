@@ -41,6 +41,7 @@ ctest --test-dir build/release -C Release --output-on-failure
 | 13 | Linux / macOS / AU / AAX build paths verified in CMake | DONE for Windows, macOS and Linux; AAX unverified (no SDK) |
 | 14 | CI: three-platform matrix in `.github/workflows/build.yml` | DONE — all four jobs green |
 | 16 | GUI gap pass (`docs/GUI_GAP_SPEC.md`, B1-B6, M1-M14) | DONE - builds clean, ctest 100%, layout checked in standalone |
+| 17 | CDL baseline reconciliation: product spec, compliance record, reduced motion | IN PROGRESS - implementation committed on `codex/spec-compliance-motion`; CI currently fails before any job steps on both this branch and its master base |
 | 15 | Fuzzer (`17_TESTING.md`) as its own `texture_fuzz` CTest entry | DONE |
 
 ## Deviations from `22_FILE_MANIFEST.md` (all deliberate, all documented in README)
@@ -160,3 +161,15 @@ ctest --test-dir build/release -C Release --output-on-failure
   the tab order, now `MainPanel::applyFocusOrder`.
 
 - 2026-09-30: Audited GUI against specs/include.md + theme.md, wrote `docs/GUI_GAP_SPEC.md`, implemented all items. Spec sources 00-22 are no longer on disk; only include.md/theme.md remain.
+
+
+- 2026-10-06: **Milestone 17 started.** Reconciled TEXTURE with the new shared CDL
+  plugin baseline. Added `docs/PRODUCT_SPEC.md` and `docs/BASELINE_COMPLIANCE.md`,
+  wrote the reduced-motion contract test first, then implemented a persistent
+  Preferences toggle that removes nonessential knob easing, MIDI-learn pulsing,
+  settings-panel sliding, data-stream glide, icon-button flash and toast fades while
+  retaining information-bearing meters and state feedback. Also corrected the stale
+  README licence summary. GitHub Actions currently reports all jobs failed before
+  producing job steps/logs; the same no-step failure is present on base commit
+  `f41cc7d`, so CI validation remains unresolved rather than recorded as a code
+  failure or success.
