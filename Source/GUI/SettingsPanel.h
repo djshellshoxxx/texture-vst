@@ -85,6 +85,7 @@ namespace texture
 
         // Preferences tab
         juce::ToggleButton tooltipsToggle { "Show tooltips" };
+        juce::ToggleButton reducedMotionToggle { "Reduce interface motion" };
         juce::Label presetFolderLabel;
         juce::TextButton presetFolderButton { "Choose preset folder..." };
         juce::TextButton revealPresetFolderButton { "Open in file browser" };
