@@ -10,6 +10,7 @@
 #include "Utility/StateSchema.h"
 
 #include <cmath>
+#include <algorithm>
 
 namespace texture
 {
@@ -808,26 +809,40 @@ namespace texture
 
     void TextureAudioProcessor::releaseRetiredIfSafe (Layer& layer)
     {
-        if (layer.retired == nullptr)
+        if (layer.retired.empty())
             return;
 
-        // Either no audio thread is running at all, or it has started and finished
-        // a whole block since the pointer was replaced, so it cannot still be
-        // holding the old one.
-        if (! isPrepared || blocksProcessed.load (std::memory_order_acquire) > layer.retiredAtBlock + 1)
-            layer.retired.reset();
+        if (! isPrepared)
+        {
+            layer.retired.clear();
+            return;
+        }
+
+        const auto completedBlocks = blocksProcessed.load (std::memory_order_acquire);
+
+        layer.retired.erase (
+            std::remove_if (layer.retired.begin(), layer.retired.end(),
+                            [completedBlocks] (const Layer::RetiredSample& retired)
+                            {
+                                return completedBlocks > retired.retiredAtBlock + 1;
+                            }),
+            layer.retired.end());
     }
 
     void TextureAudioProcessor::publishSample (Layer& layer, SampleBufferPtr next)
     {
         jassert (next != nullptr);
 
-        // Free whatever is already waiting before taking on another one, so a slot
-        // never holds more than one retired buffer.
         releaseRetiredIfSafe (layer);
 
-        layer.retired = std::move (layer.messageThreadCopy);
-        layer.retiredAtBlock = blocksProcessed.load (std::memory_order_acquire);
+        if (layer.messageThreadCopy != nullptr)
+        {
+            layer.retired.push_back ({
+                std::move (layer.messageThreadCopy),
+                blocksProcessed.load (std::memory_order_acquire)
+            });
+        }
+
         layer.messageThreadCopy = std::move (next);
 
         // The swap itself: one lock-free pointer store (05_SAMPLE_LOADER.md). The
