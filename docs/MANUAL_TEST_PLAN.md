@@ -28,7 +28,7 @@ The definition-of-done list in `00_MASTER_PROMPT.md`.
 ## 1. First launch, on a machine that has never run TEXTURE
 
 - [ ] The 20 factory samples are generated on first launch, not shipped — the data
-      folder fills and the progress toast appears once.
+      folder fills and the progress toast appears once. Corrupt/missing generated pads self-repair.
 - [ ] A second launch does not regenerate them.
 - [ ] `Pad_01` (or the stored sample) is loaded and audible without any user action.
 - [ ] Deleting the data folder and relaunching regenerates cleanly.
@@ -47,8 +47,10 @@ The definition-of-done list in `00_MASTER_PROMPT.md`.
 - [ ] Click the drop zone — the file browser opens; cancelling changes nothing.
 - [ ] Drag a new sample **while a chord is sustaining** — the swap is seamless, no
       click, no dropout, held notes keep playing.
-- [ ] Load 20 different samples back to back as fast as the UI allows — no crash,
-      no leak (watch RSS in Task Manager / Activity Monitor), the last one wins.
+- [ ] Load 20 different samples back to back into one layer as fast as the UI allows — no crash,
+      no leak (watch RSS in Task Manager / Activity Monitor), the last request in that layer wins.
+- [ ] Start a Layer 1 load and Layer 2 load nearly simultaneously — both complete into the correct layer.
+- [ ] Start a load, immediately clear that layer — the late decode must not repopulate the cleared slot.
 - [ ] Delete the sample file on disk, then reload the session — parameters restore,
       the slot reports the sample is missing, no crash.
 
@@ -61,7 +63,7 @@ The definition-of-done list in `00_MASTER_PROMPT.md`.
 - [ ] Slam 0 → 100 in one flick, repeatedly: no click, no runaway, no crash.
 - [ ] At 100%: a diffused wash, still recognisably the source sample.
 - [ ] Double-click resets to 35%.
-- [ ] Shift-drag gives fine control.
+- [ ] Shift-drag is coarse/faster; Ctrl/Cmd-drag is ultra-fine/slower.
 - [ ] Ctrl/Cmd-click steps 0 / 35 / 70 / 100%.
 - [ ] Arrow keys nudge 1%; Shift+arrow 0.1%.
 - [ ] Host automation of MORPH at audio rate does not glitch.
@@ -69,7 +71,7 @@ The definition-of-done list in `00_MASTER_PROMPT.md`.
 ## 4. Envelope, reverb, gain
 
 - [ ] A, D, S, R each audibly do the right thing; tooltips show values on hover.
-- [ ] Attack at 0 does not click; release at max is ~12 s and does not cut off.
+- [ ] Attack at its 1 ms minimum does not click; release at its 8 s maximum does not cut off.
 - [ ] Reverb toggle: off is dry and the tail fades rather than truncating.
 - [ ] Gain sweep is smooth across its full range; the LED turns red above 0 dBFS.
 - [ ] Every knob: double-click resets to default.
@@ -81,8 +83,8 @@ The definition-of-done list in `00_MASTER_PROMPT.md`.
 - [ ] Free tier: LFO depth has no audible effect even if automated by the host.
 - [ ] Pro: rate and depth work; the ghost ring on MORPH follows the LFO.
 - [ ] Sync on: the division dropdown appears and the LFO locks to host tempo.
-- [ ] Sync on, transport stopped: the LFO free-runs and does not jump on start.
-- [ ] Change host tempo while playing: the LFO follows without a discontinuity.
+- [ ] Sync on: with host PPQ available, stopped phase follows the host position; without PPQ it freezes. Starting, seeking and looping re-lock to host musical position.
+- [ ] Change host tempo while playing: the synced rate follows the new tempo and remains locked to host musical position.
 - [ ] Layer 2 blend behaves the same way against the gate.
 
 ## 6. Licence (`11_FREE_VS_PRO.md`)
@@ -99,12 +101,13 @@ The definition-of-done list in `00_MASTER_PROMPT.md`.
 ## 7. Presets (`12_PRESET_SYSTEM.md`)
 
 - [ ] The 5 factory presets load and each sounds distinct.
-- [ ] Save a user preset, restart the host, load it — everything matches.
+- [ ] Save a user preset, restart the host, load it — both sample layers, both start markers and every parameter match.
 - [ ] Category filter and search in the browser return the right subsets.
 - [ ] Hand-corrupt a `.texture` file, then load it — error toast, current state
       untouched.
-- [ ] A preset whose sample is missing loads its parameters and leaves the slot empty.
+- [ ] A preset whose sample is missing loads its parameters and leaves that referenced slot empty; it must not inherit the previous preset's sample.
 - [ ] A/B compare: set A, change things, B, swap — both sides hold.
+- [ ] Save/reopen the host session after editing A and B — both snapshots and the active slot restore.
 
 ## 8. State saving (`13_STATE_SAVING.md`)
 
@@ -122,8 +125,8 @@ The definition-of-done list in `00_MASTER_PROMPT.md`.
       does not strand a voice.
 - [ ] All Notes Off (CC123) and All Sound Off (CC120) both behave — the latter also
       kills the reverb tail.
-- [ ] 16 simultaneous notes: voice count caps, stealing takes the oldest released
-      voice first and never the newest note.
+- [ ] 16 simultaneous notes: voice count caps, stealing takes the lowest-amplitude/oldest eligible voice and never exceeds 16.
+- [ ] Retrigger the same note twice, then send one Note Off — exactly one repeated-note voice remains; the second Note Off releases the other.
 - [ ] MIDI learn: right-click a control, move a CC, the mapping sticks; it survives
       a session reload; "clear mappings" clears it.
 
