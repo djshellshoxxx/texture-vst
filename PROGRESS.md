@@ -41,7 +41,7 @@ ctest --test-dir build/release -C Release --output-on-failure
 | 13 | Linux / macOS / AU / AAX build paths verified in CMake | DONE for Windows, macOS and Linux; AAX unverified (no SDK) |
 | 14 | CI: three-platform matrix in `.github/workflows/build.yml` | DONE — all four jobs green |
 | 16 | GUI gap pass (`docs/GUI_GAP_SPEC.md`, B1-B6, M1-M14) | DONE - builds clean, ctest 100%, layout checked in standalone |
-| 17 | CDL baseline reconciliation: product spec, compliance record, reduced motion | IN PROGRESS - implementation committed on `codex/spec-compliance-motion`; CI currently fails before any job steps on both this branch and its master base |
+| 17 | CDL baseline reconciliation: product spec, state hardening, controls, MIDI Learn, reduced motion | IN PROGRESS - implementation committed on `codex/spec-compliance-motion`; CI currently fails before any job steps on both this branch and its master base |
 | 15 | Fuzzer (`17_TESTING.md`) as its own `texture_fuzz` CTest entry | DONE |
 
 ## Deviations from `22_FILE_MANIFEST.md` (all deliberate, all documented in README)
@@ -49,6 +49,10 @@ ctest --test-dir build/release -C Release --output-on-failure
 - `Source/Utility/Logging.*` — the rotating `FileLogger` required by `16_ERROR_HANDLING.md`
 - `Source/Utility/MidiLearn.*` — CC mapping required by `include.md`, read from the audio thread
 - `Source/Utility/ParameterIDs.cpp` — `20_BEST_PRACTICES.md` bans executable code in headers
+- `Source/Utility/MotionPreferences.h` — shared reduced-motion preference used by otherwise independent GUI components
+- `Source/Utility/StateSchema.h` — pre-application host-state validation so malformed/future state is rejected atomically
+- `Source/Utility/ControlValueParser.h` — strict numeric entry parsing and range validation
+- `Source/Utility/ControlValueClipboard.h` — parameter-aware copy/paste validation
 - `Source/IO/FactoryContent.*` — shared by the build tool and the plugin's first-launch install
 - `Source/Effects/SecretEffect.*` — the hidden effect from `include.md`, kept out of the APVTS
 - `Source/GUI/Widgets.*`, `HelpPanel.*`, `DebugWindow.*`, `SecretPanel.*` — help, debug,
@@ -59,6 +63,12 @@ ctest --test-dir build/release -C Release --output-on-failure
 - `.github/workflows/build.yml` — the CI matrix `17_TESTING.md` asks for
 - `docs/MANUAL_TEST_PLAN.md` — the pre-release sweep, expanded from the checklist in
   `17_TESTING.md` into something an operator can actually work through
+- `docs/PRODUCT_SPEC.md`, `docs/BASELINE_COMPLIANCE.md`,
+  `docs/STATE_COMPATIBILITY_SPEC.md`, `docs/RELEASE_VALIDATION.md` — product-level
+  contracts and evidence required by the shared CDL baseline
+- `tests/test_motion_preferences.cpp`, `test_state_schema.cpp`,
+  `test_control_value_parser.cpp`, `test_control_value_clipboard.cpp`,
+  `test_midi_learn.cpp` — regression coverage for the baseline reconciliation work
 
 ## Key design decisions (do not "fix" these without reading the reason)
 
@@ -173,3 +183,18 @@ ctest --test-dir build/release -C Release --output-on-failure
   producing job steps/logs; the same no-step failure is present on base commit
   `f41cc7d`, so CI validation remains unresolved rather than recorded as a code
   failure or success.
+
+- 2026-10-06: Continued milestone 17. Added atomic host-state validation before any
+  APVTS/product state mutation, including rejection of future major versions,
+  incomplete parameter state, out-of-range sample-layer indices and duplicate layer
+  records. Added `docs/STATE_COMPATIBILITY_SPEC.md` and its regression suite.
+  Tightened direct numeric entry so malformed/out-of-range text is rejected instead
+  of silently clamped; replaced the raw-number control clipboard with a
+  parameter-aware clipboard that rejects cross-parameter/out-of-range paste.
+  Completed the MIDI Learn contract with a persistent global learn indicator,
+  explicit cancel, 15-second timeout, deterministic timeout tests and documented
+  MIDI/automation precedence. Updated Help/About to match current proprietary
+  licensing, corrected the stuck-note Reset guidance, and linked Circuit Drift Labs.
+  Reconciled the stale legacy `LICENSE.md` with the repository's proprietary
+  `LICENSE`. Current CI execution remains unavailable for new test evidence because
+  jobs fail before returning executable steps on both branch and base.
