@@ -388,16 +388,21 @@ namespace texture
         const auto requestedDepth = lfoDepthParameter != nullptr ? lfoDepthParameter->load() : 0.0f;
         morphLfo.setDepth (licenseManager.isPro() ? requestedDepth : 0.0f);
 
+        double hostBpm = 0.0;
+        double hostPpq = -1.0;
+        bool hostIsPlaying = false;
+
         if (auto* hostPlayHead = getPlayHead())
         {
             if (const auto position = hostPlayHead->getPosition())
             {
-                morphLfo.updateFromPlayHead (position->getBpm().orFallback (120.0),
-                                             position->getIsPlaying(),
-                                             position->getPpqPosition().orFallback (0.0));
+                hostBpm = position->getBpm().orFallback (0.0);
+                hostPpq = position->getPpqPosition().orFallback (-1.0);
+                hostIsPlaying = position->getIsPlaying();
             }
         }
 
+        morphLfo.updateFromPlayHead (hostBpm, hostIsPlaying, hostPpq);
         morphLfo.advanceBlock (numSamples);
         morphNow = morphLfo.applyTo (morphNow);
 
