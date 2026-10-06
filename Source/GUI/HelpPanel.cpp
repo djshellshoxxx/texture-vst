@@ -66,6 +66,7 @@ namespace texture
         text.add ("  Reset          Every control back to its default value.");
         text.add ("  Help           This page.");
         text.add ("  Gear           Settings: licence, folders, preferences, about.");
+        text.add ("                 Preferences also includes Reduce interface motion.");
         text.add ("  FREE / PRO     Your licence tier. Click to open the licence panel.");
         text.add ("");
         text.add ("SAMPLE PANEL (left)");
@@ -127,6 +128,8 @@ namespace texture
         text.add ("  Enter value...");
         text.add ("  Copy value / Paste value");
         text.add ("  Learn MIDI CC - the knob pulses teal until you move a controller");
+        text.add ("  With Reduce interface motion enabled, the learn ring stays steady");
+        text.add ("  instead of pulsing and other optional UI animation is removed.");
         text.add ("  Clear MIDI mapping");
         text.add ("CC 64 (sustain), 120 and 123 keep their standard meaning and cannot be");
         text.add ("mapped. Mappings are saved globally, not per project. The LFO division");
@@ -255,9 +258,9 @@ namespace texture
         text.add ("");
 
         text.add ("=== LICENCE ===");
-        text.add ("Plugin code: MIT. Factory samples: proprietary, licensed for use in your");
-        text.add ("own music, not for redistribution as samples. Inter is licensed under");
-        text.add ("the SIL Open Font License. JUCE is used under its own terms.");
+        text.add ("TEXTURE source code and original project materials are proprietary.");
+        text.add ("Third-party components remain under their own licences. Inter is under");
+        text.add ("the SIL Open Font License and JUCE is used under its own terms.");
         text.add ("Activation is entirely offline - TEXTURE never contacts a server and");
         text.add ("collects no analytics of any kind.");
         text.add ("");
