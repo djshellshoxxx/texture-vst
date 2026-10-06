@@ -9,7 +9,6 @@ namespace texture
 {
     namespace
     {
-        constexpr const char* homepageUrl = "https://texture-synth.com";
         constexpr const char* circuitDriftUrl = "https://djshellshoxxx.github.io/circuitdriftlabs/";
         constexpr const char* buyUrl = "https://texture-synth.com/pro";
         constexpr const char* githubUrl = "https://github.com/djshellshoxxx/texture-vst";
