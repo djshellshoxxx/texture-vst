@@ -1338,6 +1338,30 @@ namespace texture
         preset.setProperty ("category", currentPresetCategory, nullptr);
         root.appendChild (preset, nullptr);
 
+        juce::ValueTree compare (StateSchema::compareTag);
+        compare.setProperty ("active", activeCompareSlot, nullptr);
+
+        for (int slotIndex = 0; slotIndex < numCompareSlots; ++slotIndex)
+        {
+            juce::ValueTree slot (StateSchema::compareSlotTag);
+            slot.setProperty ("index", slotIndex, nullptr);
+            const auto& snapshot = compareSlots[static_cast<size_t> (slotIndex)];
+
+            for (const auto* id : params::allIDs)
+            {
+                const juce::Identifier identifier (id);
+                slot.setProperty (identifier,
+                                  snapshot.hasProperty (identifier)
+                                      ? snapshot.getProperty (identifier)
+                                      : getParameterValue (id, params::defaultValueFor (id)),
+                                  nullptr);
+            }
+
+            compare.appendChild (slot, nullptr);
+        }
+
+        root.appendChild (compare, nullptr);
+
         const auto secret = getSecretSettings();
         juce::ValueTree secretState (StateSchema::secretTag);
         secretState.setProperty ("bits", secret.bitDepth, nullptr);
@@ -1381,6 +1405,43 @@ namespace texture
         {
             currentPresetName = preset.getProperty ("name", "").toString();
             currentPresetCategory = preset.getProperty ("category", "Cinematic").toString();
+        }
+
+        if (const auto compare = root.getChildWithName (StateSchema::compareTag); compare.isValid())
+        {
+            activeCompareSlot = juce::jlimit (0, numCompareSlots - 1,
+                                              static_cast<int> (compare.getProperty ("active", 0)));
+
+            for (const auto& child : compare)
+            {
+                if (child.getType() != StateSchema::compareSlotTag)
+                    continue;
+
+                const auto slotIndex = juce::jlimit (
+                    0, numCompareSlots - 1, static_cast<int> (child.getProperty ("index", 0)));
+
+                juce::ValueTree snapshot ("Snapshot");
+
+                for (const auto* id : params::allIDs)
+                {
+                    const juce::Identifier identifier (id);
+                    snapshot.setProperty (identifier,
+                                          child.hasProperty (identifier)
+                                              ? child.getProperty (identifier)
+                                              : getParameterValue (id, params::defaultValueFor (id)),
+                                          nullptr);
+                }
+
+                compareSlots[static_cast<size_t> (slotIndex)] = std::move (snapshot);
+            }
+        }
+        else
+        {
+            activeCompareSlot = 0;
+            const auto snapshot = captureParameterTree();
+
+            for (auto& slot : compareSlots)
+                slot = snapshot.createCopy();
         }
 
         if (const auto secretState = root.getChildWithName (StateSchema::secretTag); secretState.isValid())
