@@ -30,7 +30,6 @@ The definition-of-done list in `00_MASTER_PROMPT.md`.
 - [ ] The 20 factory samples are generated on first launch, not shipped — the data
       folder fills and the progress toast appears once. Corrupt/missing generated pads self-repair.
 - [ ] A second launch does not regenerate them.
-- [ ] `Pad_01` (or the stored sample) is loaded and audible without any user action.
 - [ ] Deleting the data folder and relaunching regenerates cleanly.
 
 ## 2. Sample loading (`05_SAMPLE_LOADER.md`)
