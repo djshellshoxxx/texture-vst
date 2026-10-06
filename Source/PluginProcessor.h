@@ -21,6 +21,7 @@
 #include <array>
 #include <atomic>
 #include <memory>
+#include <vector>
 
 namespace texture
 {
@@ -248,10 +249,15 @@ namespace texture
                 live.store (messageThreadCopy.get(), std::memory_order_release);
             }
 
+            struct RetiredSample
+            {
+                SampleBufferPtr buffer;
+                juce::uint64 retiredAtBlock { 0 };
+            };
+
             std::atomic<const SampleBuffer*> live { nullptr };
             SampleBufferPtr messageThreadCopy;
-            SampleBufferPtr retired;
-            juce::uint64 retiredAtBlock { 0 };
+            std::vector<RetiredSample> retired;
             juce::File file;
             juce::String originalName;
         };
