@@ -183,7 +183,7 @@ namespace texture
 
         sampleLoader.setCallback ([this] (const SampleLoader::LoadResult& result)
         {
-            onSampleLoaded (result, activeLayer);
+            onSampleLoaded (result, result.requestTag);
         });
 
         cacheParameterPointers();
@@ -341,12 +341,7 @@ namespace texture
             const auto file = layers[static_cast<size_t> (i)].file;
 
             if (file.existsAsFile())
-            {
-                const auto previousLayer = activeLayer;
-                activeLayer = i;
-                sampleLoader.loadAsync (file);
-                activeLayer = previousLayer;
-            }
+                sampleLoader.loadAsync (file, i);
         }
     }
 
@@ -784,7 +779,7 @@ namespace texture
         activeLayer = layer;
         setSampleStart (layer, 0.0f);   // a new sample starts from its beginning
         logInfo ("loader", "Loading " + file.getFullPathName() + " into layer " + juce::String (layer + 1));
-        sampleLoader.loadAsync (file);
+        sampleLoader.loadAsync (file, layer);
     }
 
     void TextureAudioProcessor::releaseRetiredIfSafe (Layer& layer)
@@ -976,7 +971,7 @@ namespace texture
         if (sampleFile.existsAsFile())
         {
             activeLayer = 0;
-            sampleLoader.loadAsync (sampleFile);
+            sampleLoader.loadAsync (sampleFile, 0);
         }
         else if (data.samplePath.isNotEmpty())
         {
@@ -1356,8 +1351,7 @@ namespace texture
                 }
             }
 
-            activeLayer = index;
-            sampleLoader.loadAsync (file);
+            sampleLoader.loadAsync (file, index);
         }
 
         presetDirty = false;
