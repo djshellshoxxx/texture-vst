@@ -70,6 +70,7 @@ namespace texture::tests
             testNoAllocationsInProcessBlock();
             testNanInputProducesNoNanOutput();
             testSustainPedal();
+            testRepeatedNoteOffIsOneForOne();
             testAllSoundOff();
             testVariableBlockSizes();
             testMorphTargetTable();
@@ -387,6 +388,33 @@ namespace texture::tests
             renderAndMeasure (engine, sample, targets, 400);
 
             expectEquals (engine.getActiveVoiceCount(), 0, "releasing the pedal should free the voice");
+        }
+
+
+        void testRepeatedNoteOffIsOneForOne()
+        {
+            beginTest ("each Note Off releases only one repeated-note voice");
+
+            GranularEngine engine;
+            engine.prepare (testRate, blockSize);
+            engine.setAdsrParameters (1.0f, 5.0f, 1.0f, 15.0f);
+
+            const auto sample = makeTestSample();
+            const auto targets = deriveMorphTargets (0.2f);
+
+            engine.noteOn (1, 60, 1.0f);
+            engine.noteOn (1, 60, 0.8f);
+            renderAndMeasure (engine, sample, targets, 4);
+            expectEquals (engine.getActiveVoiceCount(), 2);
+
+            engine.noteOff (1, 60);
+            renderAndMeasure (engine, sample, targets, 200);
+            expectEquals (engine.getActiveVoiceCount(), 1,
+                          "one Note Off must leave the retriggered voice sounding");
+
+            engine.noteOff (1, 60);
+            renderAndMeasure (engine, sample, targets, 200);
+            expectEquals (engine.getActiveVoiceCount(), 0);
         }
 
         void testAllSoundOff()
