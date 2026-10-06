@@ -35,6 +35,7 @@ namespace texture
         for (auto& blocker : dcBlockers)
             blocker.reset();
 
+        tailEnergy.prepare (preparedSampleRate, 1.5);
         tailEnergy.reset();
         lastBlockPeak = 0.0f;
         isPrepared = true;
@@ -159,6 +160,6 @@ namespace texture
         }
 
         lastBlockPeak = peak;
-        tailEnergy.push (peak);
+        tailEnergy.push (peak, numSamples);
     }
 }
