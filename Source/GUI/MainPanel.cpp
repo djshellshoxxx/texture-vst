@@ -930,25 +930,25 @@ namespace texture
         const auto currentName = processor.getCurrentPresetName();
         const auto currentFile = processor.getCurrentPresetFile();
 
+        juce::String currentCategory = processor.getCurrentPresetCategory();
+        juce::StringArray currentTags;
+
+        for (const auto& info : processor.getPresetManager().getAllPresets())
+        {
+            if (info.file == currentFile)
+            {
+                currentCategory = info.category;
+                currentTags = info.tags;
+                break;
+            }
+        }
+
         // Ctrl+S writes only to the exact user preset that was loaded/saved. Never
         // resolve by display name: duplicate names can exist in different categories.
         if (! forceSaveAs && currentFile.existsAsFile()
             && ! currentFile.isAChildOf (PresetManager::getFactoryPresetDirectory()))
         {
-            juce::String category = processor.getCurrentPresetCategory();
-            juce::StringArray tags;
-
-            for (const auto& info : processor.getPresetManager().getAllPresets())
-            {
-                if (info.file == currentFile)
-                {
-                    category = info.category;
-                    tags = info.tags;
-                    break;
-                }
-            }
-
-            processor.savePreset (currentFile, currentName, category, tags);
+            processor.savePreset (currentFile, currentName, currentCategory, currentTags);
             return;
         }
 
@@ -958,7 +958,14 @@ namespace texture
 
         window->addTextEditor ("name", currentName == "Untitled" ? "My Pad" : currentName, "Name");
         window->addComboBox ("category", PresetManager::getCategories(), "Category");
-        window->addTextEditor ("tags", processor.getCurrentPresetCategory().toLowerCase(), "Tags (comma separated)");
+        window->addTextEditor ("tags", currentTags.joinIntoString (", "), "Tags (comma separated)");
+
+        if (auto* categoryBox = window->getComboBoxComponent ("category"))
+        {
+            const auto categories = PresetManager::getCategories();
+            const auto selected = categories.indexOf (currentCategory);
+            categoryBox->setSelectedItemIndex (selected >= 0 ? selected : 0, juce::dontSendNotification);
+        }
         window->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
         window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
 
