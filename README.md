@@ -97,6 +97,7 @@ cmake --build build/release --config Release
 | `TEXTURE_BUILD_CLAP` | `OFF` | Also build a CLAP (fetches `clap-juce-extensions`) |
 | `TEXTURE_ENABLE_ASAN` | `OFF` | AddressSanitizer + UBSan on clang/gcc. Never ship one. |
 | `TEXTURE_WARNINGS_AS_ERRORS` | `ON` | `/WX` or `-Werror` on our own code only |
+| `TEXTURE_LICENSE_SECRET` | *(development fallback)* | Private offline Pro validation secret for release builds |
 | `TEXTURE_CODESIGN_IDENTITY` | *(empty)* | Developer ID for macOS release builds |
 | `TEXTURE_AAX_SDK_PATH` | *(empty)* | Path to Avid's AAX SDK; adds the AAX target |
 
@@ -127,8 +128,8 @@ bundling them would blow the 15 MB installer budget many times over.
   factory samples folder so the bundled presets resolve.
 
 Both paths share `Source/IO/FactoryContent.cpp`, so the two sets are identical.
-Existing files are never overwritten — drop real samples in under the same names
-and they survive every rebuild.
+Valid generated factory WAVs are preserved. Missing or structurally invalid expected
+factory files are regenerated automatically so a partial/corrupt install self-repairs.
 
 ---
 
@@ -247,7 +248,7 @@ screens, no time limit. Pro is a genuine upgrade, not a nag remover.
 |---|---|---|
 | Granular engine, MORPH, ADSR, reverb, gain | ✅ | ✅ |
 | Drag and drop any sample | ✅ | ✅ |
-| Factory samples | 20 | 500+ |
+| Factory samples | 20 | 20 |
 | Session recall | ✅ | ✅ |
 | Preset browser | — | ✅ |
 | Dual-layer | — | ✅ |
@@ -263,9 +264,8 @@ Activation is offline: the key is a base32 HMAC-SHA256 of your email. There is n
 server, no phone-home, and no obfuscation — the check exists to keep honest users
 honest.
 
-> **Before release:** replace `PRO_LICENSE_SECRET` in
-> `Source/License/LicenseManager.cpp`. Every build sharing that placeholder shares
-> its keys.
+> **Before release:** configure a private `TEXTURE_LICENSE_SECRET` in CMake. The
+> development fallback is intentionally not suitable for a release build.
 
 ---
 
