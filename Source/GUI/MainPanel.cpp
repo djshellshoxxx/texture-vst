@@ -928,12 +928,27 @@ namespace texture
     void MainPanel::saveCurrentPreset (bool forceSaveAs)
     {
         const auto currentName = processor.getCurrentPresetName();
-        const auto existing = processor.getPresetManager().findByName (currentName);
+        const auto currentFile = processor.getCurrentPresetFile();
 
-        // Ctrl+S over an existing user preset writes straight through.
-        if (! forceSaveAs && existing != nullptr && ! existing->isFactory)
+        // Ctrl+S writes only to the exact user preset that was loaded/saved. Never
+        // resolve by display name: duplicate names can exist in different categories.
+        if (! forceSaveAs && currentFile.existsAsFile()
+            && ! currentFile.isAChildOf (PresetManager::getFactoryPresetDirectory()))
         {
-            processor.savePreset (existing->file, currentName, existing->category, existing->tags);
+            juce::String category = processor.getCurrentPresetCategory();
+            juce::StringArray tags;
+
+            for (const auto& info : processor.getPresetManager().getAllPresets())
+            {
+                if (info.file == currentFile)
+                {
+                    category = info.category;
+                    tags = info.tags;
+                    break;
+                }
+            }
+
+            processor.savePreset (currentFile, currentName, category, tags);
             return;
         }
 
