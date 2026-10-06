@@ -2,6 +2,7 @@
 
 #include "../Source/IO/OfflineRenderTimeline.h"
 #include "../Source/IO/OfflinePatchMath.h"
+#include "../Source/IO/WavExporter.h"
 
 #include <cmath>
 
@@ -35,6 +36,52 @@ namespace texture::tests
 
             beginTest ("events outside the current block do not shorten it");
             expectEquals (Timeline::nextBoundary (0, 64, events), static_cast<juce::int64> (64));
+
+
+            beginTest ("real exporter writes a readable stereo WAV");
+
+            TemporaryDirectory temp;
+            const std::array<SampleBufferPtr, 2> samples {
+                makeTestSample (48000.0, 0.5, 220.0, 2),
+                makeTestSample (48000.0, 0.5, 330.0, 2)
+            };
+
+            WavExporter::RenderSettings settings;
+            settings.morph = 0.5f;
+            settings.attackMs = 5.0f;
+            settings.decayMs = 20.0f;
+            settings.sustain = 0.8f;
+            settings.releaseMs = 30.0f;
+            settings.layerBlend = 0.5f;
+            settings.sampleStart = { 0.1f, 0.2f };
+            settings.lfoRateHz = 0.5f;
+            settings.lfoDepth = 0.2f;
+
+            WavExporter::Options options;
+            options.sampleRate = 48000.0;
+            options.bitDepth = 24;
+            options.holdSeconds = 0.1;
+            options.tailSeconds = 0.1;
+            options.gapSeconds = 0.05;
+
+            const auto destination = temp.child ("render.wav");
+            const auto result = WavExporter::render (samples, settings, options, destination);
+
+            expect (result.succeeded, result.message);
+            expect (destination.existsAsFile());
+            expectGreaterThan (static_cast<int> (destination.getSize()), 44);
+
+            juce::AudioFormatManager formats;
+            formats.registerBasicFormats();
+            std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (destination));
+            expect (reader != nullptr);
+
+            if (reader != nullptr)
+            {
+                expectEquals (static_cast<int> (reader->numChannels), 2);
+                expectWithinAbsoluteError (reader->sampleRate, 48000.0, 0.001);
+                expect (reader->lengthInSamples > 0);
+            }
 
             beginTest ("dual-layer export uses the same normalized blend law as live playback");
             const auto dry = OfflinePatchMath::layerGains (0.0f);
