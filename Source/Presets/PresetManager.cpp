@@ -474,7 +474,22 @@ namespace texture
         juce::DynamicObject::Ptr parameterObject (new juce::DynamicObject());
 
         for (int i = 0; i < data.parameters.size(); ++i)
-            parameterObject->setProperty (data.parameters.getName (i), data.parameters.getValueAt (i));
+        {
+            const auto name = data.parameters.getName (i);
+            const auto id = name.toString();
+            const auto& value = data.parameters.getValueAt (i);
+
+            if (! isKnownParameterID (id))
+                continue;
+
+            if (! parameterValueIsValid (id, value))
+            {
+                errorMessage = "Preset parameter '" + id + "' is invalid or out of range.";
+                return Status::invalidData;
+            }
+
+            parameterObject->setProperty (name, value);
+        }
 
         root->setProperty ("parameters", juce::var (parameterObject.get()));
 
