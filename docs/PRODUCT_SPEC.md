@@ -55,8 +55,9 @@ TEXTURE uses one shared interaction contract for rotary controls:
 - Ctrl/Cmd-drag is ultra-fine/slower;
 - double-click resets to the documented default;
 - right-click exposes the actions appropriate to the control;
-- scalar parameter controls provide strict numeric entry, copy/paste and MIDI Learn;
+- scalar parameter controls provide strict numeric entry, parameter-aware copy/paste and MIDI Learn;
 - malformed or out-of-range numeric entry is rejected and must not be silently clamped;
+- copied scalar values retain their parameter identity; Paste is enabled only for the same parameter ID and only while the value remains inside that control's valid range;
 - hidden GRIT controls provide reset and strict numeric entry but no MIDI Learn because they are deliberately outside host automation.
 
 ## 5. MIDI and automation contract
