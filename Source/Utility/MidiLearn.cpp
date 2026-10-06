@@ -112,7 +112,10 @@ namespace texture
         if (! learning.load (std::memory_order_acquire) || isReservedController (ccNumber))
             return;
 
-        pendingController.store (ccNumber, std::memory_order_release);
+        int expected = -1;
+        pendingController.compare_exchange_strong (expected, ccNumber,
+                                                   std::memory_order_acq_rel,
+                                                   std::memory_order_relaxed);
     }
 
     bool MidiLearn::applyPendingBinding()
