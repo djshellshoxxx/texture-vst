@@ -1178,6 +1178,9 @@ namespace texture
             morphKnob->setModulatedValue (morph);
         }
 
+        if (processor.getMidiLearn().cancelLearningIfTimedOut())
+            processor.postToast ("MIDI learn timed out after 15 seconds.", SampleLoader::Severity::info);
+
         // Pulse whichever knob is waiting for a MIDI CC.
         for (auto* knob : { static_cast<ParameterKnob*> (morphKnob.get()), attackKnob.get(), decayKnob.get(),
                             sustainKnob.get(), releaseKnob.get(), gainKnob.get(), lfoRateKnob.get(),
