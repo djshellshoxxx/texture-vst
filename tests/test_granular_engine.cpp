@@ -76,6 +76,7 @@ namespace texture::tests
             testLfoSummation();
             testLfoTransportSync();
             testEffectsChainStaysFinite();
+            testReverbBypassSmoothing();
         }
 
     private:
@@ -567,6 +568,45 @@ namespace texture::tests
 
             beginTest ("invalid tempo keeps the last valid tempo");
             expectWithinAbsoluteError (lfo.getEffectiveRateHz(), 2.0f, 1.0e-4f);
+        }
+
+
+        void testReverbBypassSmoothing()
+        {
+            beginTest ("reverb bypass crossfades instead of switching in one sample");
+
+            Reverb reverb;
+            reverb.prepare (testRate, blockSize, 2);
+            reverb.setWetLevel (0.65f);
+            reverb.setEnabled (true);
+
+            juce::AudioBuffer<float> buffer (2, blockSize);
+
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < blockSize; ++i)
+                    buffer.setSample (ch, i, 0.25f);
+
+            for (int i = 0; i < 16; ++i)
+                reverb.process (buffer, 0, blockSize);
+
+            expectGreaterThan (reverb.getEnableMix(), 0.99f);
+
+            reverb.setEnabled (false);
+            expectGreaterThan (reverb.getEnableMix(), 0.99f,
+                               "disabling must set a target, not jump the current mix");
+
+            buffer.clear();
+            reverb.process (buffer, 0, blockSize);
+            expect (reverb.getEnableMix() > 0.0f && reverb.getEnableMix() < 1.0f,
+                    "first bypass block should be inside the crossfade");
+
+            for (int i = 0; i < 32; ++i)
+            {
+                buffer.clear();
+                reverb.process (buffer, 0, blockSize);
+            }
+
+            expectWithinAbsoluteError (reverb.getEnableMix(), 0.0f, 1.0e-4f);
         }
 
         void testEffectsChainStaysFinite()
