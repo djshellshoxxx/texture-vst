@@ -48,6 +48,7 @@ namespace texture::tests
             testSchemaTooNew();
             testInvalidSchemaRejected();
             testInvalidParameterDataRejected();
+            testInvalidPresetCannotBeSaved();
             testOversizedPresetRejected();
             testMissingSampleStillLoadsParameters();
             testSamplePathResolution();
@@ -223,6 +224,33 @@ namespace texture::tests
             expectWithinAbsoluteError (loaded.getParameter (params::morph, 0.0f), 0.25f, 0.0001f);
             expect (loaded.parameters.getVarPointer ("future_hint") == nullptr,
                     "unknown fields must not enter the active parameter set");
+        }
+
+
+        void testInvalidPresetCannotBeSaved()
+        {
+            beginTest ("save rejects invalid known parameter values");
+
+            TemporaryDirectory temp;
+            PresetManager presets (nullptr);
+            auto data = makeFullPreset ("Bad Save", "Ambient");
+            data.setParameter (params::morph, 2.0f);
+
+            juce::String error;
+            const auto file = temp.child ("bad_save.texture");
+
+            expectEquals (presets.save (file, data, error), PresetManager::Status::invalidData);
+            expect (error.containsIgnoreCase ("morph"));
+            expect (! file.existsAsFile(), "invalid preset must not be written");
+
+            beginTest ("unknown in-memory parameter IDs are not serialized");
+
+            data = makeFullPreset ("Forward Safe", "Ambient");
+            data.parameters.set ("future_hint", 42.0);
+
+            expectEquals (presets.save (file, data, error), PresetManager::Status::ok);
+            const auto text = file.loadFileAsString();
+            expect (! text.contains ("future_hint"));
         }
 
         void testOversizedPresetRejected()
