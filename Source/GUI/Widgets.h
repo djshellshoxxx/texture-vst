@@ -38,11 +38,6 @@ namespace texture
                              TextureAudioProcessor& processor,
                              const juce::String& parameterID,
                              std::function<void()> onChanged);
-
-        /** The clipboard shared by copy/paste value across all controls. */
-        static void setClipboardValue (double value);
-        static double getClipboardValue();
-        static bool hasClipboardValue();
     };
 
     /** A rotary bound to one APVTS parameter, with the house drag behaviour.
