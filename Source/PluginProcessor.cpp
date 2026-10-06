@@ -19,8 +19,8 @@ namespace texture
         /** Morph is ramped over this long so a sweep never zips (06_MORPH_KNOB_BEHAVIOUR.md). */
         constexpr double morphSmoothingSeconds = 0.02;
 
-        /** Peak meter fall time for the header LED. */
-        constexpr float peakDecayPerBlock = 0.82f;
+        /** Header LED reaches -60 dB after this much silence, independent of block size. */
+        constexpr double peakDecayToMinusSixtySeconds = 0.37;
 
         juce::String pluginVersionString()
         {
@@ -551,7 +551,11 @@ namespace texture
         outputPeak.push (peak);
 
         const auto previousSmoothed = smoothedPeak.load (std::memory_order_relaxed);
-        smoothedPeak.store (juce::jmax (peak, previousSmoothed * peakDecayPerBlock), std::memory_order_relaxed);
+        const auto peakDecay = static_cast<float> (dsp::decayCoefficient (
+            static_cast<double> (numSamples) / currentSampleRate,
+            peakDecayToMinusSixtySeconds,
+            0.001));
+        smoothedPeak.store (juce::jmax (peak, previousSmoothed * peakDecay), std::memory_order_relaxed);
 
         const auto elapsedSeconds = juce::Time::highResolutionTicksToSeconds (
             juce::Time::getHighResolutionTicks() - blockStartTicks);
