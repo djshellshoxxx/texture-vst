@@ -7,7 +7,7 @@
 | Baseline area | Status | Evidence / remaining work |
 |---|---|---|
 | Product profile and compliance record | Implemented | `docs/PRODUCT_SPEC.md` and this file. |
-| Predictable controls / parameter contract | Implemented on development branch | Stable IDs in `ParameterIDs.*`; APVTS attachments; documented defaults/ranges; contextual reset/value/MIDI actions; strict numeric parser rejects malformed/out-of-range direct entry instead of silently clamping. |
+| Predictable controls / parameter contract | Implemented on development branch | Stable IDs in `ParameterIDs.*`; APVTS attachments; documented defaults/ranges; contextual reset/value/MIDI actions; strict numeric parser rejects malformed/out-of-range direct entry; parameter-aware clipboard rejects cross-parameter and out-of-range paste instead of silently clamping. |
 | Accessibility / keyboard / tooltips | Implemented | Focus order, accessible titles/descriptions, tooltip preference, keyboard shortcuts and help. |
 | Reduced motion | Implemented on development branch | Preferences toggle disables nonessential control easing, pulsing, panel sliding, data-stream glide, icon flash and toast fades while leaving meters/state feedback active. |
 | Host/device responsibility | Implemented | Plug-in does not open host devices; standalone-only audio/MIDI setup is gated by wrapper type. |
