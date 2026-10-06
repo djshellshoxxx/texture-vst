@@ -2,6 +2,7 @@
 
 #include "../PluginProcessor.h"
 #include "../Utility/MotionPreferences.h"
+#include "../Utility/ControlValueParser.h"
 
 #include <cmath>
 
@@ -57,11 +58,30 @@ namespace texture
                 [safeSlider, editorWindow] (int choice)
                 {
                     std::unique_ptr<juce::AlertWindow> owned (editorWindow);
-                    const auto text = editorWindow->getTextEditorContents ("value").trim();
+                    if (choice != 1 || safeSlider == nullptr)
+                        return;
 
-                    // Ignore text with no digits rather than silently setting 0.
-                    if (choice == 1 && safeSlider != nullptr && text.containsAnyOf ("0123456789"))
-                        safeSlider->setValue (text.getDoubleValue(), juce::sendNotificationSync);
+                    const auto text = editorWindow->getTextEditorContents ("value");
+                    const auto parsed = ControlValueParser::parse (text,
+                                                                   safeSlider->getMinimum(),
+                                                                   safeSlider->getMaximum());
+
+                    if (! parsed.has_value())
+                    {
+                        juce::AlertWindow::showMessageBoxAsync (
+                            juce::MessageBoxIconType::WarningIcon,
+                            "Invalid value",
+                            "Enter a numeric value from "
+                                + juce::String (safeSlider->getMinimum(), 3)
+                                + " to "
+                                + juce::String (safeSlider->getMaximum(), 3)
+                                + ".",
+                            "OK",
+                            safeSlider.getComponent());
+                        return;
+                    }
+
+                    safeSlider->setValue (*parsed, juce::sendNotificationSync);
                 }), false);
         }
 
