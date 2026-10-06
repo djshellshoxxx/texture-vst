@@ -235,8 +235,8 @@ namespace texture
             "A drag-and-drop granular pad synthesizer.\n\n"
             "Drop a sample. Play a chord. It sounds finished.\n\n"
             "Built with JUCE. Interface typeface: Inter (SIL Open Font License).\n"
-            "Plugin code is MIT licensed; factory samples are licensed for use in your "
-            "own music but not for redistribution as samples.\n\n"
+            "TEXTURE source code and original project materials are proprietary. "
+            "Third-party components remain under their own licences.\n\n"
             "TEXTURE never contacts a server. Licence validation is entirely offline and "
             "no analytics, telemetry or crash data leave your machine.\n\n"
             "Support: " + juce::String (supportEmail),
