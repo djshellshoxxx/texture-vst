@@ -1025,6 +1025,7 @@ namespace texture
 
         currentPresetName = data.name;
         currentPresetCategory = data.category;
+        currentPresetFile = file;
         presetDirty = false;
 
         enforceTierLimits();
@@ -1086,6 +1087,7 @@ namespace texture
 
         currentPresetName = name;
         currentPresetCategory = category;
+        currentPresetFile = file;
         presetDirty = false;
 
         presetManager.refresh();
@@ -1174,6 +1176,7 @@ namespace texture
 
         currentPresetName.clear();
         currentPresetCategory = "Cinematic";
+        currentPresetFile = {};
         presetDirty = false;
 
         Logging::clearLog();
@@ -1371,6 +1374,8 @@ namespace texture
         apvts.replaceState (parameters.getChild (0).createCopy());
 
         const auto preset = root.getChildWithName (StateSchema::presetTag);
+
+        currentPresetFile = {};
 
         if (preset.isValid())
         {
