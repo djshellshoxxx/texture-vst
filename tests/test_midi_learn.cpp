@@ -5,10 +5,10 @@
 
 namespace texture::tests
 {
-    class MidiLearnTests : public juce::UnitTest
+    class MidiLearnTimeoutTests : public juce::UnitTest
     {
     public:
-        MidiLearnTests()
+        MidiLearnTimeoutTests()
             : juce::UnitTest ("MIDI learn", "texture") {}
 
         void runTest() override
@@ -46,5 +46,5 @@ namespace texture::tests
         }
     };
 
-    static MidiLearnTests midiLearnTests;
+    static MidiLearnTimeoutTests midiLearnTimeoutTests;
 }
