@@ -47,7 +47,7 @@ namespace texture
 
     /** A rotary bound to one APVTS parameter, with the house drag behaviour.
 
-        Vertical drag adjusts, Shift is 10x finer, Ctrl/Cmd is 100x finer, double
+        Vertical drag adjusts, Shift is coarse, Ctrl/Cmd is ultra-fine, double
         click resets, right click opens the shared context menu (09_GUI_SPEC.md).
     */
     class ParameterKnob : public juce::Slider,
