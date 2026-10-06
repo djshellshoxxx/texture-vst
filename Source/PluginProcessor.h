@@ -363,6 +363,8 @@ namespace texture
         bool presetDirty { false };
         std::atomic<bool> presetDirtyPending { false };
         std::atomic<bool> suppressPresetDirtyTracking { false };
+        std::atomic<unsigned int> deferredSampleNotifications { 0 };
+        std::atomic<bool> deferredPluginStateNotification { false };
 
         // --- A/B --------------------------------------------------------------
         std::array<juce::ValueTree, numCompareSlots> compareSlots;
