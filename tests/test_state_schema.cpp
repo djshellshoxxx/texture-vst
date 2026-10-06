@@ -60,6 +60,32 @@ namespace texture::tests
             expectEquals (StateSchema::validate (duplicate).status,
                           StateSchema::Status::duplicateSampleIndex);
 
+            beginTest ("sample start positions must be finite and normalized");
+            auto badStart = makeRoot ("1.0.0", true);
+            juce::ValueTree sampleWithBadStart (StateSchema::sampleTag);
+            sampleWithBadStart.setProperty ("index", 0, nullptr);
+            sampleWithBadStart.setProperty ("start", 1.5, nullptr);
+            badStart.appendChild (sampleWithBadStart, nullptr);
+            expectEquals (StateSchema::validate (badStart).status,
+                          StateSchema::Status::invalidSampleData);
+
+            beginTest ("duplicate singleton metadata records are rejected");
+            auto duplicateGrit = makeRoot ("1.0.0", true);
+            duplicateGrit.appendChild (juce::ValueTree (StateSchema::secretTag), nullptr);
+            duplicateGrit.appendChild (juce::ValueTree (StateSchema::secretTag), nullptr);
+            expectEquals (StateSchema::validate (duplicateGrit).status,
+                          StateSchema::Status::duplicateSingleton);
+
+            beginTest ("GRIT numeric state must remain finite and in range");
+            auto badGrit = makeRoot ("1.0.0", true);
+            juce::ValueTree grit (StateSchema::secretTag);
+            grit.setProperty ("bits", 99.0, nullptr);
+            grit.setProperty ("downsample", 4.0, nullptr);
+            grit.setProperty ("mix", 0.5, nullptr);
+            badGrit.appendChild (grit, nullptr);
+            expectEquals (StateSchema::validate (badGrit).status,
+                          StateSchema::Status::invalidSecretData);
+
             beginTest ("empty parameter wrapper is rejected atomically");
             juce::ValueTree emptyWrapper (StateSchema::rootTag);
             emptyWrapper.setProperty (StateSchema::versionAttribute, "1.0.0", nullptr);
