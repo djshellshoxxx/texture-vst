@@ -77,6 +77,7 @@ namespace texture::tests
             testLfoTransportSync();
             testEffectsChainStaysFinite();
             testReverbBypassSmoothing();
+            testOutputGainInitialisesAtUnity();
         }
 
     private:
@@ -607,6 +608,21 @@ namespace texture::tests
             }
 
             expectWithinAbsoluteError (reverb.getEnableMix(), 0.0f, 1.0e-4f);
+        }
+
+
+        void testOutputGainInitialisesAtUnity()
+        {
+            beginTest ("default output gain starts at unity without an unintended startup fade");
+
+            EffectsChain effects;
+            effects.prepare (testRate, blockSize, 2);
+
+            expectWithinAbsoluteError (effects.getCurrentOutputGain(), 1.0f, 1.0e-6f);
+
+            effects.setOutputGainDb (-6.0f);
+            expectWithinAbsoluteError (effects.getCurrentOutputGain(), 1.0f, 1.0e-6f,
+                                       "gain changes should ramp from the established current value");
         }
 
         void testEffectsChainStaysFinite()
