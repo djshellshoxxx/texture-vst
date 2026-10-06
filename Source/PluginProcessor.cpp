@@ -936,6 +936,13 @@ namespace texture
                                                                    : juce::String ("User");
         data.samplePath = presetManager.makeStorablePath (getSampleFileForLayer (0));
 
+        for (int layer = 0; layer < numLayers; ++layer)
+        {
+            data.samplePaths[static_cast<size_t> (layer)]
+                = presetManager.makeStorablePath (getSampleFileForLayer (layer));
+            data.sampleStarts[static_cast<size_t> (layer)] = getSampleStart (layer);
+        }
+
         for (const auto* id : params::allIDs)
             data.setParameter (id, getParameterValue (id, params::defaultValueFor (id)));
 
@@ -966,18 +973,35 @@ namespace texture
 
         enforceTierLimits();
 
-        const auto sampleFile = presetManager.resolveSamplePath (data.samplePath);
+        // Preset sample state is authoritative. Clear both layers first so an
+        // empty/missing reference cannot accidentally inherit audio from the prior patch.
+        for (int layerIndex = 0; layerIndex < numLayers; ++layerIndex)
+        {
+            const auto index = static_cast<size_t> (layerIndex);
+            auto& layer = layers[index];
 
-        if (sampleFile.existsAsFile())
-        {
-            activeLayer = 0;
-            sampleLoader.loadAsync (sampleFile, 0);
-        }
-        else if (data.samplePath.isNotEmpty())
-        {
-            postToast ("Preset loaded but sample '"
-                       + data.samplePath.fromLastOccurrenceOf ("/", false, false) + "' is missing.",
-                       SampleLoader::Severity::warning);
+            publishSample (layer, SampleBuffer::makeEmpty());
+            layer.file = {};
+            layer.originalName.clear();
+            engines[index].allSoundOff();
+            setSampleStart (layerIndex, data.sampleStarts[index]);
+
+            const auto& storedPath = data.samplePaths[index];
+            const auto sampleFile = presetManager.resolveSamplePath (storedPath);
+
+            if (sampleFile.existsAsFile())
+            {
+                sampleLoader.loadAsync (sampleFile, layerIndex);
+            }
+            else if (storedPath.isNotEmpty())
+            {
+                postToast ("Preset loaded but sample '"
+                               + storedPath.fromLastOccurrenceOf ("/", false, false)
+                               + "' is missing in layer " + juce::String (layerIndex + 1) + ".",
+                           SampleLoader::Severity::warning);
+            }
+
+            notifyListeners (&Listener::sampleChanged, layerIndex);
         }
 
         logInfo ("presets", "Loaded preset " + data.name);
