@@ -150,8 +150,11 @@ namespace texture
         if (slot < 0)
             return;
 
-        // One CC per parameter: drop any previous binding for this parameter.
-        clearMappingFor (parameterID);
+        // One CC per parameter: drop any previous binding for this parameter
+        // in memory, then persist the finished mapping table once.
+        for (auto& entry : table)
+            if (entry.load (std::memory_order_relaxed) == slot)
+                entry.store (-1, std::memory_order_release);
 
         table[static_cast<size_t> (ccNumber)].store (slot, std::memory_order_release);
         save();
