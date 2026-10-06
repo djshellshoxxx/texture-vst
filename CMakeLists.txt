@@ -147,6 +147,8 @@ set(TEXTURE_SOURCES
     Source/IO/SampleLoader.h
     Source/IO/WavExporter.cpp
     Source/IO/WavExporter.h
+    Source/IO/OfflineRenderTimeline.h
+    Source/IO/OfflinePatchMath.h
 
     Source/Presets/PresetManager.cpp
     Source/Presets/PresetManager.h
@@ -184,6 +186,10 @@ set(TEXTURE_SOURCES
     Source/Utility/Logging.h
     Source/Utility/MidiLearn.cpp
     Source/Utility/MidiLearn.h
+    Source/Utility/MotionPreferences.h
+    Source/Utility/StateSchema.h
+    Source/Utility/ControlValueParser.h
+    Source/Utility/ControlValueClipboard.h
     Source/Utility/ParameterIDs.cpp
     Source/Utility/ParameterIDs.h)
 
