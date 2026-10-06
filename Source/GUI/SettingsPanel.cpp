@@ -1,6 +1,7 @@
 #include "SettingsPanel.h"
 
 #include "../PluginProcessor.h"
+#include "../Utility/MotionPreferences.h"
 
 #include <initializer_list>
 
@@ -15,6 +16,7 @@ namespace texture
         constexpr const char* supportEmail = "support@texture-synth.com";
 
         constexpr const char* tooltipsKey = "show_tooltips";
+        constexpr const char* reducedMotionKey = "reduced_motion";
         constexpr const char* defaultGainKey = "default_gain_db";
         constexpr const char* sampleFolderKey = "sample_folder";
 
@@ -137,6 +139,20 @@ namespace texture
         };
         addAndMakeVisible (tooltipsToggle);
 
+        reducedMotionToggle.setTooltip ("Disable optional interface animation while keeping meters and state feedback active");
+        reducedMotionToggle.onClick = [this]
+        {
+            const auto reduced = reducedMotionToggle.getToggleState();
+            MotionPreferences::setReducedMotion (reduced);
+
+            if (auto* store = processor.getApplicationProperties().getUserSettings())
+            {
+                store->setValue (reducedMotionKey, reduced);
+                store->saveIfNeeded();
+            }
+        };
+        addAndMakeVisible (reducedMotionToggle);
+
         styleBodyLabel (presetFolderLabel);
         addAndMakeVisible (presetFolderLabel);
 
@@ -258,12 +274,17 @@ namespace texture
         {
             tooltipsToggle.setToggleState (store->getBoolValue (tooltipsKey, true),
                                            juce::dontSendNotification);
+            const auto reducedMotion = store->getBoolValue (reducedMotionKey, false);
+            reducedMotionToggle.setToggleState (reducedMotion, juce::dontSendNotification);
+            MotionPreferences::setReducedMotion (reducedMotion);
             defaultGainSlider.setValue (store->getDoubleValue (defaultGainKey, params::gainDefaultDb),
                                         juce::dontSendNotification);
         }
         else
         {
             tooltipsToggle.setToggleState (true, juce::dontSendNotification);
+            reducedMotionToggle.setToggleState (false, juce::dontSendNotification);
+            MotionPreferences::setReducedMotion (false);
             defaultGainSlider.setValue (params::gainDefaultDb, juce::dontSendNotification);
         }
 
@@ -287,18 +308,58 @@ namespace texture
         setVisible (true);
         toFront (true);
         targetOffset = 0.0f;
-        startTimer (slideTickMs);
+
+        if (MotionPreferences::isReducedMotion())
+        {
+            currentOffset = targetOffset;
+            updateSlideBounds();
+        }
+        else
+        {
+            startTimer (slideTickMs);
+        }
+
         grabKeyboardFocus();
     }
 
     void SettingsPanel::close()
     {
         targetOffset = 1.0f;
+
+        if (MotionPreferences::isReducedMotion())
+        {
+            currentOffset = targetOffset;
+            updateSlideBounds();
+            setVisible (false);
+
+            if (onClosed)
+                onClosed();
+
+            return;
+        }
+
         startTimer (slideTickMs);
     }
 
     void SettingsPanel::timerCallback()
     {
+        if (MotionPreferences::isReducedMotion())
+        {
+            currentOffset = targetOffset;
+            stopTimer();
+            updateSlideBounds();
+
+            if (targetOffset >= 1.0f)
+            {
+                setVisible (false);
+
+                if (onClosed)
+                    onClosed();
+            }
+
+            return;
+        }
+
         currentOffset += (targetOffset - currentOffset) * slideSpeed;
 
         if (std::abs (targetOffset - currentOffset) < 0.005f)
@@ -340,7 +401,7 @@ namespace texture
             component->setVisible (isLicense);
 
         for (auto* component : std::initializer_list<juce::Component*> {
-                 &tooltipsToggle,
+                 &tooltipsToggle, &reducedMotionToggle,
                  &presetFolderLabel, &presetFolderButton, &revealPresetFolderButton,
                  &sampleFolderLabel, &sampleFolderButton, &revealSampleFolderButton,
                  &defaultGainLabel, &defaultGainSlider,
@@ -619,6 +680,7 @@ namespace texture
             case Tab::preferences:
             {
                 tooltipsToggle.setBounds (content.removeFromTop (26));
+                reducedMotionToggle.setBounds (content.removeFromTop (26));
                 content.removeFromTop (layout::grid);
 
                 presetFolderLabel.setBounds (content.removeFromTop (30));
