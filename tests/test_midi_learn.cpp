@@ -1,6 +1,7 @@
 #include "TestHelpers.h"
 
 #include "../Source/Utility/MidiLearn.h"
+#include "../Source/Utility/ParameterIDs.h"
 
 namespace texture::tests
 {
