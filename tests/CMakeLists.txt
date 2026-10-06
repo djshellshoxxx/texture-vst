@@ -11,6 +11,7 @@ set(TEXTURE_TEST_SOURCES
     test_main.cpp
     test_motion_preferences.cpp
     test_state_schema.cpp
+    test_control_value_parser.cpp
     test_granular_engine.cpp
     test_sample_loader.cpp
     test_license_manager.cpp
