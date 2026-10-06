@@ -74,6 +74,7 @@ namespace texture::tests
             testVariableBlockSizes();
             testMorphTargetTable();
             testLfoSummation();
+            testLfoTransportSync();
             testEffectsChainStaysFinite();
         }
 
@@ -522,6 +523,50 @@ namespace texture::tests
             }
 
             expect (sawInterior, "folding should move the value away from the limit");
+        }
+
+
+        void testLfoTransportSync()
+        {
+            beginTest ("synced LFO locks to PPQ and freezes while transport is stopped");
+
+            MorphLFO lfo;
+            lfo.prepare (testRate);
+            lfo.setSyncEnabled (true);
+            lfo.setDivisionIndex (2); // 1/4 = one beat per cycle
+            lfo.setDepth (1.0f);
+
+            lfo.updateFromPlayHead (120.0, false, 0.25);
+            const auto stoppedA = lfo.advanceBlock (blockSize);
+            const auto stoppedB = lfo.advanceBlock (blockSize * 8);
+            expectWithinAbsoluteError (stoppedA, stoppedB, 1.0e-6f,
+                                       "synced modulation must not drift while stopped");
+
+            beginTest ("host seeks reposition synced phase immediately");
+
+            lfo.updateFromPlayHead (120.0, true, 0.0);
+            expectWithinAbsoluteError (lfo.advanceBlock (0), 0.0f, 1.0e-6f);
+
+            lfo.updateFromPlayHead (120.0, true, 0.25);
+            expectWithinAbsoluteError (lfo.advanceBlock (0), 1.0f, 1.0e-5f);
+
+            lfo.updateFromPlayHead (120.0, true, 0.5);
+            expectWithinAbsoluteError (lfo.advanceBlock (0), 0.0f, 1.0e-5f);
+
+            beginTest ("missing PPQ free-runs only while playing");
+
+            lfo.updateFromPlayHead (120.0, true, -1.0);
+            const auto playingA = lfo.advanceBlock (blockSize);
+            const auto playingB = lfo.advanceBlock (blockSize);
+            expect (std::abs (playingB - playingA) > 1.0e-6f);
+
+            lfo.updateFromPlayHead (0.0, false, -1.0);
+            const auto missingStoppedA = lfo.advanceBlock (blockSize);
+            const auto missingStoppedB = lfo.advanceBlock (blockSize * 4);
+            expectWithinAbsoluteError (missingStoppedA, missingStoppedB, 1.0e-6f);
+
+            beginTest ("invalid tempo keeps the last valid tempo");
+            expectWithinAbsoluteError (lfo.getEffectiveRateHz(), 2.0f, 1.0e-4f);
         }
 
         void testEffectsChainStaysFinite()
