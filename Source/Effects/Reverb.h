@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_dsp/juce_dsp.h>
+#include "../Utility/DspHelpers.h"
 
 namespace texture
 {
@@ -27,6 +28,7 @@ namespace texture
 
         float getWetLevel() const noexcept { return wetLevel; }
         float getEnableMix() const noexcept { return enableMix.getCurrentValue(); }
+        bool hasTailEnergy() const noexcept { return ! tailEnergy.isSilent(); }
 
         /** Processes in place. When disabled the buffer is left untouched, with no
             dry-level modification either (07_EFFECTS_CHAIN.md).
@@ -46,6 +48,7 @@ namespace texture
         juce::dsp::Reverb::Parameters parameters;
         juce::AudioBuffer<float> wetBuffer;
         juce::SmoothedValue<float> enableMix;
+        dsp::EnergyTracker tailEnergy;
         float wetLevel { 0.15f };
         bool enabled { true };
         bool isPrepared { false };
