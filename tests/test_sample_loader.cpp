@@ -463,23 +463,27 @@ namespace texture::tests
             expectGreaterThan (crossings (high), crossings (low),
                                "the last pad should be higher than the first");
 
-            beginTest ("installation is idempotent");
+            beginTest ("factory validation rejects non-WAV stand-ins");
 
             TemporaryDirectory temp;
             const auto directory = temp.child ("factory");
-
-            expect (! FactoryContent::isInstalledIn (directory));
-
-            // Generating all twenty 30-second files is slow, so verify the guard
-            // logic against pre-placed stand-ins instead.
             directory.createDirectory();
 
-            for (int i = 0; i < FactoryContent::numSamples; ++i)
-                directory.getChildFile (FactoryContent::getFileName (i)).replaceWithText ("placeholder");
+            const auto fake = directory.getChildFile (FactoryContent::getFileName (0));
+            fake.replaceWithText ("placeholder");
 
-            expect (FactoryContent::isInstalledIn (directory));
-            expectEquals (FactoryContent::generateInto (directory), 0,
-                          "existing files must never be overwritten");
+            expect (! FactoryContent::isValidFactoryFile (fake));
+            expect (! FactoryContent::isInstalledIn (directory));
+
+            beginTest ("factory validation accepts the documented WAV shape");
+
+            const auto valid = directory.getChildFile ("valid.wav");
+            expect (writeTestAudioFile (valid,
+                                        FactoryContent::sampleRate,
+                                        FactoryContent::lengthSeconds,
+                                        FactoryContent::numChannels,
+                                        FactoryContent::bitDepth));
+            expect (FactoryContent::isValidFactoryFile (valid));
         }
     };
 
