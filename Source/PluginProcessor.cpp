@@ -181,6 +181,9 @@ namespace texture
         for (auto& value : pendingControllerValues)
             value.store (-1, std::memory_order_relaxed);
 
+        for (auto& shouldDirty : sampleLoadMarksDirty)
+            shouldDirty.store (false, std::memory_order_relaxed);
+
         sampleLoader.setCallback ([this] (const SampleLoader::LoadResult& result)
         {
             onSampleLoaded (result, result.requestTag);
@@ -347,7 +350,10 @@ namespace texture
             const auto file = layers[static_cast<size_t> (i)].file;
 
             if (file.existsAsFile())
+            {
+                sampleLoadMarksDirty[static_cast<size_t> (i)].store (false, std::memory_order_release);
                 sampleLoader.loadAsync (file, i);
+            }
         }
     }
 
@@ -796,6 +802,7 @@ namespace texture
         activeLayer = layer;
         setSampleStart (layer, 0.0f);   // a new sample starts from its beginning
         logInfo ("loader", "Loading " + file.getFullPathName() + " into layer " + juce::String (layer + 1));
+        sampleLoadMarksDirty[static_cast<size_t> (layer)].store (true, std::memory_order_release);
         sampleLoader.loadAsync (file, layer);
     }
 
@@ -843,7 +850,8 @@ namespace texture
             layer.file = result.file;
             layer.originalName = result.file.getFileName();
 
-            markPresetDirty();
+            if (sampleLoadMarksDirty[index].load (std::memory_order_acquire))
+                markPresetDirty();
 
             if (auto* store = applicationProperties.getUserSettings())
             {
@@ -1023,6 +1031,7 @@ namespace texture
 
             if (sampleFile.existsAsFile())
             {
+                sampleLoadMarksDirty[index].store (false, std::memory_order_release);
                 sampleLoader.loadAsync (sampleFile, layerIndex);
             }
             else if (storedPath.isNotEmpty())
@@ -1410,6 +1419,7 @@ namespace texture
                 }
             }
 
+            sampleLoadMarksDirty[static_cast<size_t> (index)].store (false, std::memory_order_release);
             sampleLoader.loadAsync (file, index);
         }
 
