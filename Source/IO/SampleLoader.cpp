@@ -87,11 +87,13 @@ namespace texture
     class SampleLoader::LoadJob : public juce::ThreadPoolJob
     {
     public:
-        LoadJob (SampleLoader& ownerToUse, juce::File fileToLoad, int generationToUse)
+        LoadJob (SampleLoader& ownerToUse, juce::File fileToLoad,
+                 int generationToUse, int requestTagToUse)
             : juce::ThreadPoolJob ("Texture load: " + fileToLoad.getFileName()),
               owner (ownerToUse),
               file (std::move (fileToLoad)),
-              generation (generationToUse)
+              generation (generationToUse),
+              requestTag (requestTagToUse)
         {
         }
 
@@ -101,9 +103,10 @@ namespace texture
                 return jobHasFinished;
 
             auto result = owner.loadSynchronously (file);
+            result.requestTag = requestTag;
 
             if (! shouldExit())
-                owner.deliver (std::move (result), generation);
+                owner.deliver (std::move (result), generation, requestTag);
 
             return jobHasFinished;
         }
@@ -112,11 +115,20 @@ namespace texture
         SampleLoader& owner;
         juce::File file;
         int generation;
+        int requestTag;
     };
 
     SampleLoader::SampleLoader()
     {
         formatManager.registerBasicFormats();
+
+        for (auto& generation : requestGenerations)
+            generation.store (0, std::memory_order_relaxed);
+    }
+
+    int SampleLoader::sanitiseRequestTag (int requestTag) noexcept
+    {
+        return juce::jlimit (0, maxRequestTags - 1, requestTag);
     }
 
     SampleLoader::~SampleLoader()
@@ -136,10 +148,11 @@ namespace texture
         callback = std::move (newCallback);
     }
 
-    void SampleLoader::loadAsync (const juce::File& file)
+    void SampleLoader::loadAsync (const juce::File& file, int requestTag)
     {
-        const auto generation = ++requestGeneration;
-        pool.addJob (new LoadJob (*this, file, generation), true);
+        const auto tag = sanitiseRequestTag (requestTag);
+        const auto generation = ++requestGenerations[static_cast<size_t> (tag)];
+        pool.addJob (new LoadJob (*this, file, generation, tag), true);
     }
 
     void SampleLoader::waitForPendingLoads (int timeoutMs)
@@ -149,11 +162,11 @@ namespace texture
 
     void SampleLoader::cancelPendingLoads()
     {
-        ++requestGeneration;
+        for (auto& generation : requestGenerations)
+            ++generation;
 
         const juce::ScopedLock lock (resultLock);
-        hasPendingResult = false;
-        pendingResult = {};
+        pendingResults.clear();
     }
 
     bool SampleLoader::isBusy() const
@@ -278,16 +291,17 @@ namespace texture
         return result;
     }
 
-    void SampleLoader::deliver (LoadResult&& result, int generation)
+    void SampleLoader::deliver (LoadResult&& result, int generation, int requestTag)
     {
-        // Only the newest request is allowed to become active (05_SAMPLE_LOADER.md).
-        if (generation != requestGeneration.load (std::memory_order_acquire))
+        const auto tag = sanitiseRequestTag (requestTag);
+
+        // Only the newest request in this lane is allowed to become active.
+        if (generation != requestGenerations[static_cast<size_t> (tag)].load (std::memory_order_acquire))
             return;
 
         {
             const juce::ScopedLock lock (resultLock);
-            pendingResult = std::move (result);
-            hasPendingResult = true;
+            pendingResults.push_back (std::move (result));
         }
 
         triggerAsyncUpdate();
@@ -295,20 +309,21 @@ namespace texture
 
     void SampleLoader::handleAsyncUpdate()
     {
-        LoadResult result;
+        std::vector<LoadResult> results;
 
         {
             const juce::ScopedLock lock (resultLock);
 
-            if (! hasPendingResult)
+            if (pendingResults.empty())
                 return;
 
-            result = std::move (pendingResult);
-            pendingResult = {};
-            hasPendingResult = false;
+            results.swap (pendingResults);
         }
 
-        if (callback)
+        if (! callback)
+            return;
+
+        for (const auto& result : results)
             callback (result);
     }
 }
