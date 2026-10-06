@@ -221,3 +221,9 @@ ctest --test-dir build/release -C Release --output-on-failure
   to evolve behind bypass, avoiding the previous hard processed/dry switch. Fixed
   EffectsChain startup so the 0 dB output-gain default begins at unity instead of
   unintentionally ramping from silence over the first 30 ms.
+
+- 2026-10-06: Fixed effect-tail idle tracking. The old fixed 0.999-per-callback
+  decay made idle duration depend on host block size and could keep the complete
+  effects chain active for roughly a minute after audible output ended. Tail energy
+  now decays from elapsed sample time with regression coverage comparing small and
+  large host blocks.
