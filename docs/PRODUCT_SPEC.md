@@ -46,6 +46,19 @@ Core control groups:
 
 The hidden GRIT controls are intentionally not host parameters. They are session-persisted product state and must not appear in the host automation list.
 
+### Control gestures
+
+TEXTURE uses one shared interaction contract for rotary controls:
+
+- vertical drag changes value with the normal fine response;
+- Shift-drag is coarse/faster;
+- Ctrl/Cmd-drag is ultra-fine/slower;
+- double-click resets to the documented default;
+- right-click exposes the actions appropriate to the control;
+- scalar parameter controls provide strict numeric entry, copy/paste and MIDI Learn;
+- malformed or out-of-range numeric entry is rejected and must not be silently clamped;
+- hidden GRIT controls provide reset and strict numeric entry but no MIDI Learn because they are deliberately outside host automation.
+
 ## 5. Motion and accessibility
 
 TEXTURE uses optional interface motion for control easing, MIDI-learn pulsing, panel transitions, transient button flashes, toast fades, and the background data stream. Preferences MUST provide **Reduce interface motion**.
