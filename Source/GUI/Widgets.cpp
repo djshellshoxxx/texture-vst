@@ -1,6 +1,7 @@
 #include "Widgets.h"
 
 #include "../PluginProcessor.h"
+#include "../Utility/MotionPreferences.h"
 
 #include <cmath>
 
@@ -315,7 +316,7 @@ namespace texture
 
         // The user's own gestures track the mouse exactly; everything else
         // (presets, reset, randomise, A/B, automation) eases in over 80 ms.
-        if (isMouseButtonDown() || ! isShowing())
+        if (isMouseButtonDown() || ! isShowing() || MotionPreferences::isReducedMotion())
         {
             stopTimer();
             displayedProportion = animationTo = target;
@@ -363,7 +364,9 @@ namespace texture
             return;
 
         const auto phase = static_cast<float> (juce::Time::getMillisecondCounter() % 1000) / 1000.0f;
-        const auto pulse = 0.5f + 0.5f * std::sin (phase * juce::MathConstants<float>::twoPi);
+        const auto pulse = MotionPreferences::isReducedMotion()
+                         ? 0.5f
+                         : 0.5f + 0.5f * std::sin (phase * juce::MathConstants<float>::twoPi);
         const auto size = juce::jmin (area.getWidth(), area.getHeight());
 
         g.setColour (colours::accentPro.withAlpha (0.35f + 0.5f * pulse));
@@ -794,7 +797,9 @@ namespace texture
 
         lastLine = line;
         lines.push_back (line);
-        scrollOffset = juce::jmin (1.0f, scrollOffset + 1.0f);
+        scrollOffset = MotionPreferences::isReducedMotion()
+                     ? 0.0f
+                     : juce::jmin (1.0f, scrollOffset + 1.0f);
 
         while (static_cast<int> (lines.size()) > visibleLines)
             lines.pop_front();
@@ -805,6 +810,17 @@ namespace texture
 
     void DataStreamView::tick()
     {
+        if (MotionPreferences::isReducedMotion())
+        {
+            if (scrollOffset != 0.0f)
+            {
+                scrollOffset = 0.0f;
+                repaint();
+            }
+
+            return;
+        }
+
         if (scrollOffset <= 0.0f)
             return;
 
@@ -877,9 +893,18 @@ namespace texture
         // A new toast replaces the current one immediately: they never stack.
         text = message;
         severity = newSeverity;
-        phase = Phase::fadingIn;
         elapsedMs = 0;
-        opacity = 0.0f;
+
+        if (MotionPreferences::isReducedMotion())
+        {
+            phase = Phase::holding;
+            opacity = 1.0f;
+        }
+        else
+        {
+            phase = Phase::fadingIn;
+            opacity = 0.0f;
+        }
 
         startTimer (tickMs);
         repaint();
@@ -889,6 +914,16 @@ namespace texture
     {
         if (phase == Phase::idle)
             return;
+
+        if (MotionPreferences::isReducedMotion())
+        {
+            phase = Phase::idle;
+            opacity = 0.0f;
+            text.clear();
+            stopTimer();
+            repaint();
+            return;
+        }
 
         phase = Phase::fadingOut;
         elapsedMs = 0;
@@ -1061,7 +1096,8 @@ namespace texture
     {
         auto colour = colours::textMuted;
 
-        const auto flashing = juce::Time::getMillisecondCounter() - flashStartMs < 100;
+        const auto flashing = ! MotionPreferences::isReducedMotion()
+                           && juce::Time::getMillisecondCounter() - flashStartMs < 100;
 
         if (! isEnabled())
             colour = colour.withAlpha (0.4f);
@@ -1076,6 +1112,9 @@ namespace texture
     void IconButton::clicked()
     {
         // 100 ms accent flash after every press (theme.md, momentary buttons).
+        if (MotionPreferences::isReducedMotion())
+            return;
+
         flashStartMs = juce::Time::getMillisecondCounter();
         repaint();
 
