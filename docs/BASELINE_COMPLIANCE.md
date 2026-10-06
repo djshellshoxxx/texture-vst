@@ -14,7 +14,7 @@
 | Real-time safety | Implemented + tested | Cached parameter pointers, preallocated DSP paths, async file loading, lock-free sample publication strategy, allocation/fuzz tests. |
 | Sample rate / block size / finite output | Implemented + tested | Unit tests cover variable block sizes, NaN handling, effects finiteness and engine behavior. |
 | Buses / MIDI / latency / tail | Implemented | Processor declares MIDI instrument behavior, supported layouts, zero latency and tail length. |
-| State recall / malformed state | Implemented, further hardening planned | Version-tagged state and safe top-level parse checks exist. Add explicit future-version/partial-tree regression tests before beta. |
+| State recall / malformed state | Implemented on development branch | Pre-application schema validation rejects wrong roots, malformed/future versions, missing parameter state, invalid sample-layer indices and duplicate layer records. Covered by `test_state_schema.cpp`; detailed policy in `STATE_COMPATIBILITY_SPEC.md`. |
 | Presets / A-B | Implemented + tested | Schema validation, round-trip/error tests, A/B slots and factory/user preset paths. |
 | File loading / export | Implemented + tested | Async multi-format loader, limits/error paths and stereo WAV export. |
 | MIDI Learn / modulation | Implemented | Learn/unlink UI, lock-free controller capture, MORPH LFO, sustain and panic MIDI behavior. |
@@ -28,7 +28,7 @@
 
 ## Next implementation priorities
 
-1. Add regression tests around malformed/partial/future-version host state before changing state migration behavior.
-2. Add a release-validation document that records actual host/pluginval versions and results instead of relying on generic claims.
-3. Complete the manual test plan and record results per host/format.
+1. Restore functioning CI execution, then run the new reduced-motion and host-state tests on all claimed build targets.
+2. Complete the manual test plan and record results per host/format in `RELEASE_VALIDATION.md`.
+3. Run pluginval and record its version/settings/results.
 4. Run and record performance and soak targets.
