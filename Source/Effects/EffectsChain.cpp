@@ -30,7 +30,7 @@ namespace texture
         updateHighShelf (0.0f);
 
         outputGain.reset (preparedSampleRate, gainSmoothingSeconds);
-        outputGain.setCurrentAndTargetValue (outputGain.getTargetValue());
+        outputGain.setCurrentAndTargetValue (1.0f);
 
         for (auto& blocker : dcBlockers)
             blocker.reset();
