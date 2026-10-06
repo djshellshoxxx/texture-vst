@@ -191,10 +191,6 @@ namespace texture
         });
 
         cacheParameterPointers();
-        startTimerHz (60);
-
-        for (const auto* id : params::allIDs)
-            apvts.addParameterListener (id, this);
 
         // Settings > Preferences > Default output gain applies to every new instance;
         // a restored session overrides it in setStateInformation.
@@ -203,6 +199,11 @@ namespace texture
                 setParameterValue (params::gainDb, static_cast<float> (store->getDoubleValue ("default_gain_db", params::gainDefaultDb)));
 
         enforceTierLimits();
+
+        for (const auto* id : params::allIDs)
+            apvts.addParameterListener (id, this);
+
+        startTimerHz (60);
 
         for (auto& slot : compareSlots)
             slot = captureParameterTree();
