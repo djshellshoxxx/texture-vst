@@ -130,7 +130,7 @@ namespace texture
 
         /** Where notes start reading in a layer's sample, 0..1 (waveform click).
             Kept out of the APVTS like GRIT, persisted with the session. */
-        void setSampleStart (int layerIndex, float normalised);
+        void setSampleStart (int layerIndex, float normalised, bool markDirty = true);
         float getSampleStart (int layerIndex) const noexcept;
 
         /** The layer the GUI is currently editing (0 or 1). */
