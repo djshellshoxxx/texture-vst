@@ -299,6 +299,7 @@ namespace texture
         PresetManager presetManager;
         MidiLearn midiLearn;
         SampleLoader sampleLoader;
+        std::array<std::atomic<bool>, numLayers> sampleLoadMarksDirty {};
 
         /** One background worker for first-launch content generation. Shut down in
             the destructor before anything it calls back into goes away.
