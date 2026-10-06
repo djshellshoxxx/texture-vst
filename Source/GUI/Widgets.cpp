@@ -3,6 +3,7 @@
 #include "../PluginProcessor.h"
 #include "../Utility/MotionPreferences.h"
 #include "../Utility/ControlValueParser.h"
+#include "../Utility/ControlValueClipboard.h"
 
 #include <cmath>
 
@@ -84,31 +85,19 @@ namespace texture
                     safeSlider->setValue (*parsed, juce::sendNotificationSync);
                 }), false);
         }
-
-        double& clipboardSlot()
-        {
-            static double value = 0.0;
-            return value;
-        }
-
-        bool& clipboardHasValue()
-        {
-            static bool hasValue = false;
-            return hasValue;
-        }
-
         /** Builds the shared right-click menu entries for a parameter. */
         void addCommonItems (juce::PopupMenu& menu,
                              TextureAudioProcessor& processor,
                              const juce::String& parameterID,
-                             bool includeValueItems)
+                             bool includeValueItems,
+                             bool canPasteValue = false)
         {
             if (includeValueItems)
             {
                 menu.addItem (1, "Reset to default");
                 menu.addItem (2, "Enter value...");
                 menu.addItem (3, "Copy value");
-                menu.addItem (4, "Paste value", ControlContextMenu::hasClipboardValue());
+                menu.addItem (4, "Paste value", canPasteValue);
                 menu.addSeparator();
             }
             else
@@ -137,23 +126,6 @@ namespace texture
     // =========================================================================
     //  ControlContextMenu
     // =========================================================================
-
-    void ControlContextMenu::setClipboardValue (double value)
-    {
-        clipboardSlot() = value;
-        clipboardHasValue() = true;
-    }
-
-    double ControlContextMenu::getClipboardValue()
-    {
-        return clipboardSlot();
-    }
-
-    bool ControlContextMenu::hasClipboardValue()
-    {
-        return clipboardHasValue();
-    }
-
     void ControlContextMenu::showFor (juce::Slider& slider,
                                       TextureAudioProcessor& processor,
                                       const juce::String& parameterID,
@@ -161,7 +133,10 @@ namespace texture
     {
         juce::PopupMenu menu;
         menu.setLookAndFeel (&slider.getLookAndFeel());
-        addCommonItems (menu, processor, parameterID, true);
+        addCommonItems (menu, processor, parameterID, true,
+                        ControlValueClipboard::canPaste (parameterID,
+                                                         slider.getMinimum(),
+                                                         slider.getMaximum()));
 
         auto* sliderPointer = &slider;
         juce::Component::SafePointer<juce::Slider> safeSlider (sliderPointer);
@@ -184,13 +159,24 @@ namespace texture
                     break;
 
                 case 3:
-                    setClipboardValue (safeSlider->getValue());
+                    ControlValueClipboard::copy (parameterID, safeSlider->getValue());
+                    processor.postToast ("Value copied for " + params::displayNameFor (parameterID) + ".",
+                                         SampleLoader::Severity::info);
                     break;
 
                 case 4:
-                    if (hasClipboardValue())
-                        safeSlider->setValue (getClipboardValue(), juce::sendNotificationSync);
+                {
+                    const auto pasted = ControlValueClipboard::valueFor (parameterID,
+                                                                         safeSlider->getMinimum(),
+                                                                         safeSlider->getMaximum());
+
+                    if (pasted.has_value())
+                        safeSlider->setValue (*pasted, juce::sendNotificationSync);
+                    else
+                        processor.postToast ("Copied value is not compatible with this control.",
+                                             SampleLoader::Severity::warning);
                     break;
+                }
 
                 case 5:
                     processor.getMidiLearn().startLearning (parameterID);
