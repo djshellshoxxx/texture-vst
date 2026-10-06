@@ -220,8 +220,9 @@ namespace texture
         text.add ("  a bug. Drop a file. Then check the Gain knob and the LED.");
         text.add ("");
         text.add ("A note hangs");
-        text.add ("  Send All Notes Off from your DAW, or press Reset. If your controller");
-        text.add ("  has a stuck sustain pedal, CC64 is the usual cause.");
+        text.add ("  Send All Notes Off or All Sound Off from your DAW. Reset only restores");
+        text.add ("  control values; it is not a panic button. If your controller has a");
+        text.add ("  stuck sustain pedal, CC64 is the usual cause.");
         text.add ("");
         text.add ("Crackles or high CPU");
         text.add ("  Raise your audio buffer size. MORPH near 100% with sixteen voices is");
