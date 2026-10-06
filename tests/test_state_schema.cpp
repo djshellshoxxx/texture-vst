@@ -41,6 +41,25 @@ namespace texture::tests
             expectEquals (StateSchema::validate (partial).status,
                           StateSchema::Status::missingParameters);
 
+            beginTest ("sample layer indices must be in range");
+            auto badIndex = makeRoot ("1.0.0", true);
+            juce::ValueTree invalidSample (StateSchema::sampleTag);
+            invalidSample.setProperty ("index", 7, nullptr);
+            badIndex.appendChild (invalidSample, nullptr);
+            expectEquals (StateSchema::validate (badIndex).status,
+                          StateSchema::Status::invalidSampleIndex);
+
+            beginTest ("duplicate sample layer records are rejected");
+            auto duplicate = makeRoot ("1.0.0", true);
+            juce::ValueTree sampleA (StateSchema::sampleTag);
+            sampleA.setProperty ("index", 0, nullptr);
+            juce::ValueTree sampleB (StateSchema::sampleTag);
+            sampleB.setProperty ("index", 0, nullptr);
+            duplicate.appendChild (sampleA, nullptr);
+            duplicate.appendChild (sampleB, nullptr);
+            expectEquals (StateSchema::validate (duplicate).status,
+                          StateSchema::Status::duplicateSampleIndex);
+
             beginTest ("empty parameter wrapper is rejected atomically");
             juce::ValueTree emptyWrapper (StateSchema::rootTag);
             emptyWrapper.setProperty (StateSchema::versionAttribute, "1.0.0", nullptr);
