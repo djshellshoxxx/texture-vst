@@ -864,10 +864,18 @@ namespace texture
         return layers[index].file;
     }
 
-    void TextureAudioProcessor::setSampleStart (int layerIndex, float normalised)
+    void TextureAudioProcessor::setSampleStart (int layerIndex, float normalised, bool shouldMarkDirty)
     {
         const auto index = static_cast<size_t> (juce::jlimit (0, numLayers - 1, layerIndex));
-        engines[index].setSampleStart (juce::jlimit (0.0f, 1.0f, normalised));
+        const auto clamped = juce::jlimit (0.0f, 1.0f, normalised);
+
+        if (juce::approximatelyEqual (engines[index].getSampleStart(), clamped))
+            return;
+
+        engines[index].setSampleStart (clamped);
+
+        if (shouldMarkDirty)
+            markPresetDirty();
     }
 
     float TextureAudioProcessor::getSampleStart (int layerIndex) const noexcept
@@ -984,7 +992,7 @@ namespace texture
             layer.file = {};
             layer.originalName.clear();
             engines[index].allSoundOff();
-            setSampleStart (layerIndex, data.sampleStarts[index]);
+            setSampleStart (layerIndex, data.sampleStarts[index], false);
 
             const auto& storedPath = data.samplePaths[index];
             const auto sampleFile = presetManager.resolveSamplePath (storedPath);
@@ -1350,7 +1358,7 @@ namespace texture
             const auto index = juce::jlimit (0, numLayers - 1, static_cast<int> (child.getProperty ("index", 0)));
             const auto path = child.getProperty ("path", "").toString();
             const auto originalName = child.getProperty ("originalName", "").toString();
-            setSampleStart (index, static_cast<float> (static_cast<double> (child.getProperty ("start", 0.0))));
+            setSampleStart (index, static_cast<float> (static_cast<double> (child.getProperty ("start", 0.0))), false);
 
             if (path.isEmpty())
                 continue;
