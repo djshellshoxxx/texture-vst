@@ -142,6 +142,7 @@ namespace texture
         // --- Presets ----------------------------------------------------------
         juce::String getCurrentPresetName() const;
         juce::String getCurrentPresetCategory() const;
+        juce::File getCurrentPresetFile() const { return currentPresetFile; }
 
         bool loadPreset (const juce::File& file);
         bool savePreset (const juce::File& file,
@@ -356,6 +357,7 @@ namespace texture
         // --- Preset bookkeeping ----------------------------------------------
         juce::String currentPresetName;
         juce::String currentPresetCategory { "Cinematic" };
+        juce::File currentPresetFile;
         bool presetDirty { false };
         std::atomic<bool> presetDirtyPending { false };
         std::atomic<bool> suppressPresetDirtyTracking { false };
