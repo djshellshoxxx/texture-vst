@@ -963,8 +963,7 @@ namespace texture
         layer.file = juce::File();
         layer.originalName.clear();
 
-        for (auto& engine : engines)
-            engine.allNotesOff();
+        engines[index].allNotesOff();
 
         markPresetDirty();
         notifyListeners (&Listener::sampleChanged, static_cast<int> (index));
