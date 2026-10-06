@@ -10,6 +10,7 @@ namespace texture
     namespace
     {
         constexpr const char* homepageUrl = "https://texture-synth.com";
+        constexpr const char* circuitDriftUrl = "https://djshellshoxxx.github.io/circuitdriftlabs/";
         constexpr const char* buyUrl = "https://texture-synth.com/pro";
         constexpr const char* githubUrl = "https://github.com/djshellshoxxx/texture-vst";
         constexpr const char* cloudUrl = "https://texture-synth.com/community-presets";
@@ -239,11 +240,11 @@ namespace texture
             "Third-party components remain under their own licences.\n\n"
             "TEXTURE never contacts a server. Licence validation is entirely offline and "
             "no analytics, telemetry or crash data leave your machine.\n\n"
-            "Support: " + juce::String (supportEmail),
+            "Developer contact: " + juce::String (supportEmail),
             juce::dontSendNotification);
         addAndMakeVisible (aboutText);
 
-        aboutHomepageButton.onClick = [] { juce::URL (homepageUrl).launchInDefaultBrowser(); };
+        aboutHomepageButton.onClick = [] { juce::URL (circuitDriftUrl).launchInDefaultBrowser(); };
         addAndMakeVisible (aboutHomepageButton);
 
         aboutGithubButton.onClick = [] { juce::URL (githubUrl).launchInDefaultBrowser(); };
