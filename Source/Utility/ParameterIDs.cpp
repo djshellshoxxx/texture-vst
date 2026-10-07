@@ -16,6 +16,9 @@ namespace texture::params
         if (parameterID == lfoSync)     return "LFO Sync";
         if (parameterID == lfoDivision) return "LFO Division";
         if (parameterID == layerBlend)  return "Layer Blend";
+        if (parameterID == tune)        return "Tune";
+        if (parameterID == reverse)     return "Reverse";
+        if (parameterID == shimmer)     return "Shimmer";
 
         return parameterID;
     }
@@ -34,6 +37,9 @@ namespace texture::params
         if (parameterID == lfoSync)     return lfoSyncDefault ? 1.0f : 0.0f;
         if (parameterID == lfoDivision) return static_cast<float> (lfoDivisionDefault);
         if (parameterID == layerBlend)  return layerBlendDefault;
+        if (parameterID == tune)        return tuneDefaultSemitones;
+        if (parameterID == reverse)     return reverseDefault;
+        if (parameterID == shimmer)     return shimmerDefault;
 
         return 0.0f;
     }

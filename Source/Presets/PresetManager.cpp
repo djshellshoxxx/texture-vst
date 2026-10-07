@@ -89,6 +89,12 @@ namespace texture
             if (id == params::lfoRate)     return inRange (params::lfoRateMinHz, params::lfoRateMaxHz);
             if (id == params::lfoDepth)    return inRange (params::lfoDepthMin, params::lfoDepthMax);
             if (id == params::layerBlend)  return inRange (params::layerBlendMin, params::layerBlendMax);
+            if (id == params::reverse)     return inRange (params::reverseMin, params::reverseMax);
+            if (id == params::shimmer)     return inRange (params::shimmerMin, params::shimmerMax);
+
+            if (id == params::tune)
+                return juce::exactlyEqual (numeric, std::floor (numeric))
+                    && inRange (params::tuneMinSemitones, params::tuneMaxSemitones);
 
             if (id == params::reverbOn || id == params::lfoSync)
                 return juce::exactlyEqual (numeric, 0.0) || juce::exactlyEqual (numeric, 1.0);

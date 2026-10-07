@@ -3,6 +3,7 @@
 #include "../Source/Effects/EffectsChain.h"
 
 #include <limits>
+#include <vector>
 #include "../Source/Engine/GranularEngine.h"
 #include "../Source/Modulation/MorphLFO.h"
 
@@ -68,6 +69,9 @@ namespace texture::tests
             testVoiceStealing();
             testNoteOffEntersRelease();
             testPitchBend();
+            testTuneShiftsPitch();
+            testReversedGrainReadsBackwards();
+            testGrainEffectsChangeTheSoundSafely();
             testPolyphonyCeiling();
             testNoAllocationsInProcessBlock();
             testNanInputProducesNoNanOutput();
@@ -209,6 +213,127 @@ namespace texture::tests
             renderAndMeasure (engine, sample, targets, 400);
 
             expectEquals (engine.getActiveVoiceCount(), 0, "the voice should have retired");
+        }
+
+        /** Renders eight blocks of one held C3 and returns them. */
+        juce::AudioBuffer<float> renderHeldNote (const SampleBufferPtr& sample, const MorphTargets& targets,
+                                                 int numBlocks = 8)
+        {
+            GranularEngine engine;
+            engine.prepare (testRate, blockSize);
+            engine.setAdsrParameters (1.0f, 10.0f, 1.0f, 100.0f);
+            engine.noteOn (1, 60, 1.0f);
+
+            juce::AudioBuffer<float> buffer (2, blockSize);
+            juce::AudioBuffer<float> collected (2, blockSize * numBlocks);
+            collected.clear();
+
+            for (int i = 0; i < numBlocks; ++i)
+            {
+                buffer.clear();
+                engine.renderNextBlock (sample, targets, buffer, 0, blockSize);
+
+                for (int ch = 0; ch < 2; ++ch)
+                    collected.copyFrom (ch, i * blockSize, buffer, ch, 0, blockSize);
+            }
+
+            return collected;
+        }
+
+        static int zeroCrossings (const juce::AudioBuffer<float>& buffer)
+        {
+            int count = 0;
+            const auto* data = buffer.getReadPointer (0);
+
+            for (int i = 1; i < buffer.getNumSamples(); ++i)
+                if ((data[i - 1] < 0.0f) != (data[i] < 0.0f))
+                    ++count;
+
+            return count;
+        }
+
+        void testTuneShiftsPitch()
+        {
+            beginTest ("TUNE +12 plays an octave up and -12 an octave down");
+
+            const auto sample = makeTestSample (testRate, 1.0, 220.0);
+            auto targets = deriveMorphTargets (0.0f);
+
+            const auto centred = zeroCrossings (renderHeldNote (sample, targets, 64));
+
+            targets.tuneSemitones = 12.0f;
+            const auto up = zeroCrossings (renderHeldNote (sample, targets, 64));
+
+            targets.tuneSemitones = -12.0f;
+            const auto down = zeroCrossings (renderHeldNote (sample, targets, 64));
+
+            expectWithinAbsoluteError (static_cast<float> (up) / static_cast<float> (centred), 2.0f, 0.15f);
+            expectWithinAbsoluteError (static_cast<float> (down) / static_cast<float> (centred), 0.5f, 0.1f);
+        }
+
+        void testReversedGrainReadsBackwards()
+        {
+            beginTest ("a reversed grain reads the same stretch of source backwards");
+
+            constexpr int length = 4096;
+            juce::AudioBuffer<float> ramp (2, length);
+
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < length; ++i)
+                    ramp.setSample (ch, i, static_cast<float> (i) / static_cast<float> (length));
+
+            const SampleBuffer source (std::move (ramp), testRate, juce::File(), 2, testRate, false);
+
+            const auto render = [&source] (bool reversed)
+            {
+                Grain grain;
+                grain.start (1000.0, 200, 1.0f, 0.0f, 1.0f, Grain::minimumTaper, reversed);
+
+                std::vector<float> left (200, 0.0f), right (200, 0.0f);
+                grain.renderAdding (source, left.data(), right.data(), 200);
+                return left;
+            };
+
+            const auto forwards = render (false);
+            const auto backwards = render (true);
+
+            // Mid-grain, under the flat top of the window: one rises, one falls.
+            expectGreaterThan (forwards[150], forwards[50]);
+            expectLessThan (backwards[150], backwards[50]);
+
+            // Same stretch of source: what one starts on, the other ends on.
+            expectWithinAbsoluteError (backwards[50], forwards[149], 1.0e-3f);
+        }
+
+        void testGrainEffectsChangeTheSoundSafely()
+        {
+            beginTest ("REVERSE and SHIMMER change the output and keep it finite");
+
+            const auto sample = makeTestSample (testRate, 1.0, 220.0);
+            const auto base = deriveMorphTargets (0.6f);
+            const auto dry = renderHeldNote (sample, base);
+
+            for (const auto which : { 0, 1 })
+            {
+                auto targets = base;
+                (which == 0 ? targets.reverseChance : targets.shimmerAmount) = 1.0f;
+
+                const auto wet = renderHeldNote (sample, targets);
+                expect (isFinite (wet));
+                expectLessThan (peakOf (wet), 4.0f);
+
+                float difference = 0.0f;
+
+                for (int i = 0; i < wet.getNumSamples(); ++i)
+                    difference = juce::jmax (difference, std::abs (wet.getSample (0, i) - dry.getSample (0, i)));
+
+                expectGreaterThan (difference, 0.01f, which == 0 ? "reverse had no effect" : "shimmer had no effect");
+            }
+
+            // SHIMMER adds octave-up energy: more zero crossings than the dry cloud.
+            auto bright = base;
+            bright.shimmerAmount = 1.0f;
+            expectGreaterThan (zeroCrossings (renderHeldNote (sample, bright)), zeroCrossings (dry));
         }
 
         void testPitchBend()

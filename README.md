@@ -33,7 +33,9 @@ Ships as **VST3**, **AU** (macOS), **CLAP** (optional) and a **standalone** app.
 | **Engine** | 16-voice granular sampler, up to 8 grains per voice, linear-interpolated resampling |
 | **MORPH** | One knob driving grain count, length, overlap, position jitter, detune, stereo spread, reverb send, chorus depth, saturation and a high-shelf lift |
 | **Envelope** | One ADSR per voice, with a long 1.2 s default release |
+| **Grain** | TUNE (±24 semitones, for samples not recorded at C3), REVERSE (chance each grain plays backwards), SHIMMER (octave-up grains blended into the cloud) |
 | **Effects** | Saturator → chorus → reverb → high shelf → DC blocker → output gain, fixed order |
+| **Undo** | Ctrl/Cmd+Z undoes any control change, randomise, reset, preset load or A/B recall; Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y redoes |
 | **Input** | Drag and drop WAV, AIFF, FLAC, MP3, OGG, or a `.texture` preset |
 | **MIDI** | Omni, velocity to amplitude, ±2 semitone pitch bend, sustain pedal, CC learn on every control |
 | **Latency** | Zero. No lookahead, no oversampling. |

@@ -33,13 +33,15 @@ namespace texture
                                            with a flat top, which is what keeps
                                            MORPH=0 sounding like clean playback rather
                                            than amplitude-modulated grains.
+            @param playReversed            reads the same stretch of source backwards
         */
         void start (double startPositionInSamples,
                     int durationSamples,
                     float playbackRatio,
                     float panPosition,
                     float amplitude,
-                    float windowTaper) noexcept;
+                    float windowTaper,
+                    bool playReversed = false) noexcept;
 
         /** Silences the grain immediately. */
         void stop() noexcept { active = false; }

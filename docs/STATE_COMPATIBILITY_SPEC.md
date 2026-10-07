@@ -57,6 +57,9 @@ Unknown optional fields are ignored.
 
 ## Sample restore
 
+Parameters added after a state or preset was written (TUNE, REVERSE and SHIMMER in
+0.0.1) are absent from it and restore at their defaults, which are neutral.
+
 Sample references may be absent. When present, the loader restores the saved start
 position and queues file loading outside the audio callback. If an absolute path is
 missing, TEXTURE attempts its normal preset/sample path resolution fallback. A missing

@@ -212,7 +212,10 @@ namespace texture
 
             lfo.advanceBlock (numSamples);
             const auto effectiveMorph = lfo.applyTo (juce::jlimit (0.0f, 1.0f, settings.morph));
-            const auto targets = deriveMorphTargets (effectiveMorph);
+            auto targets = deriveMorphTargets (effectiveMorph);
+            targets.tuneSemitones = settings.tuneSemitones;
+            targets.reverseChance = settings.reverseChance;
+            targets.shimmerAmount = settings.shimmerAmount;
             effects->setMorphTargets (targets);
 
             juce::AudioBuffer<float> layerBlock (2, numSamples);

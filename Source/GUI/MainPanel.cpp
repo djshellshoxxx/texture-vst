@@ -16,7 +16,7 @@ namespace texture
            #if defined (JucePlugin_VersionString)
             return JucePlugin_VersionString;
            #else
-            return "1.0.0";
+            return "0.0.1";
            #endif
         }
 
@@ -43,9 +43,11 @@ namespace texture
     }
 
     MainPanel::MainPanel (TextureAudioProcessor& processorToUse)
-        : processor (processorToUse)
+        : processor (processorToUse),
+          undoGestureListener (processorToUse.getUndoManager())
     {
         setOpaque (true);
+        addMouseListener (&undoGestureListener, true);
         setWantsKeyboardFocus (true);
 
         buildHeader();
@@ -68,6 +70,7 @@ namespace texture
     MainPanel::~MainPanel()
     {
         stopTimer();
+        removeMouseListener (&undoGestureListener);
         processor.removeListener (this);
         debugWindow.reset();
     }
@@ -215,8 +218,24 @@ namespace texture
                                                            "share one MORPH knob. (Pro)");
         addAndMakeVisible (*layerBlendKnob);
 
+        tuneKnob = std::make_unique<ParameterKnob> (processor, params::tune, "TUNE",
+                                                    "Tune in semitones. Samples are played as if recorded "
+                                                    "at C3; use this when yours was not.");
+        reverseKnob = std::make_unique<ParameterKnob> (processor, params::reverse, "REVERSE",
+                                                       "Chance that each grain plays backwards. Higher MORPH "
+                                                       "settings make it bloom.");
+        shimmerKnob = std::make_unique<ParameterKnob> (processor, params::shimmer, "SHIMMER",
+                                                       "Blends octave-up grains into the cloud for a bright, "
+                                                       "glassy halo.");
+
+        tuneKnob->getProperties().set ("bipolar", true);
+
+        for (auto* knob : { tuneKnob.get(), reverseKnob.get(), shimmerKnob.get() })
+            addAndMakeVisible (knob);
+
         addAndMakeVisible (envelopeHeader);
         addAndMakeVisible (outputHeader);
+        addAndMakeVisible (grainHeader);
         addAndMakeVisible (lfoHeader);
         addAndMakeVisible (layerHeader);
 
@@ -294,6 +313,9 @@ namespace texture
         place (lfoDepthKnob.get());
         place (lfoSyncToggle.get());
         place (lfoDivisionBox.get());
+        place (tuneKnob.get());
+        place (reverseKnob.get());
+        place (shimmerKnob.get());
 
         place (dropZoneA.get());
         place (dropZoneB.get());
@@ -434,8 +456,22 @@ namespace texture
         auto lfoControls = lfoArea.removeFromLeft (286);
         lfoArea.removeFromLeft (layout::grid * 2);
 
-        // The stream fills the otherwise empty space right of the LFO (theme.md).
+        // Grain section: three knobs, squeezed narrower when GRIT takes the right edge.
+        auto grainArea = lfoArea.removeFromLeft (juce::jmin (lfoArea.getWidth(), 192));
+        grainHeader.setBounds (grainArea.removeFromTop (14));
+        grainArea.removeFromTop (2);
+        grainArea = grainArea.withSizeKeepingCentre (grainArea.getWidth(), juce::jmin (76, grainArea.getHeight()));
+
+        const auto grainKnobWidth = grainArea.getWidth() / 3;
+
+        for (auto* knob : { tuneKnob.get(), reverseKnob.get(), shimmerKnob.get() })
+            knob->setBounds (grainArea.removeFromLeft (grainKnobWidth).reduced (2, 0));
+
+        lfoArea.removeFromLeft (layout::grid);
+
+        // The stream fills whatever space is left right of the controls (theme.md).
         dataStream.setBounds (lfoArea);
+        dataStream.setVisible (lfoArea.getWidth() >= 80);
 
         auto lfoHeaderRow = lfoControls.removeFromTop (14);
         lfoHeader.setBounds (lfoHeaderRow.removeFromLeft (100));
@@ -592,6 +628,20 @@ namespace texture
             return true;
         }
 
+        if (key == juce::KeyPress ('z', juce::ModifierKeys::commandModifier, 0))
+        {
+            performUndo (false);
+            return true;
+        }
+
+        if (key == juce::KeyPress ('z', juce::ModifierKeys::commandModifier
+                                            | juce::ModifierKeys::shiftModifier, 0)
+            || key == juce::KeyPress ('y', juce::ModifierKeys::commandModifier, 0))
+        {
+            performUndo (true);
+            return true;
+        }
+
         if (key == juce::KeyPress ('r', juce::ModifierKeys::commandModifier, 0))
         {
             processor.randomiseParameters();
@@ -611,6 +661,23 @@ namespace texture
         }
 
         return false;
+    }
+
+    void MainPanel::performUndo (bool redo)
+    {
+        auto& history = processor.getUndoManager();
+        const auto description = redo ? history.getRedoDescription() : history.getUndoDescription();
+        const auto succeeded = redo ? processor.redoLastEdit() : processor.undoLastEdit();
+
+        if (! succeeded)
+        {
+            processor.postToast (redo ? "Nothing to redo." : "Nothing to undo.", SampleLoader::Severity::info);
+            return;
+        }
+
+        processor.postToast ((redo ? "Redo" : "Undo")
+                                 + (description.isNotEmpty() ? ": " + description : juce::String()),
+                             SampleLoader::Severity::info);
     }
 
     void MainPanel::closeOverlays()
@@ -738,6 +805,8 @@ namespace texture
                               std::abs (currentScale * 100.0f - static_cast<float> (percent)) < 1.0f);
 
         menu.addSectionHeader ("General");
+        addItem (15, "Undo", "Ctrl+Z", processor.getUndoManager().canUndo());
+        addItem (16, "Redo", "Ctrl+Shift+Z", processor.getUndoManager().canRedo());
         addItem (8, "Randomize", "Ctrl+R");
         addItem (9, "Reset all controls");
         addItem (10, "Options...");
@@ -797,6 +866,8 @@ namespace texture
                 }
 
                 case 12: safeThis->openHelp(); break;
+                case 15: safeThis->performUndo (false); break;
+                case 16: safeThis->performUndo (true); break;
 
                 case 13:
                     if (safeThis->dropZoneA != nullptr)

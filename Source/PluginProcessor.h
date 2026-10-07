@@ -105,6 +105,14 @@ namespace texture
 
         bool isPro() const noexcept { return licenseManager.isPro(); }
 
+        /** Parameter undo/redo (Ctrl+Z, Ctrl+Shift+Z / Ctrl+Y). Every mouse gesture in
+            the editor, preset load, reset, randomise and A/B recall starts a new step.
+            Sample, GRIT and MIDI-mapping changes are not parameters and are not
+            covered. Message thread only. */
+        juce::UndoManager& getUndoManager() noexcept { return undoManager; }
+        bool undoLastEdit();
+        bool redoLastEdit();
+
         /** Our own GUI listeners. The `using` declarations keep the host-facing
             `juce::AudioProcessorListener` overloads visible: without them these two
             hide the base class versions, which the wrappers call
@@ -303,6 +311,9 @@ namespace texture
         // --- Services ---------------------------------------------------------
         juce::ApplicationProperties applicationProperties;
         StorageInitialiser storageInitialiser;
+
+        /** Parameter edit history. Declared before the APVTS, which records into it. */
+        juce::UndoManager undoManager;
         juce::AudioProcessorValueTreeState apvts;
         LicenseManager licenseManager;
         PresetManager presetManager;
@@ -345,6 +356,9 @@ namespace texture
         std::atomic<float>* lfoSyncParameter { nullptr };
         std::atomic<float>* lfoDivisionParameter { nullptr };
         std::atomic<float>* layerBlendParameter { nullptr };
+        std::atomic<float>* tuneParameter { nullptr };
+        std::atomic<float>* reverseParameter { nullptr };
+        std::atomic<float>* shimmerParameter { nullptr };
 
         // --- Host state -------------------------------------------------------
         double currentSampleRate { 44100.0 };

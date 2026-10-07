@@ -42,6 +42,7 @@ ctest --test-dir build/release -C Release --output-on-failure
 | 14 | CI: three-platform matrix in `.github/workflows/build.yml` | DONE — all four jobs green |
 | 16 | GUI gap pass (`docs/GUI_GAP_SPEC.md`, B1-B6, M1-M14) | DONE - builds clean, ctest 100%, layout checked in standalone |
 | 17 | CDL baseline reconciliation: product spec, state hardening, controls, MIDI Learn, reduced motion | DONE - merged to master in PR #1 (`3e78b7e9`) |
+| 18 | v0.0.1 beta: merge post-merge branch, gcc build fixes, fuzz fix, Undo/Tune/Reverse/Shimmer, release packages | DONE |
 | 15 | Fuzzer (`17_TESTING.md`) as its own `texture_fuzz` CTest entry | DONE |
 
 ## Deviations from `22_FILE_MANIFEST.md` (all deliberate, all documented in README)
@@ -227,3 +228,16 @@ ctest --test-dir build/release -C Release --output-on-failure
   effects chain active for roughly a minute after audible output ended. Tail energy
   now decays from elapsed sample time with regression coverage comparing small and
   large host blocks.
+
+- 2026-10-07: v0.0.1 beta. Merged `codex/post-merge-development` (PR #2) and removed
+  the merged branches. That branch had never compiled on gcc: fixed seven compile
+  errors (ambiguous `File = {}`, var/float ternaries, an ambiguous WavExporter
+  overload, a hidden `Button::clicked`, `-Wfloat-equal`, a missing test stream
+  operator) and a stale schema-version test. The 60 s fuzzer then found a real bug:
+  an Inf sample entering the saturator left `tanh` as `1/tanh(drive)`, a spike of up
+  to 100x full scale that rang through the reverb; the saturator now scrubs
+  non-finite input. Added parameter Undo/Redo (usability), TUNE (value), REVERSE
+  (fun) and SHIMMER (effect), each with unit tests and fuzz coverage. GitHub Actions
+  never gets a runner on this repo (every job ends in seconds with no steps, runner
+  id 0 - an account billing/minutes block), so the release binaries were built
+  locally: Linux natively, Windows by cross-compiling with MinGW-w64.

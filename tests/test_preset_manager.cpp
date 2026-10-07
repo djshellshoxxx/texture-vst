@@ -30,6 +30,9 @@ namespace texture::tests
             data.setParameter (params::lfoSync, 1.0f);
             data.setParameter (params::lfoDivision, 3.0f);
             data.setParameter (params::layerBlend, 0.5f);
+            data.setParameter (params::tune, -7.0f);
+            data.setParameter (params::reverse, 0.375f);
+            data.setParameter (params::shimmer, 0.625f);
 
             return data;
         }

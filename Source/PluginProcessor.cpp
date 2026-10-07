@@ -27,7 +27,7 @@ namespace texture
            #if defined (JucePlugin_VersionString)
             return JucePlugin_VersionString;
            #else
-            return "1.0.0";
+            return "0.0.1";
            #endif
         }
 
@@ -146,6 +146,28 @@ namespace texture
             juce::AudioParameterFloatAttributes()
                 .withStringFromValueFunction ([] (float value, int) { return juce::String (juce::roundToInt (value * 100.0f)) + "%"; })));
 
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::tune, 1 }, params::displayNameFor (params::tune),
+            Range { params::tuneMinSemitones, params::tuneMaxSemitones, 1.0f }, params::tuneDefaultSemitones,
+            juce::AudioParameterFloatAttributes()
+                .withStringFromValueFunction ([] (float value, int)
+                {
+                    const auto semitones = juce::roundToInt (value);
+                    return (semitones > 0 ? "+" : "") + juce::String (semitones) + " st";
+                })));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::reverse, 1 }, params::displayNameFor (params::reverse),
+            Range { params::reverseMin, params::reverseMax, 0.0001f }, params::reverseDefault,
+            juce::AudioParameterFloatAttributes()
+                .withStringFromValueFunction ([] (float value, int) { return juce::String (juce::roundToInt (value * 100.0f)) + "%"; })));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::shimmer, 1 }, params::displayNameFor (params::shimmer),
+            Range { params::shimmerMin, params::shimmerMax, 0.0001f }, params::shimmerDefault,
+            juce::AudioParameterFloatAttributes()
+                .withStringFromValueFunction ([] (float value, int) { return juce::String (juce::roundToInt (value * 100.0f)) + "%"; })));
+
         return layout;
     }
 
@@ -168,7 +190,7 @@ namespace texture
     TextureAudioProcessor::TextureAudioProcessor()
         : juce::AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
           storageInitialiser (applicationProperties),
-          apvts (*this, nullptr, "TEXTURE", createParameterLayout()),
+          apvts (*this, &undoManager, "TEXTURE", createParameterLayout()),
           licenseManager (&applicationProperties),
           presetManager (&applicationProperties),
           midiLearn (&applicationProperties)
@@ -276,6 +298,9 @@ namespace texture
         lfoSyncParameter     = apvts.getRawParameterValue (params::lfoSync);
         lfoDivisionParameter = apvts.getRawParameterValue (params::lfoDivision);
         layerBlendParameter  = apvts.getRawParameterValue (params::layerBlend);
+        tuneParameter        = apvts.getRawParameterValue (params::tune);
+        reverseParameter     = apvts.getRawParameterValue (params::reverse);
+        shimmerParameter     = apvts.getRawParameterValue (params::shimmer);
     }
 
     const juce::String TextureAudioProcessor::getName() const
@@ -421,6 +446,9 @@ namespace texture
         effectiveMorph.store (morphNow, std::memory_order_relaxed);
 
         currentTargets = deriveMorphTargets (morphNow);
+        currentTargets.tuneSemitones = tuneParameter    != nullptr ? tuneParameter->load()    : params::tuneDefaultSemitones;
+        currentTargets.reverseChance = reverseParameter != nullptr ? reverseParameter->load() : params::reverseDefault;
+        currentTargets.shimmerAmount = shimmerParameter != nullptr ? shimmerParameter->load() : params::shimmerDefault;
 
         const auto attack  = attackParameter  != nullptr ? attackParameter->load()  : params::attackDefaultMs;
         const auto decay   = decayParameter   != nullptr ? decayParameter->load()   : params::decayDefaultMs;
@@ -1025,8 +1053,21 @@ namespace texture
         return data;
     }
 
+    bool TextureAudioProcessor::undoLastEdit()
+    {
+        undoManager.beginNewTransaction();
+        return undoManager.undo();
+    }
+
+    bool TextureAudioProcessor::redoLastEdit()
+    {
+        undoManager.beginNewTransaction();
+        return undoManager.redo();
+    }
+
     bool TextureAudioProcessor::loadPreset (const juce::File& file)
     {
+        undoManager.beginNewTransaction();
         PresetManager::PresetData data;
         juce::String error;
 
@@ -1134,6 +1175,7 @@ namespace texture
 
     void TextureAudioProcessor::resetToDefaults()
     {
+        undoManager.beginNewTransaction();
         for (const auto* id : params::allIDs)
             setParameterValue (id, params::defaultValueFor (id));
 
@@ -1144,6 +1186,7 @@ namespace texture
 
     void TextureAudioProcessor::randomiseParameters()
     {
+        undoManager.beginNewTransaction();
         auto& random = juce::Random::getSystemRandom();
 
         // Every press starts from defaults so results do not drift towards extremes.
@@ -1157,6 +1200,14 @@ namespace texture
         setParameterValue (params::release, juce::jmap (random.nextFloat(), 200.0f, 6000.0f));
         setParameterValue (params::reverbOn, random.nextFloat() < 0.85f ? 1.0f : 0.0f);
         setParameterValue (params::gainDb, juce::jmap (random.nextFloat(), -8.0f, 0.0f));
+
+        // Tune stays put: it describes the sample, not the sound. The two grain
+        // effects are applied sparingly so most rolls still sound like the sample.
+        if (random.nextFloat() < 0.35f)
+            setParameterValue (params::reverse, juce::jmap (random.nextFloat(), 0.1f, 0.6f));
+
+        if (random.nextFloat() < 0.35f)
+            setParameterValue (params::shimmer, juce::jmap (random.nextFloat(), 0.1f, 0.7f));
 
         if (licenseManager.isPro())
         {
@@ -1257,6 +1308,7 @@ namespace texture
 
     void TextureAudioProcessor::recallCompareSlot (int slotIndex)
     {
+        undoManager.beginNewTransaction();
         const auto index = juce::jlimit (0, numCompareSlots - 1, slotIndex);
 
         // Keep the slot we are leaving up to date so A/B is a true toggle.
@@ -1304,6 +1356,9 @@ namespace texture
                                   ? getParameterValue (params::layerBlend, params::layerBlendDefault)
                                   : 0.0f;
         settings.sampleStart = { getSampleStart (0), getSampleStart (1) };
+        settings.tuneSemitones = getParameterValue (params::tune, params::tuneDefaultSemitones);
+        settings.reverseChance = getParameterValue (params::reverse, params::reverseDefault);
+        settings.shimmerAmount = getParameterValue (params::shimmer, params::shimmerDefault);
 
         const auto secret = getSecretSettings();
         settings.gritBits = secret.bitDepth;
@@ -1421,6 +1476,9 @@ namespace texture
         const auto parameters = root.getChildWithName (StateSchema::parametersTag);
         suppressPresetDirtyTracking.store (true, std::memory_order_release);
         apvts.replaceState (parameters.getChild (0).createCopy());
+        // A restored session starts a fresh history: undo must never step back into
+        // whatever this instance was doing before the host loaded the project.
+        undoManager.clearUndoHistory();
 
         const auto preset = root.getChildWithName (StateSchema::presetTag);
 

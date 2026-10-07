@@ -44,6 +44,11 @@ Core control groups:
 - Reverb enable and output gain.
 - MORPH LFO rate, depth, sync and division.
 - Dual-layer blend where the current licence tier permits it.
+- Grain controls (all tiers, added in 0.0.1): TUNE (-24..+24 whole semitones, default 0), REVERSE (0..1 probability that a grain reads backwards, default 0) and SHIMMER (0..1; up to half of all grains play an octave up at -3 dB, default 0). All three default to off, so presets and host states saved before 0.0.1 restore unchanged; with REVERSE and SHIMMER at zero no extra random draws are taken, so rendering is bit-identical to earlier versions.
+
+### Undo
+
+Parameter edits are undoable (Ctrl/Cmd+Z; redo with Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y; also in the File menu). Every mouse gesture in the editor, preset load, reset, randomise and A/B recall begins a new undo step. Restoring host state clears the history. Sample files, sample start markers, GRIT and MIDI mappings are not parameters and are not part of the undo history.
 
 The hidden GRIT controls are intentionally not host parameters. They are session-persisted product state and must not appear in the host automation list.
 
@@ -103,7 +108,7 @@ Host state also persists both A/B parameter snapshots and the active comparison 
 
 ## 8. Offline export
 
-Pro WAV export reproduces the audible patch rather than only the first sample layer. The renderer captures both sample layers, per-layer start positions, dual-layer blend, the effective MORPH LFO rate/depth at export start, ADSR, reverb state, output gain and GRIT settings.
+Pro WAV export reproduces the audible patch rather than only the first sample layer. The renderer captures both sample layers, per-layer start positions, dual-layer blend, the effective MORPH LFO rate/depth at export start, ADSR, TUNE, REVERSE, SHIMMER, reverb state, output gain and GRIT settings.
 
 Export uses stereo WAV at the user-selected supported sample rate and integer bit depth. It renders two C3 notes using the documented hold/gap/tail pattern. Note events are split at exact sample positions rather than rounded to render-block boundaries. The offline LFO starts from phase zero for deterministic output. Export performs no normalization or limiting beyond the instrument's normal DSP chain and output-gain setting.
 

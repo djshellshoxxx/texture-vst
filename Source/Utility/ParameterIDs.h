@@ -20,11 +20,15 @@ namespace texture::params
     inline constexpr const char* lfoSync     = "lfo_sync";
     inline constexpr const char* lfoDivision = "lfo_division";
     inline constexpr const char* layerBlend  = "layer_blend";
+    inline constexpr const char* tune        = "tune";
+    inline constexpr const char* reverse     = "reverse";
+    inline constexpr const char* shimmer     = "shimmer";
 
     /** Every ID in preset/serialisation order. */
     inline constexpr const char* allIDs[] = {
         morph, attack, decay, sustain, release,
-        reverbOn, gainDb, lfoRate, lfoDepth, lfoSync, lfoDivision, layerBlend
+        reverbOn, gainDb, lfoRate, lfoDepth, lfoSync, lfoDivision, layerBlend,
+        tune, reverse, shimmer
     };
 
     inline constexpr int numParameters = static_cast<int> (std::size (allIDs));
@@ -42,6 +46,11 @@ namespace texture::params
     inline constexpr bool  lfoSyncDefault = false;
     inline constexpr int   lfoDivisionDefault = 2;   // index into divisionNames -> "1/4"
     inline constexpr float layerBlendMin = 0.0f, layerBlendMax = 1.0f,   layerBlendDefault = 0.0f;
+    // v0.0.1 additions. All default to "off" so older presets and sessions,
+    // which do not carry them, sound exactly as they did.
+    inline constexpr float tuneMinSemitones = -24.0f, tuneMaxSemitones = 24.0f, tuneDefaultSemitones = 0.0f;
+    inline constexpr float reverseMin = 0.0f,    reverseMax = 1.0f,      reverseDefault = 0.0f;
+    inline constexpr float shimmerMin = 0.0f,    shimmerMax = 1.0f,      shimmerDefault = 0.0f;
 
     /** Tempo divisions offered when LFO sync is engaged. */
     inline constexpr const char* divisionNames[] = { "1/1", "1/2", "1/4", "1/8", "1/16" };
@@ -74,6 +83,12 @@ namespace texture
         float chorusDepth;        // 0.0 .. 0.6
         float saturatorDrive;     // 0.1 .. 0.35
         float highShelfTiltDb;    // 0.0 .. 2.0
+
+        // Not driven by MORPH: copied in from their own parameters each block so
+        // they travel to every grain through the same path as the MORPH values.
+        float tuneSemitones;      // -24 .. +24, retunes samples not recorded at C3
+        float reverseChance;      // 0 .. 1, probability a grain plays backwards
+        float shimmerAmount;      // 0 .. 1, octave-up grains blended into the cloud
     };
 
     /** Derives every MORPH-dependent value. `morph` must already be clamped to [0, 1]. */
@@ -93,6 +108,9 @@ namespace texture
         t.chorusDepth       = m * 0.6f;
         t.saturatorDrive    = 0.1f + m * 0.25f;
         t.highShelfTiltDb   = m * 2.0f;
+        t.tuneSemitones     = 0.0f;
+        t.reverseChance     = 0.0f;
+        t.shimmerAmount     = 0.0f;
         return t;
     }
 }

@@ -29,6 +29,9 @@ namespace texture
             float lfoDepth { 0.0f };
             float layerBlend { 0.0f };
             std::array<float, 2> sampleStart { 0.0f, 0.0f };
+            float tuneSemitones { 0.0f };
+            float reverseChance { 0.0f };
+            float shimmerAmount { 0.0f };
             float gritBits { 12.0f };
             float gritDownsample { 4.0f };
             float gritMix { 0.0f };

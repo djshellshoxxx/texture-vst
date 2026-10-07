@@ -134,7 +134,22 @@ namespace texture
         }
 
         // 2. Pitch: voice pitch plus a per-grain detune of +/- MORPH * 30 cents.
-        auto ratio = basePitchRatio * pitchBendRatio;
+        auto ratio = basePitchRatio * pitchBendRatio * tuneRatio;
+        auto amplitudeScale = 1.0f;
+
+        // The random draws below are only taken when their feature is on, so a
+        // patch with both at zero renders bit-identically to earlier versions.
+        // SHIMMER: some grains jump an octave up, quieter, for a bright halo.
+        if (targets.shimmerAmount > 0.0f
+            && voiceRandom.nextFloat() < dsp::clamp (targets.shimmerAmount, 0.0f, 1.0f) * 0.5f)
+        {
+            ratio *= 2.0f;
+            amplitudeScale = 0.7f;
+        }
+
+        // REVERSE: some grains read backwards.
+        const auto reversed = targets.reverseChance > 0.0f
+                              && voiceRandom.nextFloat() < dsp::clamp (targets.reverseChance, 0.0f, 1.0f);
 
         if (targets.detuneCents > 0.0f)
         {
@@ -149,9 +164,10 @@ namespace texture
 
         // Overlapping grains sum, so scale back by the incoherent-summation factor
         // to keep perceived loudness steady as MORPH opens the grain count up.
-        const auto amplitude = 1.0f / std::sqrt (static_cast<float> (juce::jmax (1, targets.grainsPerVoice)));
+        const auto amplitude = amplitudeScale
+                             / std::sqrt (static_cast<float> (juce::jmax (1, targets.grainsPerVoice)));
 
-        grains[static_cast<size_t> (slot)].start (start, grainDurationSamples, ratio, pan, amplitude, taper);
+        grains[static_cast<size_t> (slot)].start (start, grainDurationSamples, ratio, pan, amplitude, taper, reversed);
     }
 
     void Voice::renderAdding (const SampleBuffer& source,
@@ -192,7 +208,14 @@ namespace texture
         // (clean playback), a fully overlapped swarm gets a true Hann.
         const auto taper = juce::jlimit (Grain::minimumTaper, 1.0f, overlap > 0.0f ? overlap : Grain::minimumTaper);
 
-        const auto readIncrement = static_cast<double> (basePitchRatio * pitchBendRatio);
+        // TUNE: whole semitones, so a sample recorded away from C3 can be put back
+        // in key. Clamped here as well because the fuzzer feeds raw targets.
+        tuneRatio = dsp::semitonesToRatio (std::isfinite (targets.tuneSemitones)
+                                               ? dsp::clamp (targets.tuneSemitones,
+                                                             params::tuneMinSemitones,
+                                                             params::tuneMaxSemitones)
+                                               : 0.0f);
+        const auto readIncrement = static_cast<double> (basePitchRatio * pitchBendRatio * tuneRatio);
         const auto sourceLengthAsDouble = static_cast<double> (sourceLength);
         // Spawning must stop the moment the envelope finishes. `isInReleasePhase()`
         // goes false again once the release completes, so testing it alone would

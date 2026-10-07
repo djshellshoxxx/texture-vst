@@ -26,7 +26,8 @@ namespace texture
                        float playbackRatio,
                        float panPosition,
                        float amplitude,
-                       float windowTaper) noexcept
+                       float windowTaper,
+                       bool playReversed) noexcept
     {
         if (durationSamples <= 0)
         {
@@ -34,8 +35,16 @@ namespace texture
             return;
         }
 
-        readPosition = startPositionInSamples;
         increment = static_cast<double> (juce::jmax (0.0001f, playbackRatio));
+        readPosition = startPositionInSamples;
+
+        // A reversed grain covers the same stretch of source, starting from its far
+        // end, so reverse changes the direction of a grain and not where it reads.
+        if (playReversed)
+        {
+            readPosition += increment * static_cast<double> (durationSamples - 1);
+            increment = -increment;
+        }
         samplesRemaining = durationSamples;
         totalDuration = durationSamples;
         level = amplitude;

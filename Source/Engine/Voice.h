@@ -97,6 +97,7 @@ namespace texture
         float velocityGain { 1.0f };
         float basePitchRatio { 1.0f };
         float pitchBendRatio { 1.0f };
+        float tuneRatio { 1.0f };
         float lastEnvelopeLevel { 0.0f };
         float normalisedReadPosition { 0.0f };
 
