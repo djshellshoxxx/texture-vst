@@ -80,18 +80,33 @@ namespace texture
         return "Pad_" + juce::String (index + 1).paddedLeft ('0', 2) + ".wav";
     }
 
+    bool FactoryContent::isValidFactoryFile (const juce::File& file)
+    {
+        if (! file.existsAsFile() || file.getSize() <= 44)
+            return false;
+
+        juce::WavAudioFormat format;
+        std::unique_ptr<juce::AudioFormatReader> reader (format.createReaderFor (file.createInputStream().release(), true));
+
+        if (reader == nullptr)
+            return false;
+
+        const auto expectedFrames = static_cast<juce::int64> (sampleRate * lengthSeconds);
+        const auto frameTolerance = static_cast<juce::int64> (sampleRate * 0.01);
+
+        return std::abs (reader->sampleRate - sampleRate) < 0.01
+            && static_cast<int> (reader->numChannels) == numChannels
+            && std::abs (reader->lengthInSamples - expectedFrames) <= frameTolerance;
+    }
+
     bool FactoryContent::isInstalledIn (const juce::File& directory)
     {
         if (! directory.isDirectory())
             return false;
 
         for (int i = 0; i < numSamples; ++i)
-        {
-            const auto file = directory.getChildFile (getFileName (i));
-
-            if (! file.existsAsFile() || file.getSize() <= 0)
+            if (! isValidFactoryFile (directory.getChildFile (getFileName (i))))
                 return false;
-        }
 
         return true;
     }
@@ -209,9 +224,14 @@ namespace texture
         {
             const auto file = directory.getChildFile (getFileName (i));
 
-            // Never clobber content that is already there.
-            if (file.existsAsFile() && file.getSize() > 0)
+            if (isValidFactoryFile (file))
                 continue;
+
+            if (file.existsAsFile() && ! file.deleteFile())
+            {
+                juce::Logger::writeToLog ("[warn] [factory] Could not replace invalid " + file.getFullPathName());
+                continue;
+            }
 
             if (writeOneFile (file, i))
                 ++written;

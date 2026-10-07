@@ -31,12 +31,15 @@ namespace texture
         /** `Pad_01.wav` .. `Pad_20.wav`. */
         static juce::String getFileName (int index);
 
-        /** True when every expected file is present and non-empty. */
+        /** True when a generated pad is a readable WAV with the expected shape. */
+        static bool isValidFactoryFile (const juce::File& file);
+
+        /** True when every expected file is present and structurally valid. */
         static bool isInstalledIn (const juce::File& directory);
 
-        /** Writes any missing files. Existing files are never overwritten, so real
-            samples dropped in under the same names survive. Returns how many were
-            written, or -1 if the directory could not be created.
+        /** Writes missing files and repairs invalid generated files. Valid existing
+            factory files are preserved. Returns how many were written, or -1 if the
+            directory could not be created.
         */
         static int generateInto (const juce::File& directory);
 

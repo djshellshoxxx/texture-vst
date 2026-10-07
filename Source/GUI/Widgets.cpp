@@ -836,7 +836,7 @@ namespace texture
     {
         if (MotionPreferences::isReducedMotion())
         {
-            if (scrollOffset != 0.0f)
+            if (! juce::exactlyEqual (scrollOffset, 0.0f))
             {
                 scrollOffset = 0.0f;
                 repaint();

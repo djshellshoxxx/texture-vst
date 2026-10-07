@@ -24,7 +24,8 @@ Optional product state:
 
 - zero or one `Sample` record for each layer index 0 and 1;
 - one `Preset` metadata record;
-- one `Grit` hidden-effect record.
+- one `Grit` hidden-effect record;
+- one `Compare` record containing the active A/B slot and up to two parameter snapshots.
 
 ## Validation before mutation
 
@@ -39,7 +40,8 @@ The loader MUST reject the entire state when:
 4. the state was written by a future major version;
 5. the required parameter wrapper or its contained state is missing;
 6. a sample record uses a layer index outside 0..1;
-7. more than one sample record targets the same layer.
+7. more than one sample record targets the same layer;
+8. A/B comparison state contains an invalid active index, malformed/duplicate slots, or non-numeric values.
 
 Rejection leaves the current parameters, loaded samples, preset metadata, GRIT
 settings and sample start positions unchanged.
@@ -55,6 +57,9 @@ Unknown optional fields are ignored.
 
 ## Sample restore
 
+Parameters added after a state or preset was written (TUNE, REVERSE and SHIMMER in
+0.0.1) are absent from it and restore at their defaults, which are neutral.
+
 Sample references may be absent. When present, the loader restores the saved start
 position and queues file loading outside the audio callback. If an absolute path is
 missing, TEXTURE attempts its normal preset/sample path resolution fallback. A missing
@@ -63,7 +68,7 @@ user receives a replacement prompt.
 
 ## Non-parameter state
 
-Preset metadata and GRIT state are optional for version-1 compatibility. GRIT numeric
+Preset metadata, GRIT state and A/B comparison state are optional for version-1 compatibility. GRIT numeric
 values are clamped by the existing effect setters. Optional records must not be
 required merely to open older version-1 projects.
 

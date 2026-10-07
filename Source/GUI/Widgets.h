@@ -343,6 +343,7 @@ namespace texture
         void paintButton (juce::Graphics& g, bool shouldDrawButtonAsHighlighted,
                           bool shouldDrawButtonAsDown) override;
 
+        using juce::Button::clicked;
         void clicked() override;
 
     private:

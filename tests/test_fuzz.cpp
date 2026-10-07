@@ -129,6 +129,12 @@ namespace texture::tests
                     targets.highShelfTiltDb = random.nextFloat() * 48.0f - 24.0f;
                 }
 
+                // The v0.0.1 grain controls, sometimes far outside their ranges.
+                targets.tuneSemitones = random.nextInt (4) == 0 ? random.nextFloat() * 200.0f - 100.0f
+                                                                : static_cast<float> (random.nextInt ({ -24, 25 }));
+                targets.reverseChance = random.nextFloat() * 1.5f - 0.25f;
+                targets.shimmerAmount = random.nextFloat() * 1.5f - 0.25f;
+
                 engine.setAdsrParameters (random.nextFloat() * 6000.0f,
                                           random.nextFloat() * 6000.0f,
                                           random.nextFloat(),

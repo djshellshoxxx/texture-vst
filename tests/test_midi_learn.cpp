@@ -38,6 +38,15 @@ namespace texture::tests
             expect (! learn.cancelLearningIfTimedOut());
             expectEquals (learn.getControllerForParameter (params::gainDb), 21);
 
+            beginTest ("the first valid CC wins when several arrive before dispatch");
+            learn.cancelLearning();
+            learn.startLearning (params::morph);
+            learn.requestBinding (22);
+            learn.requestBinding (23);
+            learn.requestBinding (24);
+            expect (learn.applyPendingBinding());
+            expectEquals (learn.getControllerForParameter (params::morph), 22);
+
             beginTest ("reserved controllers do not complete learning");
             learn.startLearning (params::morph);
             learn.requestBinding (64);

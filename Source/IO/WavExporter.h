@@ -2,6 +2,8 @@
 
 #include "../Engine/SampleBuffer.h"
 
+#include <array>
+
 namespace texture
 {
     /** Offline renderer that bounces the current patch to a stereo WAV file (Pro).
@@ -23,6 +25,16 @@ namespace texture
             float releaseMs { 1200.0f };
             bool reverbOn { true };
             float gainDb { 0.0f };
+            float lfoRateHz { 0.2f };
+            float lfoDepth { 0.0f };
+            float layerBlend { 0.0f };
+            std::array<float, 2> sampleStart { 0.0f, 0.0f };
+            float tuneSemitones { 0.0f };
+            float reverseChance { 0.0f };
+            float shimmerAmount { 0.0f };
+            float gritBits { 12.0f };
+            float gritDownsample { 4.0f };
+            float gritMix { 0.0f };
             int midiNote { 60 };          // C3
             float velocity { 0.9f };
         };
@@ -49,10 +61,19 @@ namespace texture
         /** Renders and writes the file. Call from the message thread or a background
             thread — never from the audio thread.
         */
-        static Result render (const SampleBufferPtr& sample,
+        static Result render (const std::array<SampleBufferPtr, 2>& samples,
                               const RenderSettings& settings,
                               const Options& options,
                               const juce::File& destination);
+
+        /** Compatibility overload for a one-layer render. */
+        static Result render (const SampleBufferPtr& sample,
+                              const RenderSettings& settings,
+                              const Options& options,
+                              const juce::File& destination)
+        {
+            return render (std::array<SampleBufferPtr, 2> { sample, nullptr }, settings, options, destination);
+        }
 
         /** Bit depths offered in the export dialog. */
         static juce::Array<int> getSupportedBitDepths();

@@ -3,6 +3,7 @@
 #include "../Utility/ParameterIDs.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace texture
 {
@@ -47,6 +48,63 @@ namespace texture
             tags.trim();
             tags.removeEmptyStrings();
             return tags;
+        }
+
+        bool isKnownParameterID (const juce::String& id)
+        {
+            for (const auto* known : params::allIDs)
+                if (id == known)
+                    return true;
+
+            return false;
+        }
+
+        bool readNumericParameter (const juce::var& value, double& result)
+        {
+            if (! (value.isInt() || value.isInt64() || value.isDouble() || value.isBool()))
+                return false;
+
+            result = static_cast<double> (value);
+            return std::isfinite (result);
+        }
+
+        bool parameterValueIsValid (const juce::String& id, const juce::var& value)
+        {
+            double numeric = 0.0;
+
+            if (! readNumericParameter (value, numeric))
+                return false;
+
+            const auto inRange = [numeric] (double minimum, double maximum)
+            {
+                return numeric >= minimum && numeric <= maximum;
+            };
+
+            if (id == params::morph)       return inRange (params::morphMin, params::morphMax);
+            if (id == params::attack)      return inRange (params::attackMinMs, params::attackMaxMs);
+            if (id == params::decay)       return inRange (params::decayMinMs, params::decayMaxMs);
+            if (id == params::sustain)     return inRange (params::sustainMin, params::sustainMax);
+            if (id == params::release)     return inRange (params::releaseMinMs, params::releaseMaxMs);
+            if (id == params::gainDb)      return inRange (params::gainMinDb, params::gainMaxDb);
+            if (id == params::lfoRate)     return inRange (params::lfoRateMinHz, params::lfoRateMaxHz);
+            if (id == params::lfoDepth)    return inRange (params::lfoDepthMin, params::lfoDepthMax);
+            if (id == params::layerBlend)  return inRange (params::layerBlendMin, params::layerBlendMax);
+            if (id == params::reverse)     return inRange (params::reverseMin, params::reverseMax);
+            if (id == params::shimmer)     return inRange (params::shimmerMin, params::shimmerMax);
+
+            if (id == params::tune)
+                return juce::exactlyEqual (numeric, std::floor (numeric))
+                    && inRange (params::tuneMinSemitones, params::tuneMaxSemitones);
+
+            if (id == params::reverbOn || id == params::lfoSync)
+                return juce::exactlyEqual (numeric, 0.0) || juce::exactlyEqual (numeric, 1.0);
+
+            if (id == params::lfoDivision)
+                return juce::exactlyEqual (numeric, std::floor (numeric))
+                    && numeric >= 0.0
+                    && numeric < static_cast<double> (params::numDivisions);
+
+            return false;
         }
     }
 
@@ -342,6 +400,12 @@ namespace texture
 
         const auto schema = static_cast<int> (parsed.getProperty ("schema_version", 1));
 
+        if (schema <= 0)
+        {
+            errorMessage = "Preset schema version is invalid.";
+            return Status::invalidData;
+        }
+
         if (schema > currentSchemaVersion)
         {
             errorMessage = "This preset was made with a newer version of TEXTURE.";
@@ -356,15 +420,79 @@ namespace texture
         parsedData.author = parsed.getProperty ("author", "User").toString();
         parsedData.samplePath = parsed.getProperty ("sample_path", "").toString();
 
+        if (schema == 1)
+        {
+            parsedData.samplePaths[0] = parsedData.samplePath;
+        }
+        else if (const auto* samples = parsed.getProperty ("samples", juce::var()).getArray())
+        {
+            if (samples->size() > 2)
+            {
+                errorMessage = "Preset contains too many sample layers.";
+                return Status::invalidData;
+            }
+
+            for (int layer = 0; layer < samples->size(); ++layer)
+            {
+                const auto& sampleVar = samples->getReference (layer);
+                auto* sampleObject = sampleVar.getDynamicObject();
+
+                if (sampleObject == nullptr)
+                {
+                    errorMessage = "Preset sample data is malformed.";
+                    return Status::invalidData;
+                }
+
+                parsedData.samplePaths[static_cast<size_t> (layer)]
+                    = sampleVar.getProperty ("path", "").toString();
+
+                const auto startVar = sampleVar.getProperty ("start", 0.0);
+                double start = 0.0;
+
+                if (! readNumericParameter (startVar, start) || start < 0.0 || start > 1.0)
+                {
+                    errorMessage = "Preset sample start position is invalid.";
+                    return Status::invalidData;
+                }
+
+                parsedData.sampleStarts[static_cast<size_t> (layer)] = static_cast<float> (start);
+            }
+
+            parsedData.samplePath = parsedData.samplePaths[0];
+        }
+
         if (const auto* tagArray = parsed.getProperty ("tags", juce::var()).getArray())
             for (const auto& tag : *tagArray)
                 parsedData.tags.add (tag.toString());
 
         const auto parameterVar = parsed.getProperty ("parameters", juce::var());
 
-        if (auto* parameterObject = parameterVar.getDynamicObject())
+        if (! parameterVar.isVoid())
+        {
+            auto* parameterObject = parameterVar.getDynamicObject();
+
+            if (parameterObject == nullptr)
+            {
+                errorMessage = "Preset parameter data is malformed.";
+                return Status::invalidData;
+            }
+
             for (const auto& property : parameterObject->getProperties())
+            {
+                const auto id = property.name.toString();
+
+                if (! isKnownParameterID (id))
+                    continue;
+
+                if (! parameterValueIsValid (id, property.value))
+                {
+                    errorMessage = "Preset parameter '" + id + "' is invalid or out of range.";
+                    return Status::invalidData;
+                }
+
                 parsedData.parameters.set (property.name, property.value);
+            }
+        }
 
         data = std::move (parsedData);
         errorMessage.clear();
@@ -388,12 +516,56 @@ namespace texture
             tagArray.add (tag);
 
         root->setProperty ("tags", tagArray);
-        root->setProperty ("sample_path", data.samplePath);
+
+        juce::Array<juce::var> sampleArray;
+
+        for (int layer = 0; layer < 2; ++layer)
+        {
+            juce::DynamicObject::Ptr sampleObject (new juce::DynamicObject());
+            auto path = data.samplePaths[static_cast<size_t> (layer)];
+
+            if (layer == 0 && path.isEmpty())
+                path = data.samplePath;
+
+            const auto start = data.sampleStarts[static_cast<size_t> (layer)];
+
+            if (! std::isfinite (start) || start < 0.0f || start > 1.0f)
+            {
+                errorMessage = "Preset sample start position is invalid.";
+                return Status::invalidData;
+            }
+
+            sampleObject->setProperty ("path", path);
+            sampleObject->setProperty ("start", start);
+            sampleArray.add (juce::var (sampleObject.get()));
+        }
+
+        root->setProperty ("samples", sampleArray);
+
+        // Retain the schema-1 field as a human-readable compatibility hint.
+        root->setProperty ("sample_path", data.samplePaths[0].isNotEmpty()
+                                              ? data.samplePaths[0]
+                                              : data.samplePath);
 
         juce::DynamicObject::Ptr parameterObject (new juce::DynamicObject());
 
         for (int i = 0; i < data.parameters.size(); ++i)
-            parameterObject->setProperty (data.parameters.getName (i), data.parameters.getValueAt (i));
+        {
+            const auto name = data.parameters.getName (i);
+            const auto id = name.toString();
+            const auto& value = data.parameters.getValueAt (i);
+
+            if (! isKnownParameterID (id))
+                continue;
+
+            if (! parameterValueIsValid (id, value))
+            {
+                errorMessage = "Preset parameter '" + id + "' is invalid or out of range.";
+                return Status::invalidData;
+            }
+
+            parameterObject->setProperty (name, value);
+        }
 
         root->setProperty ("parameters", juce::var (parameterObject.get()));
 
@@ -528,6 +700,7 @@ namespace texture
             case Status::tooLarge:      return "Preset file is too large.";
             case Status::parseError:    return "Preset file could not be parsed.";
             case Status::schemaTooNew:  return "This preset was made with a newer version of TEXTURE.";
+            case Status::invalidData:    return "Preset contains invalid or out-of-range data.";
             case Status::writeFailed:   return "Preset could not be written.";
         }
 

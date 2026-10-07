@@ -66,8 +66,11 @@ namespace texture
         {
             auto* data = buffer.getWritePointer (ch, startSample);
 
+            // First stage of the chain, so it also scrubs NaN/Inf. Unscrubbed, an
+            // infinite sample leaves tanh() as 1/tanh(drive) - up to 100x full
+            // scale at low drive - and that spike then rings through the reverb.
             for (int i = 0; i < numSamples; ++i)
-                data[i] = dsp::softClip (data[i], drive, normalise);
+                data[i] = dsp::softClip (dsp::sanitise (data[i]), drive, normalise);
         }
     }
 }

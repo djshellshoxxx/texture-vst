@@ -22,6 +22,8 @@ namespace texture::tests
             testDownmixesMultiChannel();
             testResampling();
             testConcurrentLoads();
+            testIndependentRequestLanes();
+            testLaneCancellation();
             testWaveformCache();
             testPresetRouting();
         }
@@ -272,6 +274,95 @@ namespace texture::tests
             loader.waitForPendingLoads();
         }
 
+
+        void testIndependentRequestLanes()
+        {
+            beginTest ("independent request lanes both deliver their newest result");
+
+            TemporaryDirectory temp;
+            const auto layerAOld = temp.child ("layer_a_old.wav");
+            const auto layerANew = temp.child ("layer_a_new.wav");
+            const auto layerB = temp.child ("layer_b.wav");
+
+            expect (writeTestAudioFile (layerAOld, 44100.0, 0.2, 2));
+            expect (writeTestAudioFile (layerANew, 44100.0, 0.2, 2));
+            expect (writeTestAudioFile (layerB, 44100.0, 0.2, 2));
+
+            SampleLoader loader;
+            loader.prepare (48000.0);
+
+            juce::StringArray delivered;
+            juce::Array<int> tags;
+
+            loader.setCallback ([&] (const SampleLoader::LoadResult& result)
+            {
+                if (result.succeeded)
+                {
+                    delivered.add (result.file.getFileName());
+                    tags.add (result.requestTag);
+                }
+            });
+
+            loader.loadAsync (layerAOld, 0);
+            loader.loadAsync (layerB, 1);
+            loader.loadAsync (layerANew, 0);
+
+            const auto finished = waitForCondition ([&]
+            {
+                return ! loader.isBusy() && delivered.size() >= 2;
+            });
+
+            expect (finished);
+            expectEquals (delivered.size(), 2,
+                          "one newest result per independent lane must be delivered");
+            expect (delivered.contains (layerANew.getFileName()));
+            expect (delivered.contains (layerB.getFileName()));
+            expect (! delivered.contains (layerAOld.getFileName()));
+            expect (tags.contains (0));
+            expect (tags.contains (1));
+
+            loader.setCallback (nullptr);
+            loader.waitForPendingLoads();
+        }
+
+
+        void testLaneCancellation()
+        {
+            beginTest ("cancelling one request lane does not cancel another");
+
+            TemporaryDirectory temp;
+            const auto layerA = temp.child ("cancel_a.wav");
+            const auto layerB = temp.child ("keep_b.wav");
+            expect (writeTestAudioFile (layerA, 44100.0, 0.4, 2));
+            expect (writeTestAudioFile (layerB, 44100.0, 0.4, 2));
+
+            SampleLoader loader;
+            loader.prepare (48000.0);
+
+            juce::Array<int> deliveredTags;
+            loader.setCallback ([&] (const SampleLoader::LoadResult& result)
+            {
+                if (result.succeeded)
+                    deliveredTags.add (result.requestTag);
+            });
+
+            loader.loadAsync (layerA, 0);
+            loader.loadAsync (layerB, 1);
+            loader.cancelPendingLoad (0);
+
+            const auto finished = waitForCondition ([&]
+            {
+                return ! loader.isBusy() && deliveredTags.size() >= 1;
+            });
+
+            expect (finished);
+            expect (! deliveredTags.contains (0));
+            expect (deliveredTags.contains (1));
+
+            loader.setCallback (nullptr);
+            loader.waitForPendingLoads();
+        }
+
         void testWaveformCache()
         {
             beginTest ("the waveform envelope is computed and normalised on load");
@@ -372,23 +463,27 @@ namespace texture::tests
             expectGreaterThan (crossings (high), crossings (low),
                                "the last pad should be higher than the first");
 
-            beginTest ("installation is idempotent");
+            beginTest ("factory validation rejects non-WAV stand-ins");
 
             TemporaryDirectory temp;
             const auto directory = temp.child ("factory");
-
-            expect (! FactoryContent::isInstalledIn (directory));
-
-            // Generating all twenty 30-second files is slow, so verify the guard
-            // logic against pre-placed stand-ins instead.
             directory.createDirectory();
 
-            for (int i = 0; i < FactoryContent::numSamples; ++i)
-                directory.getChildFile (FactoryContent::getFileName (i)).replaceWithText ("placeholder");
+            const auto fake = directory.getChildFile (FactoryContent::getFileName (0));
+            fake.replaceWithText ("placeholder");
 
-            expect (FactoryContent::isInstalledIn (directory));
-            expectEquals (FactoryContent::generateInto (directory), 0,
-                          "existing files must never be overwritten");
+            expect (! FactoryContent::isValidFactoryFile (fake));
+            expect (! FactoryContent::isInstalledIn (directory));
+
+            beginTest ("factory validation accepts the documented WAV shape");
+
+            const auto valid = directory.getChildFile ("valid.wav");
+            expect (writeTestAudioFile (valid,
+                                        FactoryContent::sampleRate,
+                                        FactoryContent::lengthSeconds,
+                                        FactoryContent::numChannels,
+                                        FactoryContent::bitDepth));
+            expect (FactoryContent::isValidFactoryFile (valid));
         }
     };
 

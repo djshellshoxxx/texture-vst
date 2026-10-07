@@ -112,11 +112,15 @@ namespace texture
         std::unique_ptr<ParameterKnob> lfoDepthKnob;
         std::unique_ptr<ParameterToggle> lfoSyncToggle;
         std::unique_ptr<ParameterKnob> layerBlendKnob;
+        std::unique_ptr<ParameterKnob> tuneKnob;
+        std::unique_ptr<ParameterKnob> reverseKnob;
+        std::unique_ptr<ParameterKnob> shimmerKnob;
         std::unique_ptr<ParameterChoiceBox> lfoDivisionBox;
         LevelMeter levelMeter;
 
         SectionHeader envelopeHeader { "Envelope" };
         SectionHeader outputHeader { "Output" };
+        SectionHeader grainHeader { "Grain" };
         SectionHeader lfoHeader { "Morph LFO", colours::accentPro };
         SectionHeader layerHeader { "Layer 2", colours::accentPro };
         juce::TextButton lfoProBadge { "PRO - click to upgrade" };
@@ -124,6 +128,19 @@ namespace texture
 
         DataStreamView dataStream;
         ToastBar toast;
+
+        /** Starts a new undo step on every mouse press anywhere in the editor, so one
+            drag or click is one Ctrl+Z. A separate listener rather than MainPanel's
+            own mouseDown, which reads positions in its own coordinates. */
+        struct UndoGestureListener final : juce::MouseListener
+        {
+            explicit UndoGestureListener (juce::UndoManager& manager) : undoManager (manager) {}
+            void mouseDown (const juce::MouseEvent&) override { undoManager.beginNewTransaction(); }
+            juce::UndoManager& undoManager;
+        };
+
+        UndoGestureListener undoGestureListener;
+        void performUndo (bool redo);
 
         // Overlays
         std::unique_ptr<SettingsPanel> settingsPanel;

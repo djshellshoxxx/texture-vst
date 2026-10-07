@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <limits>
+#include <type_traits>
 
 /** Header-only DSP primitives. Everything here is `constexpr` or `inline` and
     allocation-free so it is safe to call from the audio thread.
@@ -16,6 +17,20 @@ namespace texture::dsp
     /** Silence threshold used for voice retirement and the idle optimisation. */
     inline constexpr float minusSixtyDb = 0.001f;        // 10^(-60/20)
     inline constexpr float minusEightyDb = 0.0001f;      // 10^(-80/20)
+
+    /** Exponential coefficient that reaches targetRatio after targetSeconds.
+        Useful for block-size-independent meter and state decay. */
+    inline double decayCoefficient (double elapsedSeconds,
+                                    double targetSeconds,
+                                    double targetRatio) noexcept
+    {
+        if (elapsedSeconds <= 0.0)
+            return 1.0;
+
+        const auto safeSeconds = juce::jmax (1.0e-6, targetSeconds);
+        const auto safeRatio = juce::jlimit (1.0e-12, 0.999999, targetRatio);
+        return std::exp (std::log (safeRatio) * elapsedSeconds / safeSeconds);
+    }
 
     /** Converts decibels to a linear gain, clamping -100 dB and below to silence. */
     inline float dbToGain (float db) noexcept
@@ -50,8 +65,12 @@ namespace texture::dsp
 
     /** Clamps to [lo, hi] without branching surprises on NaN (NaN maps to lo). */
     template <typename T>
-    inline constexpr T clamp (T v, T lo, T hi) noexcept
+    inline T clamp (T v, T lo, T hi) noexcept
     {
+        if constexpr (std::is_floating_point_v<T>)
+            if (! std::isfinite (v))
+                return lo;
+
         return v < lo ? lo : (v > hi ? hi : v);
     }
 
@@ -159,16 +178,35 @@ namespace texture::dsp
         float y1 { 0.0f };
     };
 
-    /** Tracks decaying energy so the processor knows when a reverb tail has died. */
+    /** Tracks decaying energy so the processor knows when a reverb tail has died.
+        Decay is based on elapsed audio time rather than callback count, so hosts with
+        different block sizes retire tails consistently.
+    */
     class EnergyTracker
     {
     public:
+        void prepare (double sampleRateToUse, double decaySecondsToUse = 1.5) noexcept
+        {
+            sampleRate = sampleRateToUse > 0.0 ? sampleRateToUse : 44100.0;
+            decaySeconds = decaySecondsToUse > 0.01 ? decaySecondsToUse : 0.01;
+        }
+
         void reset() noexcept { energy = 0.0f; }
 
-        /** Feeds the peak magnitude of a block and decays the running estimate. */
+        /** Feeds the peak magnitude of a block and decays the running estimate over
+            exactly numSamples of elapsed audio time. */
+        void push (float blockPeak, int numSamples) noexcept
+        {
+            const auto elapsed = static_cast<double> (juce::jmax (0, numSamples)) / sampleRate;
+            const auto coefficient = static_cast<float> (
+                std::exp (std::log (1.0e-4) * elapsed / decaySeconds));
+            energy = juce::jmax (blockPeak, energy * coefficient);
+        }
+
+        /** Compatibility overload for legacy callers that do not yet supply a block size. */
         void push (float blockPeak) noexcept
         {
-            energy = juce::jmax (blockPeak, energy * decayPerBlock);
+            push (blockPeak, 64);
         }
 
         bool isSilent (float threshold = minusEightyDb) const noexcept { return energy < threshold; }
@@ -176,7 +214,8 @@ namespace texture::dsp
         float getEnergy() const noexcept { return energy; }
 
     private:
-        static constexpr float decayPerBlock = 0.999f;
+        double sampleRate { 44100.0 };
+        double decaySeconds { 1.5 };
         float energy { 0.0f };
     };
 

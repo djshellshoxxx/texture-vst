@@ -112,7 +112,10 @@ namespace texture
         if (! learning.load (std::memory_order_acquire) || isReservedController (ccNumber))
             return;
 
-        pendingController.store (ccNumber, std::memory_order_release);
+        int expected = -1;
+        pendingController.compare_exchange_strong (expected, ccNumber,
+                                                   std::memory_order_acq_rel,
+                                                   std::memory_order_relaxed);
     }
 
     bool MidiLearn::applyPendingBinding()
@@ -255,8 +258,18 @@ namespace texture
 
         for (const auto& entry : entries)
         {
-            const auto cc = entry.upToFirstOccurrenceOf ("=", false, false).getIntValue();
-            const auto parameterID = entry.fromFirstOccurrenceOf ("=", false, false);
+            const auto separator = entry.indexOfChar ('=');
+
+            if (separator <= 0 || separator >= entry.length() - 1)
+                continue;
+
+            const auto ccText = entry.substring (0, separator).trim();
+            const auto parameterID = entry.substring (separator + 1).trim();
+
+            if (! ccText.containsOnly ("0123456789"))
+                continue;
+
+            const auto cc = ccText.getIntValue();
             const auto slot = slotForParameter (parameterID);
 
             if (slot >= 0 && ! isReservedController (cc))

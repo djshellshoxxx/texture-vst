@@ -10,6 +10,7 @@
 #include "Utility/StateSchema.h"
 
 #include <cmath>
+#include <algorithm>
 
 namespace texture
 {
@@ -18,15 +19,15 @@ namespace texture
         /** Morph is ramped over this long so a sweep never zips (06_MORPH_KNOB_BEHAVIOUR.md). */
         constexpr double morphSmoothingSeconds = 0.02;
 
-        /** Peak meter fall time for the header LED. */
-        constexpr float peakDecayPerBlock = 0.82f;
+        /** Header LED reaches -60 dB after this much silence, independent of block size. */
+        constexpr double peakDecayToMinusSixtySeconds = 0.37;
 
         juce::String pluginVersionString()
         {
            #if defined (JucePlugin_VersionString)
             return JucePlugin_VersionString;
            #else
-            return "1.0.0";
+            return "0.0.1";
            #endif
         }
 
@@ -145,6 +146,28 @@ namespace texture
             juce::AudioParameterFloatAttributes()
                 .withStringFromValueFunction ([] (float value, int) { return juce::String (juce::roundToInt (value * 100.0f)) + "%"; })));
 
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::tune, 1 }, params::displayNameFor (params::tune),
+            Range { params::tuneMinSemitones, params::tuneMaxSemitones, 1.0f }, params::tuneDefaultSemitones,
+            juce::AudioParameterFloatAttributes()
+                .withStringFromValueFunction ([] (float value, int)
+                {
+                    const auto semitones = juce::roundToInt (value);
+                    return (semitones > 0 ? "+" : "") + juce::String (semitones) + " st";
+                })));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::reverse, 1 }, params::displayNameFor (params::reverse),
+            Range { params::reverseMin, params::reverseMax, 0.0001f }, params::reverseDefault,
+            juce::AudioParameterFloatAttributes()
+                .withStringFromValueFunction ([] (float value, int) { return juce::String (juce::roundToInt (value * 100.0f)) + "%"; })));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::shimmer, 1 }, params::displayNameFor (params::shimmer),
+            Range { params::shimmerMin, params::shimmerMax, 0.0001f }, params::shimmerDefault,
+            juce::AudioParameterFloatAttributes()
+                .withStringFromValueFunction ([] (float value, int) { return juce::String (juce::roundToInt (value * 100.0f)) + "%"; })));
+
         return layout;
     }
 
@@ -167,7 +190,7 @@ namespace texture
     TextureAudioProcessor::TextureAudioProcessor()
         : juce::AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
           storageInitialiser (applicationProperties),
-          apvts (*this, nullptr, "TEXTURE", createParameterLayout()),
+          apvts (*this, &undoManager, "TEXTURE", createParameterLayout()),
           licenseManager (&applicationProperties),
           presetManager (&applicationProperties),
           midiLearn (&applicationProperties)
@@ -181,9 +204,12 @@ namespace texture
         for (auto& value : pendingControllerValues)
             value.store (-1, std::memory_order_relaxed);
 
+        for (auto& shouldDirty : sampleLoadMarksDirty)
+            shouldDirty.store (false, std::memory_order_relaxed);
+
         sampleLoader.setCallback ([this] (const SampleLoader::LoadResult& result)
         {
-            onSampleLoaded (result, activeLayer);
+            onSampleLoaded (result, result.requestTag);
         });
 
         cacheParameterPointers();
@@ -196,6 +222,11 @@ namespace texture
 
         enforceTierLimits();
 
+        for (const auto* id : params::allIDs)
+            apvts.addParameterListener (id, this);
+
+        startTimerHz (60);
+
         for (auto& slot : compareSlots)
             slot = captureParameterTree();
 
@@ -204,6 +235,11 @@ namespace texture
 
     TextureAudioProcessor::~TextureAudioProcessor()
     {
+        stopTimer();
+
+        for (const auto* id : params::allIDs)
+            apvts.removeParameterListener (id, this);
+
         // Shut the loader down before anything it might call back into goes away
         // (19_DEBUGGING.md, common bug 6).
         sampleLoader.setCallback (nullptr);
@@ -262,6 +298,9 @@ namespace texture
         lfoSyncParameter     = apvts.getRawParameterValue (params::lfoSync);
         lfoDivisionParameter = apvts.getRawParameterValue (params::lfoDivision);
         layerBlendParameter  = apvts.getRawParameterValue (params::layerBlend);
+        tuneParameter        = apvts.getRawParameterValue (params::tune);
+        reverseParameter     = apvts.getRawParameterValue (params::reverse);
+        shimmerParameter     = apvts.getRawParameterValue (params::shimmer);
     }
 
     const juce::String TextureAudioProcessor::getName() const
@@ -342,10 +381,8 @@ namespace texture
 
             if (file.existsAsFile())
             {
-                const auto previousLayer = activeLayer;
-                activeLayer = i;
-                sampleLoader.loadAsync (file);
-                activeLayer = previousLayer;
+                sampleLoadMarksDirty[static_cast<size_t> (i)].store (false, std::memory_order_release);
+                sampleLoader.loadAsync (file, i);
             }
         }
     }
@@ -388,22 +425,30 @@ namespace texture
         const auto requestedDepth = lfoDepthParameter != nullptr ? lfoDepthParameter->load() : 0.0f;
         morphLfo.setDepth (licenseManager.isPro() ? requestedDepth : 0.0f);
 
+        double hostBpm = 0.0;
+        double hostPpq = -1.0;
+        bool hostIsPlaying = false;
+
         if (auto* hostPlayHead = getPlayHead())
         {
             if (const auto position = hostPlayHead->getPosition())
             {
-                morphLfo.updateFromPlayHead (position->getBpm().orFallback (120.0),
-                                             position->getIsPlaying(),
-                                             position->getPpqPosition().orFallback (0.0));
+                hostBpm = position->getBpm().orFallback (0.0);
+                hostPpq = position->getPpqPosition().orFallback (-1.0);
+                hostIsPlaying = position->getIsPlaying();
             }
         }
 
+        morphLfo.updateFromPlayHead (hostBpm, hostIsPlaying, hostPpq);
         morphLfo.advanceBlock (numSamples);
         morphNow = morphLfo.applyTo (morphNow);
 
         effectiveMorph.store (morphNow, std::memory_order_relaxed);
 
         currentTargets = deriveMorphTargets (morphNow);
+        currentTargets.tuneSemitones = tuneParameter    != nullptr ? tuneParameter->load()    : params::tuneDefaultSemitones;
+        currentTargets.reverseChance = reverseParameter != nullptr ? reverseParameter->load() : params::reverseDefault;
+        currentTargets.shimmerAmount = shimmerParameter != nullptr ? shimmerParameter->load() : params::shimmerDefault;
 
         const auto attack  = attackParameter  != nullptr ? attackParameter->load()  : params::attackDefaultMs;
         const auto decay   = decayParameter   != nullptr ? decayParameter->load()   : params::decayDefaultMs;
@@ -538,7 +583,11 @@ namespace texture
         outputPeak.push (peak);
 
         const auto previousSmoothed = smoothedPeak.load (std::memory_order_relaxed);
-        smoothedPeak.store (juce::jmax (peak, previousSmoothed * peakDecayPerBlock), std::memory_order_relaxed);
+        const auto peakDecay = static_cast<float> (dsp::decayCoefficient (
+            static_cast<double> (numSamples) / currentSampleRate,
+            peakDecayToMinusSixtySeconds,
+            0.001));
+        smoothedPeak.store (juce::jmax (peak, previousSmoothed * peakDecay), std::memory_order_relaxed);
 
         const auto elapsedSeconds = juce::Time::highResolutionTicksToSeconds (
             juce::Time::getHighResolutionTicks() - blockStartTicks);
@@ -605,7 +654,6 @@ namespace texture
             {
                 midiLearn.requestBinding (controller);
                 midiLearnBindingPending.store (true, std::memory_order_release);
-                triggerAsyncUpdate();
             }
             else if (midiLearn.getMappedSlotForController (controller) >= 0)
             {
@@ -614,7 +662,6 @@ namespace texture
                 pendingControllerValues[static_cast<size_t> (controller)]
                     .store (value, std::memory_order_release);
                 hasPendingControllerValues.store (true, std::memory_order_release);
-                triggerAsyncUpdate();
             }
         }
     }
@@ -623,8 +670,32 @@ namespace texture
     //  Message-thread work queued from the audio thread
     // =========================================================================
 
+    void TextureAudioProcessor::parameterChanged (const juce::String&, float)
+    {
+        if (suppressPresetDirtyTracking.load (std::memory_order_relaxed))
+            return;
+
+        presetDirtyPending.store (true, std::memory_order_release);
+    }
+
+    void TextureAudioProcessor::timerCallback()
+    {
+        // Message-thread poll for work latched by real-time callbacks. Avoid calling
+        // AsyncUpdater::triggerAsyncUpdate() from processBlock/parameterChanged.
+        if (presetDirtyPending.load (std::memory_order_acquire)
+            || midiLearnBindingPending.load (std::memory_order_acquire)
+            || hasPendingControllerValues.load (std::memory_order_acquire)
+            || deferredSampleNotifications.load (std::memory_order_acquire) != 0
+            || deferredPluginStateNotification.load (std::memory_order_acquire))
+        {
+            handleAsyncUpdate();
+        }
+    }
+
     void TextureAudioProcessor::handleAsyncUpdate()
     {
+        if (presetDirtyPending.exchange (false, std::memory_order_acq_rel))
+            markPresetDirty();
         const auto written = factorySamplesWritten.exchange (-1, std::memory_order_acq_rel);
 
         if (written > 0)
@@ -661,6 +732,14 @@ namespace texture
                 applyMidiLearnedController (cc, value);
             }
         }
+
+        const auto sampleMask = deferredSampleNotifications.exchange (0, std::memory_order_acq_rel);
+        for (int layerIndex = 0; layerIndex < numLayers; ++layerIndex)
+            if ((sampleMask & (1u << static_cast<unsigned int> (layerIndex))) != 0)
+                notifyListeners (&Listener::sampleChanged, layerIndex);
+
+        if (deferredPluginStateNotification.exchange (false, std::memory_order_acq_rel))
+            notifyPluginStateChanged();
 
         juce::String message;
         SampleLoader::Severity severity = SampleLoader::Severity::info;
@@ -779,31 +858,46 @@ namespace texture
         activeLayer = layer;
         setSampleStart (layer, 0.0f);   // a new sample starts from its beginning
         logInfo ("loader", "Loading " + file.getFullPathName() + " into layer " + juce::String (layer + 1));
-        sampleLoader.loadAsync (file);
+        sampleLoadMarksDirty[static_cast<size_t> (layer)].store (true, std::memory_order_release);
+        sampleLoader.loadAsync (file, layer);
     }
 
     void TextureAudioProcessor::releaseRetiredIfSafe (Layer& layer)
     {
-        if (layer.retired == nullptr)
+        if (layer.retired.empty())
             return;
 
-        // Either no audio thread is running at all, or it has started and finished
-        // a whole block since the pointer was replaced, so it cannot still be
-        // holding the old one.
-        if (! isPrepared || blocksProcessed.load (std::memory_order_acquire) > layer.retiredAtBlock + 1)
-            layer.retired.reset();
+        if (! isPrepared)
+        {
+            layer.retired.clear();
+            return;
+        }
+
+        const auto completedBlocks = blocksProcessed.load (std::memory_order_acquire);
+
+        layer.retired.erase (
+            std::remove_if (layer.retired.begin(), layer.retired.end(),
+                            [completedBlocks] (const Layer::RetiredSample& retired)
+                            {
+                                return completedBlocks > retired.retiredAtBlock + 1;
+                            }),
+            layer.retired.end());
     }
 
     void TextureAudioProcessor::publishSample (Layer& layer, SampleBufferPtr next)
     {
         jassert (next != nullptr);
 
-        // Free whatever is already waiting before taking on another one, so a slot
-        // never holds more than one retired buffer.
         releaseRetiredIfSafe (layer);
 
-        layer.retired = std::move (layer.messageThreadCopy);
-        layer.retiredAtBlock = blocksProcessed.load (std::memory_order_acquire);
+        if (layer.messageThreadCopy != nullptr)
+        {
+            layer.retired.push_back ({
+                std::move (layer.messageThreadCopy),
+                blocksProcessed.load (std::memory_order_acquire)
+            });
+        }
+
         layer.messageThreadCopy = std::move (next);
 
         // The swap itself: one lock-free pointer store (05_SAMPLE_LOADER.md). The
@@ -826,7 +920,8 @@ namespace texture
             layer.file = result.file;
             layer.originalName = result.file.getFileName();
 
-            markPresetDirty();
+            if (sampleLoadMarksDirty[index].load (std::memory_order_acquire))
+                markPresetDirty();
 
             if (auto* store = applicationProperties.getUserSettings())
             {
@@ -864,10 +959,18 @@ namespace texture
         return layers[index].file;
     }
 
-    void TextureAudioProcessor::setSampleStart (int layerIndex, float normalised)
+    void TextureAudioProcessor::setSampleStart (int layerIndex, float normalised, bool shouldMarkDirty)
     {
         const auto index = static_cast<size_t> (juce::jlimit (0, numLayers - 1, layerIndex));
-        engines[index].setSampleStart (juce::jlimit (0.0f, 1.0f, normalised));
+        const auto clamped = juce::jlimit (0.0f, 1.0f, normalised);
+
+        if (juce::approximatelyEqual (engines[index].getSampleStart(), clamped))
+            return;
+
+        engines[index].setSampleStart (clamped);
+
+        if (shouldMarkDirty)
+            markPresetDirty();
     }
 
     float TextureAudioProcessor::getSampleStart (int layerIndex) const noexcept
@@ -877,17 +980,18 @@ namespace texture
 
     void TextureAudioProcessor::clearLayer (int layerIndex)
     {
-        setSampleStart (layerIndex, 0.0f);
+        const auto lane = juce::jlimit (0, numLayers - 1, layerIndex);
+        sampleLoader.cancelPendingLoad (lane);
+        setSampleStart (lane, 0.0f);
 
-        const auto index = static_cast<size_t> (juce::jlimit (0, numLayers - 1, layerIndex));
+        const auto index = static_cast<size_t> (lane);
         auto& layer = layers[index];
 
         publishSample (layer, SampleBuffer::makeEmpty());
         layer.file = juce::File();
         layer.originalName.clear();
 
-        for (auto& engine : engines)
-            engine.allNotesOff();
+        engines[index].allNotesOff();
 
         markPresetDirty();
         notifyListeners (&Listener::sampleChanged, static_cast<int> (index));
@@ -932,9 +1036,16 @@ namespace texture
         data.name = name;
         data.category = category;
         data.tags = tags;
-        data.author = licenseManager.getStoredEmail().isNotEmpty() ? licenseManager.getStoredEmail()
-                                                                   : juce::String ("User");
+        // Never copy licensing/account identifiers into a shareable preset file.
+        data.author = "User";
         data.samplePath = presetManager.makeStorablePath (getSampleFileForLayer (0));
+
+        for (int layer = 0; layer < numLayers; ++layer)
+        {
+            data.samplePaths[static_cast<size_t> (layer)]
+                = presetManager.makeStorablePath (getSampleFileForLayer (layer));
+            data.sampleStarts[static_cast<size_t> (layer)] = getSampleStart (layer);
+        }
 
         for (const auto* id : params::allIDs)
             data.setParameter (id, getParameterValue (id, params::defaultValueFor (id)));
@@ -942,8 +1053,21 @@ namespace texture
         return data;
     }
 
+    bool TextureAudioProcessor::undoLastEdit()
+    {
+        undoManager.beginNewTransaction();
+        return undoManager.undo();
+    }
+
+    bool TextureAudioProcessor::redoLastEdit()
+    {
+        undoManager.beginNewTransaction();
+        return undoManager.redo();
+    }
+
     bool TextureAudioProcessor::loadPreset (const juce::File& file)
     {
+        undoManager.beginNewTransaction();
         PresetManager::PresetData data;
         juce::String error;
 
@@ -957,27 +1081,51 @@ namespace texture
             return false;
         }
 
+        suppressPresetDirtyTracking.store (true, std::memory_order_release);
+
         for (const auto* id : params::allIDs)
             setParameterValue (id, data.getParameter (id, params::defaultValueFor (id)));
 
         currentPresetName = data.name;
         currentPresetCategory = data.category;
+        currentPresetFile = file;
         presetDirty = false;
 
         enforceTierLimits();
 
-        const auto sampleFile = presetManager.resolveSamplePath (data.samplePath);
+        suppressPresetDirtyTracking.store (false, std::memory_order_release);
+        presetDirtyPending.store (false, std::memory_order_release);
 
-        if (sampleFile.existsAsFile())
+        // Preset sample state is authoritative. Clear both layers first so an
+        // empty/missing reference cannot accidentally inherit audio from the prior patch.
+        for (int layerIndex = 0; layerIndex < numLayers; ++layerIndex)
         {
-            activeLayer = 0;
-            sampleLoader.loadAsync (sampleFile);
-        }
-        else if (data.samplePath.isNotEmpty())
-        {
-            postToast ("Preset loaded but sample '"
-                       + data.samplePath.fromLastOccurrenceOf ("/", false, false) + "' is missing.",
-                       SampleLoader::Severity::warning);
+            const auto index = static_cast<size_t> (layerIndex);
+            auto& layer = layers[index];
+
+            publishSample (layer, SampleBuffer::makeEmpty());
+            layer.file = juce::File();
+            layer.originalName.clear();
+            engines[index].allSoundOff();
+            setSampleStart (layerIndex, data.sampleStarts[index], false);
+
+            const auto& storedPath = data.samplePaths[index];
+            const auto sampleFile = presetManager.resolveSamplePath (storedPath);
+
+            if (sampleFile.existsAsFile())
+            {
+                sampleLoadMarksDirty[index].store (false, std::memory_order_release);
+                sampleLoader.loadAsync (sampleFile, layerIndex);
+            }
+            else if (storedPath.isNotEmpty())
+            {
+                postToast ("Preset loaded but sample '"
+                               + storedPath.fromLastOccurrenceOf ("/", false, false)
+                               + "' is missing in layer " + juce::String (layerIndex + 1) + ".",
+                           SampleLoader::Severity::warning);
+            }
+
+            notifyListeners (&Listener::sampleChanged, layerIndex);
         }
 
         logInfo ("presets", "Loaded preset " + data.name);
@@ -1002,6 +1150,7 @@ namespace texture
 
         currentPresetName = name;
         currentPresetCategory = category;
+        currentPresetFile = file;
         presetDirty = false;
 
         presetManager.refresh();
@@ -1026,6 +1175,7 @@ namespace texture
 
     void TextureAudioProcessor::resetToDefaults()
     {
+        undoManager.beginNewTransaction();
         for (const auto* id : params::allIDs)
             setParameterValue (id, params::defaultValueFor (id));
 
@@ -1036,6 +1186,7 @@ namespace texture
 
     void TextureAudioProcessor::randomiseParameters()
     {
+        undoManager.beginNewTransaction();
         auto& random = juce::Random::getSystemRandom();
 
         // Every press starts from defaults so results do not drift towards extremes.
@@ -1049,6 +1200,14 @@ namespace texture
         setParameterValue (params::release, juce::jmap (random.nextFloat(), 200.0f, 6000.0f));
         setParameterValue (params::reverbOn, random.nextFloat() < 0.85f ? 1.0f : 0.0f);
         setParameterValue (params::gainDb, juce::jmap (random.nextFloat(), -8.0f, 0.0f));
+
+        // Tune stays put: it describes the sample, not the sound. The two grain
+        // effects are applied sparingly so most rolls still sound like the sample.
+        if (random.nextFloat() < 0.35f)
+            setParameterValue (params::reverse, juce::jmap (random.nextFloat(), 0.1f, 0.6f));
+
+        if (random.nextFloat() < 0.35f)
+            setParameterValue (params::shimmer, juce::jmap (random.nextFloat(), 0.1f, 0.7f));
 
         if (licenseManager.isPro())
         {
@@ -1090,6 +1249,7 @@ namespace texture
 
         currentPresetName.clear();
         currentPresetCategory = "Cinematic";
+        currentPresetFile = juce::File();
         presetDirty = false;
 
         Logging::clearLog();
@@ -1104,16 +1264,10 @@ namespace texture
 
     void TextureAudioProcessor::enforceTierLimits()
     {
-        if (licenseManager.isPro())
-            return;
-
-        // Pro parameters stay in the tree but are pinned to their inert values
-        // (11_FREE_VS_PRO.md, "Gating enforcement").
-        if (getParameterValue (params::lfoDepth, 0.0f) > 0.0f)
-            setParameterValue (params::lfoDepth, 0.0f);
-
-        if (getParameterValue (params::layerBlend, 0.0f) > 0.0f)
-            setParameterValue (params::layerBlend, 0.0f);
+        // Do not rewrite Pro parameter values in the Free tier. updatePerBlockParameters()
+        // gates LFO depth and layer blend to zero in the DSP while preserving the host
+        // state, so a Pro project opened or saved while unlicensed can recover its
+        // settings immediately after activation.
     }
 
     // =========================================================================
@@ -1154,6 +1308,7 @@ namespace texture
 
     void TextureAudioProcessor::recallCompareSlot (int slotIndex)
     {
+        undoManager.beginNewTransaction();
         const auto index = juce::jlimit (0, numCompareSlots - 1, slotIndex);
 
         // Keep the slot we are leaving up to date so A/B is a true toggle.
@@ -1193,6 +1348,22 @@ namespace texture
         settings.releaseMs = getParameterValue (params::release, params::releaseDefaultMs);
         settings.reverbOn = getParameterValue (params::reverbOn, 1.0f) > 0.5f;
         settings.gainDb = getParameterValue (params::gainDb, params::gainDefaultDb);
+        settings.lfoRateHz = morphLfo.getEffectiveRateHz();
+        settings.lfoDepth = licenseManager.isPro()
+                                ? getParameterValue (params::lfoDepth, params::lfoDepthDefault)
+                                : 0.0f;
+        settings.layerBlend = licenseManager.isPro()
+                                  ? getParameterValue (params::layerBlend, params::layerBlendDefault)
+                                  : 0.0f;
+        settings.sampleStart = { getSampleStart (0), getSampleStart (1) };
+        settings.tuneSemitones = getParameterValue (params::tune, params::tuneDefaultSemitones);
+        settings.reverseChance = getParameterValue (params::reverse, params::reverseDefault);
+        settings.shimmerAmount = getParameterValue (params::shimmer, params::shimmerDefault);
+
+        const auto secret = getSecretSettings();
+        settings.gritBits = secret.bitDepth;
+        settings.gritDownsample = secret.downsample;
+        settings.gritMix = secret.mix;
 
         return settings;
     }
@@ -1244,6 +1415,33 @@ namespace texture
         preset.setProperty ("category", currentPresetCategory, nullptr);
         root.appendChild (preset, nullptr);
 
+        // The active slot may have been edited since the last A/B switch.
+        compareSlots[static_cast<size_t> (activeCompareSlot)] = captureParameterTree();
+
+        juce::ValueTree compare (StateSchema::compareTag);
+        compare.setProperty ("active", activeCompareSlot, nullptr);
+
+        for (int slotIndex = 0; slotIndex < numCompareSlots; ++slotIndex)
+        {
+            juce::ValueTree slot (StateSchema::compareSlotTag);
+            slot.setProperty ("index", slotIndex, nullptr);
+            const auto& snapshot = compareSlots[static_cast<size_t> (slotIndex)];
+
+            for (const auto* id : params::allIDs)
+            {
+                const juce::Identifier identifier (id);
+                slot.setProperty (identifier,
+                                  snapshot.hasProperty (identifier)
+                                      ? snapshot.getProperty (identifier)
+                                      : juce::var (getParameterValue (id, params::defaultValueFor (id))),
+                                  nullptr);
+            }
+
+            compare.appendChild (slot, nullptr);
+        }
+
+        root.appendChild (compare, nullptr);
+
         const auto secret = getSecretSettings();
         juce::ValueTree secretState (StateSchema::secretTag);
         secretState.setProperty ("bits", secret.bitDepth, nullptr);
@@ -1276,9 +1474,17 @@ namespace texture
         }
 
         const auto parameters = root.getChildWithName (StateSchema::parametersTag);
+        suppressPresetDirtyTracking.store (true, std::memory_order_release);
         apvts.replaceState (parameters.getChild (0).createCopy());
+        // A restored session starts a fresh history: undo must never step back into
+        // whatever this instance was doing before the host loaded the project.
+        undoManager.clearUndoHistory();
 
         const auto preset = root.getChildWithName (StateSchema::presetTag);
+
+        currentPresetFile = juce::File();
+        currentPresetName.clear();
+        currentPresetCategory = "Cinematic";
 
         if (preset.isValid())
         {
@@ -1286,9 +1492,47 @@ namespace texture
             currentPresetCategory = preset.getProperty ("category", "Cinematic").toString();
         }
 
+        if (const auto compare = root.getChildWithName (StateSchema::compareTag); compare.isValid())
+        {
+            activeCompareSlot = juce::jlimit (0, numCompareSlots - 1,
+                                              static_cast<int> (compare.getProperty ("active", 0)));
+
+            for (const auto& child : compare)
+            {
+                if (child.getType() != StateSchema::compareSlotTag)
+                    continue;
+
+                const auto slotIndex = juce::jlimit (
+                    0, numCompareSlots - 1, static_cast<int> (child.getProperty ("index", 0)));
+
+                juce::ValueTree snapshot ("Snapshot");
+
+                for (const auto* id : params::allIDs)
+                {
+                    const juce::Identifier identifier (id);
+                    snapshot.setProperty (identifier,
+                                          child.hasProperty (identifier)
+                                              ? child.getProperty (identifier)
+                                              : juce::var (getParameterValue (id, params::defaultValueFor (id))),
+                                          nullptr);
+                }
+
+                compareSlots[static_cast<size_t> (slotIndex)] = std::move (snapshot);
+            }
+        }
+        else
+        {
+            activeCompareSlot = 0;
+            const auto snapshot = captureParameterTree();
+
+            for (auto& slot : compareSlots)
+                slot = snapshot.createCopy();
+        }
+
+        SecretSettings secret;
+
         if (const auto secretState = root.getChildWithName (StateSchema::secretTag); secretState.isValid())
         {
-            SecretSettings secret;
             secret.bitDepth = static_cast<float> (static_cast<double> (
                 secretState.getProperty ("bits", SecretEffect::defaultBits)));
             secret.downsample = static_cast<float> (static_cast<double> (
@@ -1296,12 +1540,30 @@ namespace texture
             secret.mix = static_cast<float> (static_cast<double> (
                 secretState.getProperty ("mix", SecretEffect::defaultMix)));
             secret.revealed = static_cast<bool> (secretState.getProperty ("revealed", false));
-
-            setSecretSettings (secret);
         }
+
+        setSecretSettings (secret);
 
         cacheParameterPointers();
         enforceTierLimits();
+        suppressPresetDirtyTracking.store (false, std::memory_order_release);
+        presetDirtyPending.store (false, std::memory_order_release);
+
+        // Host state is authoritative for media too. Empty both slots first so
+        // missing or absent sample records cannot inherit audio from prior state.
+        for (int layerIndex = 0; layerIndex < numLayers; ++layerIndex)
+        {
+            sampleLoader.cancelPendingLoad (layerIndex);
+            const auto index = static_cast<size_t> (layerIndex);
+            auto& layer = layers[index];
+            publishSample (layer, SampleBuffer::makeEmpty());
+            layer.file = juce::File();
+            layer.originalName.clear();
+            engines[index].allSoundOff();
+            setSampleStart (layerIndex, 0.0f, false);
+            deferredSampleNotifications.fetch_or (
+                1u << static_cast<unsigned int> (layerIndex), std::memory_order_release);
+        }
 
         // Sample loads are queued, never performed inline: setStateInformation must
         // return promptly (13_STATE_SAVING.md, 21_WHAT_NOT_TO_DO.md item 24).
@@ -1313,7 +1575,7 @@ namespace texture
             const auto index = juce::jlimit (0, numLayers - 1, static_cast<int> (child.getProperty ("index", 0)));
             const auto path = child.getProperty ("path", "").toString();
             const auto originalName = child.getProperty ("originalName", "").toString();
-            setSampleStart (index, static_cast<float> (static_cast<double> (child.getProperty ("start", 0.0))));
+            setSampleStart (index, static_cast<float> (static_cast<double> (child.getProperty ("start", 0.0))), false);
 
             if (path.isEmpty())
                 continue;
@@ -1338,12 +1600,12 @@ namespace texture
                 }
             }
 
-            activeLayer = index;
-            sampleLoader.loadAsync (file);
+            sampleLoadMarksDirty[static_cast<size_t> (index)].store (false, std::memory_order_release);
+            sampleLoader.loadAsync (file, index);
         }
 
         presetDirty = false;
-        notifyPluginStateChanged();
+        deferredPluginStateNotification.store (true, std::memory_order_release);
     }
 
     // =========================================================================
@@ -1428,10 +1690,7 @@ namespace texture
         lines.add ("");
         lines.add ("--- License ---");
         lines.add ("Tier: " + juce::String (licenseManager.isPro() ? "PRO" : "FREE"));
-        lines.add ("Email: " + (licenseManager.getStoredEmail().isNotEmpty()
-                                    ? licenseManager.getStoredEmail() : juce::String ("(none)")));
-        lines.add ("Key (masked): " + licenseManager.getMaskedKey());
-        lines.add ("Signature matches: " + juce::String (licenseManager.isPro() ? "yes" : "no"));
+        lines.add ("Activation valid: " + juce::String (licenseManager.isPro() ? "yes" : "no"));
         lines.add ("");
 
         lines.add ("--- Preset ---");

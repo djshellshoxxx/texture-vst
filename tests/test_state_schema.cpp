@@ -60,6 +60,56 @@ namespace texture::tests
             expectEquals (StateSchema::validate (duplicate).status,
                           StateSchema::Status::duplicateSampleIndex);
 
+            beginTest ("sample start positions must be finite and normalized");
+            auto badStart = makeRoot ("1.0.0", true);
+            juce::ValueTree sampleWithBadStart (StateSchema::sampleTag);
+            sampleWithBadStart.setProperty ("index", 0, nullptr);
+            sampleWithBadStart.setProperty ("start", 1.5, nullptr);
+            badStart.appendChild (sampleWithBadStart, nullptr);
+            expectEquals (StateSchema::validate (badStart).status,
+                          StateSchema::Status::invalidSampleData);
+
+            beginTest ("duplicate singleton metadata records are rejected");
+            auto duplicateGrit = makeRoot ("1.0.0", true);
+            duplicateGrit.appendChild (juce::ValueTree (StateSchema::secretTag), nullptr);
+            duplicateGrit.appendChild (juce::ValueTree (StateSchema::secretTag), nullptr);
+            expectEquals (StateSchema::validate (duplicateGrit).status,
+                          StateSchema::Status::duplicateSingleton);
+
+            beginTest ("GRIT numeric state must remain finite and in range");
+            auto badGrit = makeRoot ("1.0.0", true);
+            juce::ValueTree grit (StateSchema::secretTag);
+            grit.setProperty ("bits", 99.0, nullptr);
+            grit.setProperty ("downsample", 4.0, nullptr);
+            grit.setProperty ("mix", 0.5, nullptr);
+            badGrit.appendChild (grit, nullptr);
+            expectEquals (StateSchema::validate (badGrit).status,
+                          StateSchema::Status::invalidSecretData);
+
+            beginTest ("A/B compare state validates slot identity and active index");
+            auto compareValid = makeRoot ("1.0.0", true);
+            juce::ValueTree compare (StateSchema::compareTag);
+            compare.setProperty ("active", 1, nullptr);
+
+            for (int index = 0; index < 2; ++index)
+            {
+                juce::ValueTree slot (StateSchema::compareSlotTag);
+                slot.setProperty ("index", index, nullptr);
+                slot.setProperty ("morph", index == 0 ? 0.25 : 0.75, nullptr);
+                compare.appendChild (slot, nullptr);
+            }
+
+            compareValid.appendChild (compare, nullptr);
+            expectEquals (StateSchema::validate (compareValid).status, StateSchema::Status::ok);
+
+            beginTest ("invalid compare active slot is rejected");
+            auto badCompare = makeRoot ("1.0.0", true);
+            juce::ValueTree invalidCompare (StateSchema::compareTag);
+            invalidCompare.setProperty ("active", 7, nullptr);
+            badCompare.appendChild (invalidCompare, nullptr);
+            expectEquals (StateSchema::validate (badCompare).status,
+                          StateSchema::Status::invalidCompareData);
+
             beginTest ("empty parameter wrapper is rejected atomically");
             juce::ValueTree emptyWrapper (StateSchema::rootTag);
             emptyWrapper.setProperty (StateSchema::versionAttribute, "1.0.0", nullptr);

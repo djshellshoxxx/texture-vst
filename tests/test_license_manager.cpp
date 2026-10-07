@@ -334,6 +334,26 @@ namespace texture::tests
                               "cleared mapping must not reappear after restart");
             }
 
+            beginTest ("malformed persisted MIDI mappings are ignored");
+
+            if (auto* store = properties.get().getUserSettings())
+            {
+                store->setValue ("midi_mappings",
+                                 "abc=" + juce::String (params::morph)
+                                     + "|21=" + juce::String (params::gainDb)
+                                     + "|999=" + juce::String (params::morph)
+                                     + "|22=unknown_parameter");
+                store->saveIfNeeded();
+            }
+
+            {
+                MidiLearn malformedReload (&properties.get());
+                expectEquals (malformedReload.getControllerForParameter (params::gainDb), 21);
+                expectEquals (malformedReload.getControllerForParameter (params::morph), -1);
+                expectEquals (malformedReload.getParameterForController (0), juce::String(),
+                              "nonnumeric CC text must not silently become CC0");
+            }
+
             beginTest ("cancelling a learn binds nothing");
 
             learn.startLearning (params::gainDb);

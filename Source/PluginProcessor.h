@@ -21,6 +21,7 @@
 #include <array>
 #include <atomic>
 #include <memory>
+#include <vector>
 
 namespace texture
 {
@@ -31,7 +32,9 @@ namespace texture
         the effects chain and the GUI (20_BEST_PRACTICES.md, "Testability").
     */
     class TextureAudioProcessor final : public juce::AudioProcessor,
-                                        private juce::AsyncUpdater
+                                        private juce::AsyncUpdater,
+                                        private juce::Timer,
+                                        private juce::AudioProcessorValueTreeState::Listener
     {
     public:
         /** Layer 2 exists in every build but is inaudible outside Pro. */
@@ -102,6 +105,14 @@ namespace texture
 
         bool isPro() const noexcept { return licenseManager.isPro(); }
 
+        /** Parameter undo/redo (Ctrl+Z, Ctrl+Shift+Z / Ctrl+Y). Every mouse gesture in
+            the editor, preset load, reset, randomise and A/B recall starts a new step.
+            Sample, GRIT and MIDI-mapping changes are not parameters and are not
+            covered. Message thread only. */
+        juce::UndoManager& getUndoManager() noexcept { return undoManager; }
+        bool undoLastEdit();
+        bool redoLastEdit();
+
         /** Our own GUI listeners. The `using` declarations keep the host-facing
             `juce::AudioProcessorListener` overloads visible: without them these two
             hide the base class versions, which the wrappers call
@@ -130,7 +141,7 @@ namespace texture
 
         /** Where notes start reading in a layer's sample, 0..1 (waveform click).
             Kept out of the APVTS like GRIT, persisted with the session. */
-        void setSampleStart (int layerIndex, float normalised);
+        void setSampleStart (int layerIndex, float normalised, bool markDirty = true);
         float getSampleStart (int layerIndex) const noexcept;
 
         /** The layer the GUI is currently editing (0 or 1). */
@@ -140,6 +151,7 @@ namespace texture
         // --- Presets ----------------------------------------------------------
         juce::String getCurrentPresetName() const;
         juce::String getCurrentPresetCategory() const;
+        juce::File getCurrentPresetFile() const { return currentPresetFile; }
 
         bool loadPreset (const juce::File& file);
         bool savePreset (const juce::File& file,
@@ -247,10 +259,15 @@ namespace texture
                 live.store (messageThreadCopy.get(), std::memory_order_release);
             }
 
+            struct RetiredSample
+            {
+                SampleBufferPtr buffer;
+                juce::uint64 retiredAtBlock { 0 };
+            };
+
             std::atomic<const SampleBuffer*> live { nullptr };
             SampleBufferPtr messageThreadCopy;
-            SampleBufferPtr retired;
-            juce::uint64 retiredAtBlock { 0 };
+            std::vector<RetiredSample> retired;
             juce::File file;
             juce::String originalName;
         };
@@ -264,6 +281,8 @@ namespace texture
 
         void installFactoryContentAsync();
         void handleAsyncUpdate() override;
+        void timerCallback() override;
+        void parameterChanged (const juce::String& parameterID, float newValue) override;
         void handleMidiEvent (const juce::MidiMessage& message);
         void applyMidiLearnedController (int ccNumber, int value);
         void updatePerBlockParameters (int numSamples);
@@ -292,11 +311,15 @@ namespace texture
         // --- Services ---------------------------------------------------------
         juce::ApplicationProperties applicationProperties;
         StorageInitialiser storageInitialiser;
+
+        /** Parameter edit history. Declared before the APVTS, which records into it. */
+        juce::UndoManager undoManager;
         juce::AudioProcessorValueTreeState apvts;
         LicenseManager licenseManager;
         PresetManager presetManager;
         MidiLearn midiLearn;
         SampleLoader sampleLoader;
+        std::array<std::atomic<bool>, numLayers> sampleLoadMarksDirty {};
 
         /** One background worker for first-launch content generation. Shut down in
             the destructor before anything it calls back into goes away.
@@ -333,6 +356,9 @@ namespace texture
         std::atomic<float>* lfoSyncParameter { nullptr };
         std::atomic<float>* lfoDivisionParameter { nullptr };
         std::atomic<float>* layerBlendParameter { nullptr };
+        std::atomic<float>* tuneParameter { nullptr };
+        std::atomic<float>* reverseParameter { nullptr };
+        std::atomic<float>* shimmerParameter { nullptr };
 
         // --- Host state -------------------------------------------------------
         double currentSampleRate { 44100.0 };
@@ -347,7 +373,12 @@ namespace texture
         // --- Preset bookkeeping ----------------------------------------------
         juce::String currentPresetName;
         juce::String currentPresetCategory { "Cinematic" };
+        juce::File currentPresetFile;
         bool presetDirty { false };
+        std::atomic<bool> presetDirtyPending { false };
+        std::atomic<bool> suppressPresetDirtyTracking { false };
+        std::atomic<unsigned int> deferredSampleNotifications { 0 };
+        std::atomic<bool> deferredPluginStateNotification { false };
 
         // --- A/B --------------------------------------------------------------
         std::array<juce::ValueTree, numCompareSlots> compareSlots;

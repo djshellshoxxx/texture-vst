@@ -6,6 +6,8 @@
 
 #include <atomic>
 #include <functional>
+#include <vector>
+#include <array>
 
 namespace texture
 {
@@ -30,6 +32,7 @@ namespace texture
             juce::File file;
             juce::String message;                 // toast text, may be empty
             Severity severity { Severity::info };
+            int requestTag { 0 };                 // caller-defined lane, e.g. sample layer
         };
 
         /** Delivered on the message thread. */
@@ -45,16 +48,19 @@ namespace texture
 
         void setCallback (Callback newCallback);
 
-        /** Queues a load. Only the most recent request is delivered; earlier ones are
-            decoded but discarded, so rapid drops cannot race each other.
+        /** Queues a load. Only the most recent request for the same tag is delivered;
+            independent tags can complete without cancelling each other.
         */
-        void loadAsync (const juce::File& file);
+        void loadAsync (const juce::File& file, int requestTag = 0);
 
         /** Blocks until queued work finishes. Message thread only; used on shutdown. */
         void waitForPendingLoads (int timeoutMs = 5000);
 
         /** Drops any queued or in-flight results without waiting. */
         void cancelPendingLoads();
+
+        /** Invalidates only one caller-defined request lane. */
+        void cancelPendingLoad (int requestTag);
 
         bool isBusy() const;
 
@@ -75,7 +81,9 @@ namespace texture
         class LoadJob;
 
         void handleAsyncUpdate() override;
-        void deliver (LoadResult&& result, int generation);
+        static constexpr int maxRequestTags = 8;
+        static int sanitiseRequestTag (int requestTag) noexcept;
+        void deliver (LoadResult&& result, int generation, int requestTag);
 
         juce::AudioFormatManager formatManager;
         juce::ThreadPool pool { juce::ThreadPoolOptions{}.withNumberOfThreads (1)
@@ -84,10 +92,8 @@ namespace texture
         Callback callback;
 
         juce::CriticalSection resultLock;
-        LoadResult pendingResult;
-        bool hasPendingResult { false };
-
-        std::atomic<int> requestGeneration { 0 };
+        std::vector<LoadResult> pendingResults;
+        std::array<std::atomic<int>, maxRequestTags> requestGenerations {};
         std::atomic<double> targetSampleRateAtomic { 44100.0 };
         double targetSampleRate { 44100.0 };
 

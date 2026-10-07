@@ -181,11 +181,16 @@ namespace texture
         }
 
         // --- Filled arc -------------------------------------------------------
-        if (sliderPosProportional > 0.0001f)
+        // A knob tagged "bipolar" (TUNE) fills outwards from twelve o'clock, so its
+        // default reads as empty rather than half full.
+        const auto bipolar = static_cast<bool> (slider.getProperties().getWithDefault ("bipolar", false));
+        const auto arcFrom = bipolar ? rotaryStart + 0.5f * (rotaryEnd - rotaryStart) : rotaryStart;
+
+        if (bipolar ? std::abs (sliderPosProportional - 0.5f) > 0.0001f : sliderPosProportional > 0.0001f)
         {
             juce::Path fill;
             fill.addCentredArc (centre.x, centre.y, arcRadius, arcRadius, 0.0f,
-                                rotaryStart, angle, true);
+                                juce::jmin (arcFrom, angle), juce::jmax (arcFrom, angle), true);
 
             g.setColour (activeColour);
             g.strokePath (fill, juce::PathStrokeType (valueArcThickness,

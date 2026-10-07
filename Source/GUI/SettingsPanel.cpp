@@ -28,7 +28,7 @@ namespace texture
            #if defined (JucePlugin_VersionString)
             return JucePlugin_VersionString;
            #else
-            return "1.0.0";
+            return "0.0.1";
            #endif
         }
 
@@ -70,8 +70,8 @@ namespace texture
 
         // --- Licence tab -------------------------------------------------------
         styleBodyLabel (licenseBlurb);
-        licenseBlurb.setText ("TEXTURE Pro unlocks 500 samples, the preset browser, dual-layer "
-                              "and the MORPH LFO for $10 one-time. Buy at texture-synth.com/pro, "
+        licenseBlurb.setText ("TEXTURE Pro unlocks the preset browser, dual-layer, MORPH LFO "
+                              "and WAV export for $10 one-time. Buy at texture-synth.com/pro, "
                               "then enter the email you bought with and the key you were sent.",
                               juce::dontSendNotification);
         addAndMakeVisible (licenseBlurb);

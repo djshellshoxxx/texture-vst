@@ -33,7 +33,9 @@ Ships as **VST3**, **AU** (macOS), **CLAP** (optional) and a **standalone** app.
 | **Engine** | 16-voice granular sampler, up to 8 grains per voice, linear-interpolated resampling |
 | **MORPH** | One knob driving grain count, length, overlap, position jitter, detune, stereo spread, reverb send, chorus depth, saturation and a high-shelf lift |
 | **Envelope** | One ADSR per voice, with a long 1.2 s default release |
+| **Grain** | TUNE (±24 semitones, for samples not recorded at C3), REVERSE (chance each grain plays backwards), SHIMMER (octave-up grains blended into the cloud) |
 | **Effects** | Saturator → chorus → reverb → high shelf → DC blocker → output gain, fixed order |
+| **Undo** | Ctrl/Cmd+Z undoes any control change, randomise, reset, preset load or A/B recall; Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y redoes |
 | **Input** | Drag and drop WAV, AIFF, FLAC, MP3, OGG, or a `.texture` preset |
 | **MIDI** | Omni, velocity to amplitude, ±2 semitone pitch bend, sustain pedal, CC learn on every control |
 | **Latency** | Zero. No lookahead, no oversampling. |
@@ -51,6 +53,23 @@ matrix and no delay. Scope discipline is the product.
 
 That is the entire workflow. Press **F1** inside the plugin for the full manual,
 which also covers troubleshooting and the debug tools.
+
+---
+
+## Installing a release
+
+Releases are on the GitHub **Releases** page. Each one carries, per platform:
+
+| Asset | What it is |
+|---|---|
+| `…-Windows-x64-Setup.exe` | Installer. Choose Standalone, VST3 (`Common Files\VST3`) and/or CLAP (`Common Files\CLAP`). Uninstall from Windows Settings; your presets and samples are kept. |
+| `…-Windows-x64-Portable.zip` | The standalone app. Unzip anywhere and run `Texture.exe`. |
+| `…-Windows-x64-VST3.zip` / `…-CLAP.zip` | The bare plug-ins, for manual installs. |
+| `…-Linux-x64-Installer.sh` | Per-user installer: `sh Texture-…-Installer.sh` installs to `~/.local/bin`, `~/.vst3`, `~/.clap` and adds a menu entry. |
+| `…-Linux-x64-Portable.tar.gz` / `…-VST3.tar.gz` / `…-CLAP.tar.gz` | The app and bare plug-ins. |
+| `SHA256SUMS.txt` | Checksums for every asset. |
+
+`packaging/package_release.sh` produces all of these from finished builds.
 
 ---
 
@@ -97,11 +116,20 @@ cmake --build build/release --config Release
 | `TEXTURE_BUILD_CLAP` | `OFF` | Also build a CLAP (fetches `clap-juce-extensions`) |
 | `TEXTURE_ENABLE_ASAN` | `OFF` | AddressSanitizer + UBSan on clang/gcc. Never ship one. |
 | `TEXTURE_WARNINGS_AS_ERRORS` | `ON` | `/WX` or `-Werror` on our own code only |
+| `TEXTURE_LICENSE_SECRET` | *(development fallback)* | Private offline Pro validation secret for release builds |
 | `TEXTURE_CODESIGN_IDENTITY` | *(empty)* | Developer ID for macOS release builds |
 | `TEXTURE_AAX_SDK_PATH` | *(empty)* | Path to Avid's AAX SDK; adds the AAX target |
 
 Warnings are errors for TEXTURE's own sources and only for those. JUCE emits
 warnings we do not own, so its targets are left alone.
+
+### Cross-compiling the Windows build from Linux
+
+JUCE 8 does not support MinGW, so `cmake/WindowsCrossClangCl.cmake` targets the MSVC
+ABI with clang-cl and lld-link, the Windows SDK and VC runtime from NuGet, and LLVM's
+libc++ (built once for `x86_64-pc-windows-msvc`), all with the static runtime. The
+file header documents the sysroot layout it expects. Build steps that run Windows
+programs (`juce_vst3_helper`) need Wine. A native MSVC build remains the reference.
 
 ### Presets
 
@@ -127,8 +155,8 @@ bundling them would blow the 15 MB installer budget many times over.
   factory samples folder so the bundled presets resolve.
 
 Both paths share `Source/IO/FactoryContent.cpp`, so the two sets are identical.
-Existing files are never overwritten — drop real samples in under the same names
-and they survive every rebuild.
+Valid generated factory WAVs are preserved. Missing or structurally invalid expected
+factory files are regenerated automatically so a partial/corrupt install self-repairs.
 
 ---
 
@@ -247,24 +275,24 @@ screens, no time limit. Pro is a genuine upgrade, not a nag remover.
 |---|---|---|
 | Granular engine, MORPH, ADSR, reverb, gain | ✅ | ✅ |
 | Drag and drop any sample | ✅ | ✅ |
-| Factory samples | 20 | 500+ |
+| Factory samples | 20 | 20 |
 | Session recall | ✅ | ✅ |
 | Preset browser | — | ✅ |
 | Dual-layer | — | ✅ |
 | MORPH LFO | — | ✅ |
 | WAV export | — | ✅ |
 
-Pro parameters exist in the parameter tree in both tiers; the free tier clamps
-LFO depth and layer blend to zero, so a project made in Pro opens in Free without
-its parameter list changing shape.
+Pro parameters exist in the parameter tree in both tiers. In the Free tier the
+DSP ignores MORPH-LFO depth and Layer Blend while preserving their stored values,
+so a Pro project can be opened and saved without destroying those settings and
+they return immediately after Pro activation.
 
 Activation is offline: the key is a base32 HMAC-SHA256 of your email. There is no
 server, no phone-home, and no obfuscation — the check exists to keep honest users
 honest.
 
-> **Before release:** replace `PRO_LICENSE_SECRET` in
-> `Source/License/LicenseManager.cpp`. Every build sharing that placeholder shares
-> its keys.
+> **Before release:** configure a private `TEXTURE_LICENSE_SECRET` in CMake. The
+> development fallback is intentionally not suitable for a release build.
 
 ---
 

@@ -16,7 +16,7 @@ namespace texture
            #if defined (JucePlugin_VersionString)
             return JucePlugin_VersionString;
            #else
-            return "1.0.0";
+            return "0.0.1";
            #endif
         }
     }
@@ -58,7 +58,7 @@ namespace texture
         text.add ("                 arrows for the previous or next preset. An asterisk");
         text.add ("                 means unsaved edits.");
         text.add ("  File menu      Open, Save, Save As, load or clear the sample, Export");
-        text.add ("                 audio, A/B copy, Options, Interface size (75-200%),");
+        text.add ("                 audio, A/B copy, Undo/Redo, Options, Interface size (75-200%),");
         text.add ("                 and Open location in file browser.");
         text.add ("  A / B          Two parameter snapshots. Click a letter to switch,");
         text.add ("                 use the File menu to copy one into the other.");
@@ -120,6 +120,14 @@ namespace texture
         text.add ("  wherever MORPH is set. Host automation on MORPH always wins; the LFO");
         text.add ("  adds to it and folds softly at the ends of the range.");
         text.add ("");
+        text.add ("GRAIN");
+        text.add ("  TUNE     Shifts the sample in semitones, -24 to +24. Samples are played");
+        text.add ("           as if recorded at C3; tune here when yours was not.");
+        text.add ("  REVERSE  The chance that each grain plays backwards. Subtle at low MORPH,");
+        text.add ("           a swirling reversed bloom at high MORPH.");
+        text.add ("  SHIMMER  Blends octave-up grains into the cloud for a bright, glassy");
+        text.add ("           halo. All three are free-tier controls and default to off.");
+        text.add ("");
         text.add ("LAYER 2 (Pro)");
         text.add ("  A second sample slot blended with the first. Both share one MORPH.");
         text.add ("");
@@ -132,8 +140,9 @@ namespace texture
         text.add ("  Knobs also pulse teal while learning; reduced-motion mode makes the ring steady.");
         text.add ("  Right-click any mappable control and choose Cancel MIDI Learn to stop early.");
         text.add ("  Clear MIDI mapping");
-        text.add ("CC 64 (sustain), 120 and 123 keep their standard meaning and cannot be");
-        text.add ("mapped. Mappings are saved globally, not per project. The LFO division");
+        text.add ("CC 64 (sustain) and CC 120-127 (channel mode messages) keep their");
+        text.add ("standard meaning and cannot be mapped. Mappings are saved globally, not");
+        text.add ("per project. The LFO division");
         text.add ("dropdown offers reset and MIDI learn too.");
         text.add ("");
 
@@ -152,6 +161,8 @@ namespace texture
         text.add ("  Ctrl/Cmd+Shift+S   Save as");
         text.add ("  Ctrl/Cmd+O         Open a preset file");
         text.add ("  Ctrl/Cmd+R         Randomize");
+        text.add ("  Ctrl/Cmd+Z         Undo the last control change");
+        text.add ("  Ctrl/Cmd+Shift+Z   Redo (Ctrl/Cmd+Y also works)");
         text.add ("  F1                 This help page");
         text.add ("  Esc                Close any open panel");
         text.add ("  Tab / Shift+Tab    Move between controls");
