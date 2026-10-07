@@ -30,11 +30,12 @@ namespace texture
         updateHighShelf (0.0f);
 
         outputGain.reset (preparedSampleRate, gainSmoothingSeconds);
-        outputGain.setCurrentAndTargetValue (outputGain.getTargetValue());
+        outputGain.setCurrentAndTargetValue (1.0f);
 
         for (auto& blocker : dcBlockers)
             blocker.reset();
 
+        tailEnergy.prepare (preparedSampleRate, 1.5);
         tailEnergy.reset();
         lastBlockPeak = 0.0f;
         isPrepared = true;
@@ -159,6 +160,6 @@ namespace texture
         }
 
         lastBlockPeak = peak;
-        tailEnergy.push (peak);
+        tailEnergy.push (peak, numSamples);
     }
 }

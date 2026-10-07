@@ -1,7 +1,10 @@
 #include "WavExporter.h"
+#include "OfflineRenderTimeline.h"
+#include "OfflinePatchMath.h"
 
 #include "../Effects/EffectsChain.h"
 #include "../Engine/GranularEngine.h"
+#include "../Modulation/MorphLFO.h"
 #include "../Utility/DspHelpers.h"
 
 #include <memory>
@@ -32,7 +35,7 @@ namespace texture
              + juce::String (options.bitDepth) + "-bit stereo WAV";
     }
 
-    WavExporter::Result WavExporter::render (const SampleBufferPtr& sample,
+    WavExporter::Result WavExporter::render (const std::array<SampleBufferPtr, 2>& samples,
                                              const RenderSettings& settings,
                                              const Options& options,
                                              const juce::File& destination)
@@ -40,7 +43,7 @@ namespace texture
         Result result;
         result.file = destination;
 
-        if (sample == nullptr || ! sample->isValid())
+        if (samples[0] == nullptr || ! samples[0]->isValid())
         {
             result.message = "Load a sample before exporting.";
             return result;
@@ -70,19 +73,35 @@ namespace texture
             return result;
         }
 
-        // A private engine: the live one belongs to the audio thread.
-        auto engine = std::make_unique<GranularEngine>();
+        // Private engines: the live ones belong to the audio thread.
+        std::array<std::unique_ptr<GranularEngine>, 2> engines {
+            std::make_unique<GranularEngine>(),
+            std::make_unique<GranularEngine>()
+        };
         auto effects = std::make_unique<EffectsChain>();
+        MorphLFO lfo;
 
-        engine->prepare (sampleRate, renderBlockSize);
-        engine->setAdsrParameters (settings.attackMs, settings.decayMs, settings.sustain, settings.releaseMs);
+        for (int layer = 0; layer < 2; ++layer)
+        {
+            engines[static_cast<size_t> (layer)]->prepare (sampleRate, renderBlockSize);
+            engines[static_cast<size_t> (layer)]->setAdsrParameters (
+                settings.attackMs, settings.decayMs, settings.sustain, settings.releaseMs);
+            engines[static_cast<size_t> (layer)]->setSampleStart (
+                juce::jlimit (0.0f, 1.0f, settings.sampleStart[static_cast<size_t> (layer)]));
+        }
+
+        lfo.prepare (sampleRate);
+        lfo.setRateHz (settings.lfoRateHz);
+        lfo.setDepth (settings.lfoDepth);
 
         effects->prepare (sampleRate, renderBlockSize, 2);
         effects->setReverbEnabled (settings.reverbOn);
         effects->setOutputGainDb (settings.gainDb);
+        effects->getSecretEffect().setBitDepth (settings.gritBits);
+        effects->getSecretEffect().setDownsample (settings.gritDownsample);
+        effects->getSecretEffect().setMix (settings.gritMix);
 
-        const auto targets = deriveMorphTargets (juce::jlimit (0.0f, 1.0f, settings.morph));
-        effects->setMorphTargets (targets);
+        const auto layerGains = OfflinePatchMath::layerGains (settings.layerBlend);
 
         // Sample-accurate event schedule, in samples from the start of the render.
         const auto firstNoteOn = static_cast<juce::int64> (0);
@@ -141,46 +160,87 @@ namespace texture
         bool secondNoteStopped = false;
         bool writeFailed = false;
 
+        using Timeline = OfflineRenderTimeline<4>;
+        const Timeline::Events eventPositions {
+            firstNoteOn, firstNoteOff, secondNoteOn, secondNoteOff
+        };
+
         while (position < totalSamples && ! writeFailed)
         {
-            const auto numSamples = static_cast<int> (juce::jmin (static_cast<juce::int64> (renderBlockSize),
-                                                                  totalSamples - position));
-            block.clear();
-
-            // Events land on block boundaries; at 512 samples that is ~10 ms of jitter
-            // on a bounce whose envelope is measured in hundreds of milliseconds.
-            if (! firstNoteStarted && position >= firstNoteOn)
+            // Apply every event scheduled exactly at this sample before rendering
+            // the following span.
+            if (! firstNoteStarted && position == firstNoteOn)
             {
-                engine->noteOn (1, settings.midiNote, settings.velocity);
+                for (auto& engine : engines)
+                    engine->noteOn (1, settings.midiNote, settings.velocity);
                 firstNoteStarted = true;
             }
 
-            if (firstNoteStarted && ! firstNoteStopped && position >= firstNoteOff)
+            if (firstNoteStarted && ! firstNoteStopped && position == firstNoteOff)
             {
-                engine->noteOff (1, settings.midiNote);
+                for (auto& engine : engines)
+                    engine->noteOff (1, settings.midiNote);
                 firstNoteStopped = true;
             }
 
-            if (! secondNoteStarted && position >= secondNoteOn)
+            if (! secondNoteStarted && position == secondNoteOn)
             {
-                engine->noteOn (1, settings.midiNote, settings.velocity);
+                for (auto& engine : engines)
+                    engine->noteOn (1, settings.midiNote, settings.velocity);
                 secondNoteStarted = true;
             }
 
-            if (secondNoteStarted && ! secondNoteStopped && position >= secondNoteOff)
+            if (secondNoteStarted && ! secondNoteStopped && position == secondNoteOff)
             {
-                engine->noteOff (1, settings.midiNote);
+                for (auto& engine : engines)
+                    engine->noteOff (1, settings.midiNote);
                 secondNoteStopped = true;
             }
 
-            engine->renderNextBlock (sample, targets, block, 0, numSamples);
+            const auto nominalBlockEnd = juce::jmin (position + static_cast<juce::int64> (renderBlockSize),
+                                                     totalSamples);
+            const auto boundary = Timeline::nextBoundary (position, nominalBlockEnd, eventPositions);
+            const auto numSamples = static_cast<int> (boundary - position);
+
+            if (numSamples <= 0)
+            {
+                position = nominalBlockEnd;
+                continue;
+            }
+
+            block.clear();
+
+            lfo.advanceBlock (numSamples);
+            const auto effectiveMorph = lfo.applyTo (juce::jlimit (0.0f, 1.0f, settings.morph));
+            const auto targets = deriveMorphTargets (effectiveMorph);
+            effects->setMorphTargets (targets);
+
+            juce::AudioBuffer<float> layerBlock (2, numSamples);
+
+            for (int layer = 0; layer < 2; ++layer)
+            {
+                const auto& sample = samples[static_cast<size_t> (layer)];
+
+                if (sample == nullptr || ! sample->isValid()
+                    || layerGains[static_cast<size_t> (layer)] <= 0.0001f)
+                    continue;
+
+                layerBlock.clear();
+                engines[static_cast<size_t> (layer)]->renderNextBlock (
+                    sample, targets, layerBlock, 0, numSamples);
+
+                for (int ch = 0; ch < 2; ++ch)
+                    block.addFrom (ch, 0, layerBlock, ch, 0, numSamples,
+                                   layerGains[static_cast<size_t> (layer)]);
+            }
+
             effects->process (block, 0, numSamples);
             dsp::sanitiseBuffer (block);
 
             if (! writer->writeFromAudioSampleBuffer (block, 0, numSamples))
                 writeFailed = true;
 
-            position += numSamples;
+            position = boundary;
         }
 
         writer->flush();

@@ -59,7 +59,7 @@ namespace texture
 
     void MorphLFO::updateFromPlayHead (double bpm, bool isPlaying, double ppqPosition)
     {
-        if (bpm > 0.0)
+        if (bpm > 0.0 && std::isfinite (bpm))
             hostBpm = bpm;
 
         recalculateEffectiveRate();
@@ -70,19 +70,17 @@ namespace texture
             return;
         }
 
-        // Lock the phase to musical time so a synced LFO renders identically every pass.
-        if (isPlaying)
+        // When the host provides musical position, it is authoritative whether the
+        // transport is playing or stopped. This makes stop, seek and loop jumps
+        // deterministic. If PPQ is unavailable while playing, advanceBlock() falls
+        // back to tempo-derived free-running motion. While stopped without PPQ, the
+        // current phase is frozen rather than drifting behind the transport.
+        const auto beats = params::divisionBeats[divisionIndex];
+
+        if (beats > 0.0 && ppqPosition >= 0.0 && std::isfinite (ppqPosition))
         {
-            if (! wasPlaying)
-                phase = 0.0;
-
-            const auto beats = params::divisionBeats[divisionIndex];
-
-            if (beats > 0.0 && ppqPosition >= 0.0)
-            {
-                const auto cycles = ppqPosition / beats;
-                phase = cycles - std::floor (cycles);
-            }
+            const auto cycles = ppqPosition / beats;
+            phase = cycles - std::floor (cycles);
         }
 
         wasPlaying = isPlaying;
@@ -92,9 +90,12 @@ namespace texture
     {
         currentValue = std::sin (static_cast<float> (phase) * dsp::twoPi);
 
-        const auto increment = static_cast<double> (effectiveRate) / preparedSampleRate;
-        phase += increment * static_cast<double> (juce::jmax (0, numSamples));
-        phase -= std::floor (phase);
+        if (! syncEnabled || wasPlaying)
+        {
+            const auto increment = static_cast<double> (effectiveRate) / preparedSampleRate;
+            phase += increment * static_cast<double> (juce::jmax (0, numSamples));
+            phase -= std::floor (phase);
+        }
 
         return currentValue;
     }

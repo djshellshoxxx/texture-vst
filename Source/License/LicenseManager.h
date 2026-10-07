@@ -58,14 +58,13 @@ namespace texture
         /** Raw stored key. Debug panel only. */
         juce::String getStoredKey() const { return storedKey; }
 
-        /** The key that *should* have been issued for this email. Debug panel only. */
-        juce::String getExpectedKeyForStoredEmail() const;
-
         /** Human-readable message for a result, matching 16_ERROR_HANDLING.md. */
         static juce::String describe (Result result);
 
-        /** Generates the key for an email. Used by activation, the debug panel and tests. */
+       #if defined (TEXTURE_ENABLE_LICENSE_ISSUER) && TEXTURE_ENABLE_LICENSE_ISSUER
+        /** Development/test-only key issuer. Never compiled into production plugin targets. */
         static juce::String generateKey (const juce::String& email);
+       #endif
 
         /** Trim, lower-case, cap length. */
         static juce::String normaliseEmail (const juce::String& email);
@@ -79,6 +78,7 @@ namespace texture
     private:
         juce::PropertiesFile* getStore() const;
         void persist();
+        static juce::String generateKeyInternal (const juce::String& email);
 
         juce::ApplicationProperties* applicationProperties { nullptr };
         juce::String storedEmail;

@@ -310,7 +310,6 @@ namespace texture
                                                 ? processor.getLicenseManager().getStoredEmail()
                                                 : juce::String ("(none)")));
         lines.add ("stored key       : " + processor.getLicenseManager().getMaskedKey());
-        lines.add ("expected key     : " + processor.getLicenseManager().getExpectedKeyForStoredEmail());
         lines.add ("signature match  : " + juce::String (processor.isPro() ? "yes" : "no"));
         lines.add ("");
 

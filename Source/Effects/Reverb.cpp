@@ -13,6 +13,11 @@ namespace texture
         };
 
         reverb.prepare (spec);
+        wetBuffer.setSize (preparedChannels, juce::jmax (1, maximumBlockSize), false, true, true);
+        enableMix.reset (spec.sampleRate, bypassSmoothingSeconds);
+        enableMix.setCurrentAndTargetValue (enabled ? 1.0f : 0.0f);
+        tailEnergy.prepare (spec.sampleRate, 2.5);
+        tailEnergy.reset();
         updateParameters();
         reverb.reset();
         isPrepared = true;
@@ -22,6 +27,10 @@ namespace texture
     {
         if (isPrepared)
             reverb.reset();
+
+        wetBuffer.clear();
+        enableMix.setCurrentAndTargetValue (enabled ? 1.0f : 0.0f);
+        tailEnergy.reset();
     }
 
     void Reverb::clearTail()
@@ -29,6 +38,15 @@ namespace texture
         // juce::dsp::Reverb::reset zeroes every comb and allpass buffer, which is
         // exactly what CC120 (all sound off) asks for.
         reset();
+    }
+
+    void Reverb::setEnabled (bool shouldBeEnabled) noexcept
+    {
+        if (enabled == shouldBeEnabled)
+            return;
+
+        enabled = shouldBeEnabled;
+        enableMix.setTargetValue (enabled ? 1.0f : 0.0f);
     }
 
     void Reverb::setWetLevel (float newWetLevel) noexcept
@@ -58,20 +76,41 @@ namespace texture
 
     void Reverb::process (juce::AudioBuffer<float>& buffer, int startSample, int numSamples) noexcept
     {
-        if (! isPrepared || ! enabled || numSamples <= 0)
+        if (! isPrepared || numSamples <= 0)
             return;
 
         const auto numChannels = juce::jmin (buffer.getNumChannels(), preparedChannels);
 
-        if (numChannels <= 0)
+        if (numChannels <= 0 || wetBuffer.getNumSamples() < numSamples)
             return;
 
-        juce::dsp::AudioBlock<float> block (buffer.getArrayOfWritePointers(),
+        for (int ch = 0; ch < numChannels; ++ch)
+            wetBuffer.copyFrom (ch, 0, buffer, ch, startSample, numSamples);
+
+        juce::dsp::AudioBlock<float> block (wetBuffer.getArrayOfWritePointers(),
                                             static_cast<size_t> (numChannels),
-                                            static_cast<size_t> (startSample),
+                                            0,
                                             static_cast<size_t> (numSamples));
 
         juce::dsp::ProcessContextReplacing<float> context (block);
         reverb.process (context);
+
+        float wetPeak = 0.0f;
+        for (int ch = 0; ch < numChannels; ++ch)
+            wetPeak = juce::jmax (wetPeak, wetBuffer.getMagnitude (ch, 0, numSamples));
+        tailEnergy.push (wetPeak, numSamples);
+
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const auto mix = enableMix.getNextValue();
+            const auto dryMix = 1.0f - mix;
+
+            for (int ch = 0; ch < numChannels; ++ch)
+            {
+                auto* dry = buffer.getWritePointer (ch, startSample);
+                const auto wet = wetBuffer.getSample (ch, i);
+                dry[i] = dry[i] * dryMix + wet * mix;
+            }
+        }
     }
 }

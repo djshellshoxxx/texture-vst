@@ -26,6 +26,7 @@ The instrument provides up to 16 voices, up to 8 grains per voice, ADSR, MORPH-d
 - Formats: VST3, AU on macOS, optional CLAP, standalone; AAX build path is conditional on the Avid SDK.
 - Audio output: mono or stereo host output is accepted where the processor reports support; internal rendering is stereo and folded safely for mono.
 - MIDI: omni note input, velocity to amplitude, pitch bend, sustain pedal, all-notes-off, all-sound-off, and MIDI CC Learn.
+- Tempo sync: when PPQ is available, the MORPH LFO phase follows host musical position across play, stop, seek and loop jumps. While stopped without PPQ it freezes; while playing without PPQ it free-runs from the last valid tempo. Invalid/missing tempo retains the last valid tempo, initially 120 BPM.
 - Latency: zero samples.
 - Tail: reported from the longest voice release plus reverb tail.
 - Samples: WAV, AIFF, FLAC, MP3 and OGG through JUCE format readers.
@@ -96,13 +97,21 @@ Reduced motion is a user preference, not part of host project state or sound sta
 
 Host project state is version-tagged. It includes APVTS parameter state plus non-parameter state needed to recreate the sound, including loaded sample references, start positions, preset identity, and GRIT settings. Validation must complete before any state is mutated. The detailed compatibility and rejection policy is defined in [STATE_COMPATIBILITY_SPEC.md](STATE_COMPATIBILITY_SPEC.md).
 
-Preset load must be atomic from the user perspective: failed validation keeps the current sound. File loading and state-triggered sample reloads must not perform file I/O on the real-time audio callback.
+Preset load must be atomic from the user perspective: failed validation keeps the current sound. Portable preset schema 2 stores both sample-layer references, both normalized start positions and all documented host parameters. Schema 1 presets remain readable by migrating the legacy `sample_path` field to Layer 1. Known parameter values are type-checked and range-checked before application or serialization; unknown parameter metadata is ignored rather than entering the active parameter set. Loading a preset makes its media state authoritative: an empty or missing reference leaves that layer empty rather than inheriting the previous patch. File loading and state-triggered sample reloads must not perform file I/O on the real-time audio callback.
 
-## 8. Real-time requirements
+Host state also persists both A/B parameter snapshots and the active comparison slot. Older host state without A/B data initializes both snapshots from the restored current parameter state.
 
-The audio callback must remain free of file I/O, network I/O, blocking locks, UI calls, logging, and avoidable heap allocation. Cross-thread sample replacement must preserve lifetime until the audio thread has advanced beyond the old pointer. Outputs must remain finite under supported parameter values and hostile-but-parseable MIDI/event sequences.
+## 8. Offline export
 
-## 9. Quality gates
+Pro WAV export reproduces the audible patch rather than only the first sample layer. The renderer captures both sample layers, per-layer start positions, dual-layer blend, the effective MORPH LFO rate/depth at export start, ADSR, reverb state, output gain and GRIT settings.
+
+Export uses stereo WAV at the user-selected supported sample rate and integer bit depth. It renders two C3 notes using the documented hold/gap/tail pattern. Note events are split at exact sample positions rather than rounded to render-block boundaries. The offline LFO starts from phase zero for deterministic output. Export performs no normalization or limiting beyond the instrument's normal DSP chain and output-gain setting.
+
+## 9. Real-time requirements
+
+Reverb enable/disable transitions are crossfaded over 20 ms so bypass does not hard-switch between processed and dry audio. Output gain is smoothed over 30 ms; MORPH is smoothed over 20 ms. Effect-tail retirement uses elapsed audio time rather than callback count so idle optimization behaves consistently at different host block sizes. The audio callback must remain free of file I/O, network I/O, blocking locks, UI calls, logging, and avoidable heap allocation. Cross-thread sample replacement must preserve lifetime until the audio thread has advanced beyond the old pointer. Outputs must remain finite under supported parameter values and hostile-but-parseable MIDI/event sequences.
+
+## 10. Quality gates
 
 Release evidence is tracked in [RELEASE_VALIDATION.md](RELEASE_VALIDATION.md).
 

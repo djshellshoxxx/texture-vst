@@ -46,6 +46,10 @@ namespace texture::tests
             testRoundTrip();
             testCorruptFileLeavesStateAlone();
             testSchemaTooNew();
+            testInvalidSchemaRejected();
+            testInvalidParameterDataRejected();
+            testInvalidPresetCannotBeSaved();
+            testDualLayerPresetRoundTrip();
             testOversizedPresetRejected();
             testMissingSampleStillLoadsParameters();
             testSamplePathResolution();
@@ -154,6 +158,146 @@ namespace texture::tests
             expectEquals (presets.load (file, data, error), PresetManager::Status::schemaTooNew);
             expect (error.containsIgnoreCase ("newer version"));
             expectEquals (data.name, juce::String ("Original"), "state must be left alone");
+        }
+
+
+        void testInvalidSchemaRejected()
+        {
+            beginTest ("schema zero and negative schema values are rejected");
+
+            TemporaryDirectory temp;
+            PresetManager presets (nullptr);
+            auto data = makeFullPreset ("Original", "Ambient");
+
+            for (const auto schema : { 0, -1 })
+            {
+                const auto file = temp.child ("invalid_schema.texture");
+                file.replaceWithText ("{\"schema_version\": " + juce::String (schema)
+                                      + ", \"preset_name\": \"Broken\", \"parameters\": {}}");
+
+                juce::String error;
+                expectEquals (presets.load (file, data, error), PresetManager::Status::invalidData);
+                expect (error.isNotEmpty());
+                expectEquals (data.name, juce::String ("Original"));
+            }
+        }
+
+        void testInvalidParameterDataRejected()
+        {
+            beginTest ("known parameter values must be numeric and inside documented ranges");
+
+            TemporaryDirectory temp;
+            PresetManager presets (nullptr);
+            auto data = makeFullPreset ("Original", "Ambient");
+
+            const juce::StringArray invalidBodies {
+                R"({"schema_version":1,"preset_name":"Bad","parameters":{"morph":1.5}})",
+                R"({"schema_version":1,"preset_name":"Bad","parameters":{"attack":0.0}})",
+                R"({"schema_version":1,"preset_name":"Bad","parameters":{"gain_db":99.0}})",
+                R"({"schema_version":1,"preset_name":"Bad","parameters":{"lfo_division":99}})",
+                R"({"schema_version":1,"preset_name":"Bad","parameters":{"morph":"loud"}})",
+                R"({"schema_version":1,"preset_name":"Bad","parameters":{"reverb_on":2}})"
+            };
+
+            for (int i = 0; i < invalidBodies.size(); ++i)
+            {
+                const auto file = temp.child ("invalid_parameter_" + juce::String (i) + ".texture");
+                file.replaceWithText (invalidBodies[i]);
+
+                juce::String error;
+                expectEquals (presets.load (file, data, error), PresetManager::Status::invalidData,
+                              "invalid parameter payload should be rejected");
+                expect (error.containsIgnoreCase ("parameter"));
+                expectEquals (data.name, juce::String ("Original"),
+                              "invalid preset must leave caller state untouched");
+                expectWithinAbsoluteError (data.getParameter (params::morph, 0.0f), 0.4242f, 0.0001f);
+            }
+
+            beginTest ("unknown parameter IDs are ignored for forward-compatible metadata");
+
+            const auto futureMetadata = temp.child ("unknown_parameter.texture");
+            futureMetadata.replaceWithText (
+                R"({"schema_version":1,"preset_name":"Forward","parameters":{"morph":0.25,"future_hint":42}})");
+
+            juce::String error;
+            PresetManager::PresetData loaded;
+            expectEquals (presets.load (futureMetadata, loaded, error), PresetManager::Status::ok);
+            expectWithinAbsoluteError (loaded.getParameter (params::morph, 0.0f), 0.25f, 0.0001f);
+            expect (loaded.parameters.getVarPointer ("future_hint") == nullptr,
+                    "unknown fields must not enter the active parameter set");
+        }
+
+
+        void testInvalidPresetCannotBeSaved()
+        {
+            beginTest ("save rejects invalid known parameter values");
+
+            TemporaryDirectory temp;
+            PresetManager presets (nullptr);
+            auto data = makeFullPreset ("Bad Save", "Ambient");
+            data.setParameter (params::morph, 2.0f);
+
+            juce::String error;
+            const auto file = temp.child ("bad_save.texture");
+
+            expectEquals (presets.save (file, data, error), PresetManager::Status::invalidData);
+            expect (error.containsIgnoreCase ("morph"));
+            expect (! file.existsAsFile(), "invalid preset must not be written");
+
+            beginTest ("unknown in-memory parameter IDs are not serialized");
+
+            data = makeFullPreset ("Forward Safe", "Ambient");
+            data.parameters.set ("future_hint", 42.0);
+
+            expectEquals (presets.save (file, data, error), PresetManager::Status::ok);
+            const auto text = file.loadFileAsString();
+            expect (! text.contains ("future_hint"));
+        }
+
+
+        void testDualLayerPresetRoundTrip()
+        {
+            beginTest ("schema 2 preserves both sample layers and start positions");
+
+            TemporaryDirectory temp;
+            PresetManager presets (nullptr);
+            auto data = makeFullPreset ("Dual", "Ambient");
+            data.samplePaths[0] = "factory/Pad_01.wav";
+            data.samplePaths[1] = "factory/Pad_02.wav";
+            data.sampleStarts[0] = 0.125f;
+            data.sampleStarts[1] = 0.875f;
+
+            juce::String error;
+            const auto file = temp.child ("dual.texture");
+            expectEquals (presets.save (file, data, error), PresetManager::Status::ok);
+
+            PresetManager::PresetData loaded;
+            expectEquals (presets.load (file, loaded, error), PresetManager::Status::ok);
+            expectEquals (loaded.samplePaths[0], juce::String ("factory/Pad_01.wav"));
+            expectEquals (loaded.samplePaths[1], juce::String ("factory/Pad_02.wav"));
+            expectWithinAbsoluteError (loaded.sampleStarts[0], 0.125f, 1.0e-6f);
+            expectWithinAbsoluteError (loaded.sampleStarts[1], 0.875f, 1.0e-6f);
+
+            beginTest ("legacy schema 1 sample_path migrates to layer 1");
+            const auto legacy = temp.child ("legacy.texture");
+            legacy.replaceWithText (
+                R"({"schema_version":1,"preset_name":"Legacy","sample_path":"factory/Pad_03.wav","parameters":{"morph":0.5}})");
+
+            PresetManager::PresetData migrated;
+            expectEquals (presets.load (legacy, migrated, error), PresetManager::Status::ok);
+            expectEquals (migrated.samplePaths[0], juce::String ("factory/Pad_03.wav"));
+            expect (migrated.samplePaths[1].isEmpty());
+            expectWithinAbsoluteError (migrated.sampleStarts[0], 0.0f, 1.0e-6f);
+            expectWithinAbsoluteError (migrated.sampleStarts[1], 0.0f, 1.0e-6f);
+
+            beginTest ("invalid sample start values are rejected atomically");
+            const auto invalid = temp.child ("invalid_start.texture");
+            invalid.replaceWithText (
+                R"({"schema_version":2,"preset_name":"Bad","samples":[{"path":"x.wav","start":1.5},{}],"parameters":{"morph":0.5}})");
+
+            auto unchanged = makeFullPreset ("Keep", "Ambient");
+            expectEquals (presets.load (invalid, unchanged, error), PresetManager::Status::invalidData);
+            expectEquals (unchanged.name, juce::String ("Keep"));
         }
 
         void testOversizedPresetRejected()

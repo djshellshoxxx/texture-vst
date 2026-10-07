@@ -3,6 +3,7 @@
 #include <juce_data_structures/juce_data_structures.h>
 
 #include <vector>
+#include <array>
 
 namespace texture
 {
@@ -15,7 +16,7 @@ namespace texture
     {
     public:
         /** Schema this build writes and is able to read (12_PRESET_SYSTEM.md). */
-        static constexpr int currentSchemaVersion = 1;
+        static constexpr int currentSchemaVersion = 2;
 
         /** Hard ceiling from 10_CONSTRAINTS.md. */
         static constexpr juce::int64 maxPresetFileSizeBytes = 8 * 1024;
@@ -33,7 +34,12 @@ namespace texture
             juce::String category { "Cinematic" };
             juce::String author { "Factory" };
             juce::StringArray tags;
+            /** Legacy schema-1 Layer 1 path. Kept as a compatibility alias. */
             juce::String samplePath;
+
+            /** Schema 2 sample references and normalized start positions. */
+            std::array<juce::String, 2> samplePaths {};
+            std::array<float, 2> sampleStarts { 0.0f, 0.0f };
 
             /** Parameter ID to value, in real-world units. */
             juce::NamedValueSet parameters;
@@ -61,6 +67,7 @@ namespace texture
             tooLarge,
             parseError,
             schemaTooNew,
+            invalidData,
             writeFailed
         };
 

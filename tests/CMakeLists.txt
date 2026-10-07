@@ -14,6 +14,7 @@ set(TEXTURE_TEST_SOURCES
     test_control_value_parser.cpp
     test_control_value_clipboard.cpp
     test_midi_learn.cpp
+    test_offline_render_timeline.cpp
     test_granular_engine.cpp
     test_sample_loader.cpp
     test_license_manager.cpp
@@ -37,6 +38,7 @@ set(TEXTURE_TEST_SOURCES
 
     ../Source/IO/FactoryContent.cpp
     ../Source/IO/SampleLoader.cpp
+    ../Source/IO/WavExporter.cpp
 
     ../Source/Presets/PresetManager.cpp
 
@@ -52,6 +54,8 @@ target_include_directories(Texture_Tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/..
 
 target_compile_definitions(Texture_Tests PRIVATE
     JUCE_UNIT_TESTS=1
+    TEXTURE_ENABLE_LICENSE_ISSUER=1
+    TEXTURE_LICENSE_SECRET="TEXTURE-TEST-SECRET"
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_USE_MP3AUDIOFORMAT=1

@@ -32,6 +32,7 @@ option(TEXTURE_BUILD_CLAP   "Also build a CLAP (fetches clap-juce-extensions)" O
 option(TEXTURE_ENABLE_ASAN  "Enable AddressSanitizer and UBSan (never ship)" OFF)
 option(TEXTURE_WARNINGS_AS_ERRORS "Treat warnings in our own code as errors" ON)
 
+set(TEXTURE_LICENSE_SECRET "" CACHE STRING "Offline Pro licence validation secret for release builds")
 set(TEXTURE_CODESIGN_IDENTITY "" CACHE STRING "Developer ID used for release builds on macOS")
 set(TEXTURE_AAX_SDK_PATH "" CACHE PATH "Path to the AAX SDK; enables the AAX target when set")
 
@@ -146,6 +147,8 @@ set(TEXTURE_SOURCES
     Source/IO/SampleLoader.h
     Source/IO/WavExporter.cpp
     Source/IO/WavExporter.h
+    Source/IO/OfflineRenderTimeline.h
+    Source/IO/OfflinePatchMath.h
 
     Source/Presets/PresetManager.cpp
     Source/Presets/PresetManager.h
@@ -183,6 +186,10 @@ set(TEXTURE_SOURCES
     Source/Utility/Logging.h
     Source/Utility/MidiLearn.cpp
     Source/Utility/MidiLearn.h
+    Source/Utility/MotionPreferences.h
+    Source/Utility/StateSchema.h
+    Source/Utility/ControlValueParser.h
+    Source/Utility/ControlValueClipboard.h
     Source/Utility/ParameterIDs.cpp
     Source/Utility/ParameterIDs.h)
 
@@ -225,6 +232,12 @@ target_compile_definitions(Texture
         JUCE_REPORT_APP_USAGE=0
         JUCE_STRICT_REFCOUNTEDPOINTER=1
         JUCE_MODAL_LOOPS_PERMITTED=0)
+
+if(TEXTURE_LICENSE_SECRET)
+    target_compile_definitions(Texture PRIVATE TEXTURE_LICENSE_SECRET="${TEXTURE_LICENSE_SECRET}")
+else()
+    message(WARNING "TEXTURE: using development-only licence secret; set TEXTURE_LICENSE_SECRET for release builds")
+endif()
 
 target_link_libraries(Texture
     PRIVATE

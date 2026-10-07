@@ -101,18 +101,31 @@ namespace texture
 
     void GranularEngine::noteOff (int midiChannel, int midiNote)
     {
-        juce::ignoreUnused (midiChannel);   // v1 is omni (14_MIDI_SPEC.md).
+        juce::ignoreUnused (midiChannel);   // input is omni; repeated notes still pair one-for-one.
+
+        Voice* oldestMatching = nullptr;
+        auto oldestStamp = std::numeric_limits<juce::int64>::max();
 
         for (auto& voice : voices)
         {
-            if (voice.isActive() && voice.getMidiNote() == midiNote && ! voice.isReleasing())
+            if (! voice.isActive() || voice.getMidiNote() != midiNote
+                || voice.isReleasing() || voice.isHeldBySustain())
+                continue;
+
+            if (voice.getNoteStamp() < oldestStamp)
             {
-                if (sustainPedalDown)
-                    voice.setHeldBySustain (true);
-                else
-                    voice.stopNote();
+                oldestStamp = voice.getNoteStamp();
+                oldestMatching = &voice;
             }
         }
+
+        if (oldestMatching == nullptr)
+            return;
+
+        if (sustainPedalDown)
+            oldestMatching->setHeldBySustain (true);
+        else
+            oldestMatching->stopNote();
     }
 
     void GranularEngine::setSustainPedal (bool isDown)

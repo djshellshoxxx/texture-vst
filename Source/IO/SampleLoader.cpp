@@ -2,6 +2,9 @@
 
 #include "../Utility/DspHelpers.h"
 
+#include <algorithm>
+#include <cmath>
+
 namespace texture
 {
     namespace
@@ -16,7 +19,9 @@ namespace texture
             if (framesToRead <= 0)
                 return false;
 
-            const auto channelsToRead = static_cast<int> (juce::jmax (1u, reader.numChannels));
+            // TEXTURE is stereo internally. Never allocate all channels from an
+            // untrusted multichannel file only to discard channel 3+ immediately.
+            const auto channelsToRead = juce::jlimit (1, 2, static_cast<int> (reader.numChannels));
 
             try
             {
@@ -87,11 +92,13 @@ namespace texture
     class SampleLoader::LoadJob : public juce::ThreadPoolJob
     {
     public:
-        LoadJob (SampleLoader& ownerToUse, juce::File fileToLoad, int generationToUse)
+        LoadJob (SampleLoader& ownerToUse, juce::File fileToLoad,
+                 int generationToUse, int requestTagToUse)
             : juce::ThreadPoolJob ("Texture load: " + fileToLoad.getFileName()),
               owner (ownerToUse),
               file (std::move (fileToLoad)),
-              generation (generationToUse)
+              generation (generationToUse),
+              requestTag (requestTagToUse)
         {
         }
 
@@ -101,9 +108,10 @@ namespace texture
                 return jobHasFinished;
 
             auto result = owner.loadSynchronously (file);
+            result.requestTag = requestTag;
 
             if (! shouldExit())
-                owner.deliver (std::move (result), generation);
+                owner.deliver (std::move (result), generation, requestTag);
 
             return jobHasFinished;
         }
@@ -112,11 +120,20 @@ namespace texture
         SampleLoader& owner;
         juce::File file;
         int generation;
+        int requestTag;
     };
 
     SampleLoader::SampleLoader()
     {
         formatManager.registerBasicFormats();
+
+        for (auto& generation : requestGenerations)
+            generation.store (0, std::memory_order_relaxed);
+    }
+
+    int SampleLoader::sanitiseRequestTag (int requestTag) noexcept
+    {
+        return juce::jlimit (0, maxRequestTags - 1, requestTag);
     }
 
     SampleLoader::~SampleLoader()
@@ -136,10 +153,11 @@ namespace texture
         callback = std::move (newCallback);
     }
 
-    void SampleLoader::loadAsync (const juce::File& file)
+    void SampleLoader::loadAsync (const juce::File& file, int requestTag)
     {
-        const auto generation = ++requestGeneration;
-        pool.addJob (new LoadJob (*this, file, generation), true);
+        const auto tag = sanitiseRequestTag (requestTag);
+        const auto generation = ++requestGenerations[static_cast<size_t> (tag)];
+        pool.addJob (new LoadJob (*this, file, generation, tag), true);
     }
 
     void SampleLoader::waitForPendingLoads (int timeoutMs)
@@ -149,11 +167,23 @@ namespace texture
 
     void SampleLoader::cancelPendingLoads()
     {
-        ++requestGeneration;
+        for (auto& generation : requestGenerations)
+            ++generation;
 
         const juce::ScopedLock lock (resultLock);
-        hasPendingResult = false;
-        pendingResult = {};
+        pendingResults.clear();
+    }
+
+    void SampleLoader::cancelPendingLoad (int requestTag)
+    {
+        const auto tag = sanitiseRequestTag (requestTag);
+        ++requestGenerations[static_cast<size_t> (tag)];
+
+        const juce::ScopedLock lock (resultLock);
+        pendingResults.erase (
+            std::remove_if (pendingResults.begin(), pendingResults.end(),
+                            [tag] (const LoadResult& result) { return result.requestTag == tag; }),
+            pendingResults.end());
     }
 
     bool SampleLoader::isBusy() const
@@ -226,6 +256,13 @@ namespace texture
         const auto sourceRate = reader->sampleRate > 0.0 ? reader->sampleRate : targetSampleRateAtomic.load();
         const auto sourceChannels = static_cast<int> (reader->numChannels);
 
+        if (! std::isfinite (sourceRate) || sourceRate < 1000.0 || sourceRate > 768000.0)
+        {
+            result.message = "Could not decode file. Its sample rate is invalid.";
+            result.severity = Severity::warning;
+            return result;
+        }
+
         if (reader->lengthInSamples <= 0 || sourceChannels <= 0)
         {
             result.message = "Could not decode file. It may be corrupt.";
@@ -278,16 +315,17 @@ namespace texture
         return result;
     }
 
-    void SampleLoader::deliver (LoadResult&& result, int generation)
+    void SampleLoader::deliver (LoadResult&& result, int generation, int requestTag)
     {
-        // Only the newest request is allowed to become active (05_SAMPLE_LOADER.md).
-        if (generation != requestGeneration.load (std::memory_order_acquire))
+        const auto tag = sanitiseRequestTag (requestTag);
+
+        // Only the newest request in this lane is allowed to become active.
+        if (generation != requestGenerations[static_cast<size_t> (tag)].load (std::memory_order_acquire))
             return;
 
         {
             const juce::ScopedLock lock (resultLock);
-            pendingResult = std::move (result);
-            hasPendingResult = true;
+            pendingResults.push_back (std::move (result));
         }
 
         triggerAsyncUpdate();
@@ -295,20 +333,21 @@ namespace texture
 
     void SampleLoader::handleAsyncUpdate()
     {
-        LoadResult result;
+        std::vector<LoadResult> results;
 
         {
             const juce::ScopedLock lock (resultLock);
 
-            if (! hasPendingResult)
+            if (pendingResults.empty())
                 return;
 
-            result = std::move (pendingResult);
-            pendingResult = {};
-            hasPendingResult = false;
+            results.swap (pendingResults);
         }
 
-        if (callback)
+        if (! callback)
+            return;
+
+        for (const auto& result : results)
             callback (result);
     }
 }

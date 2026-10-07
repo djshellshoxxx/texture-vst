@@ -70,11 +70,19 @@ namespace texture::tests
             testNoAllocationsInProcessBlock();
             testNanInputProducesNoNanOutput();
             testSustainPedal();
+            testRepeatedNoteOffIsOneForOne();
             testAllSoundOff();
             testVariableBlockSizes();
             testMorphTargetTable();
             testLfoSummation();
+            testLfoTransportSync();
             testEffectsChainStaysFinite();
+            testReverbBypassSmoothing();
+            testBypassedReverbTailStillRetires();
+            testOutputGainInitialisesAtUnity();
+            testEnergyTrackerUsesElapsedTime();
+            testTimeBasedDecayCoefficient();
+            testDefensiveClampRejectsNonFinite();
         }
 
     private:
@@ -385,6 +393,33 @@ namespace texture::tests
             expectEquals (engine.getActiveVoiceCount(), 0, "releasing the pedal should free the voice");
         }
 
+
+        void testRepeatedNoteOffIsOneForOne()
+        {
+            beginTest ("each Note Off releases only one repeated-note voice");
+
+            GranularEngine engine;
+            engine.prepare (testRate, blockSize);
+            engine.setAdsrParameters (1.0f, 5.0f, 1.0f, 15.0f);
+
+            const auto sample = makeTestSample();
+            const auto targets = deriveMorphTargets (0.2f);
+
+            engine.noteOn (1, 60, 1.0f);
+            engine.noteOn (1, 60, 0.8f);
+            renderAndMeasure (engine, sample, targets, 4);
+            expectEquals (engine.getActiveVoiceCount(), 2);
+
+            engine.noteOff (1, 60);
+            renderAndMeasure (engine, sample, targets, 200);
+            expectEquals (engine.getActiveVoiceCount(), 1,
+                          "one Note Off must leave the retriggered voice sounding");
+
+            engine.noteOff (1, 60);
+            renderAndMeasure (engine, sample, targets, 200);
+            expectEquals (engine.getActiveVoiceCount(), 0);
+        }
+
         void testAllSoundOff()
         {
             beginTest ("all sound off silences everything immediately");
@@ -522,6 +557,219 @@ namespace texture::tests
             }
 
             expect (sawInterior, "folding should move the value away from the limit");
+        }
+
+
+        void testLfoTransportSync()
+        {
+            beginTest ("synced LFO locks to PPQ and freezes while transport is stopped");
+
+            MorphLFO lfo;
+            lfo.prepare (testRate);
+            lfo.setSyncEnabled (true);
+            lfo.setDivisionIndex (2); // 1/4 = one beat per cycle
+            lfo.setDepth (1.0f);
+
+            lfo.updateFromPlayHead (120.0, false, 0.25);
+            const auto stoppedA = lfo.advanceBlock (blockSize);
+            const auto stoppedB = lfo.advanceBlock (blockSize * 8);
+            expectWithinAbsoluteError (stoppedA, stoppedB, 1.0e-6f,
+                                       "synced modulation must not drift while stopped");
+
+            beginTest ("host seeks reposition synced phase immediately");
+
+            lfo.updateFromPlayHead (120.0, true, 0.0);
+            expectWithinAbsoluteError (lfo.advanceBlock (0), 0.0f, 1.0e-6f);
+
+            lfo.updateFromPlayHead (120.0, true, 0.25);
+            expectWithinAbsoluteError (lfo.advanceBlock (0), 1.0f, 1.0e-5f);
+
+            lfo.updateFromPlayHead (120.0, true, 0.5);
+            expectWithinAbsoluteError (lfo.advanceBlock (0), 0.0f, 1.0e-5f);
+
+            beginTest ("missing PPQ free-runs only while playing");
+
+            lfo.updateFromPlayHead (120.0, true, -1.0);
+            const auto playingA = lfo.advanceBlock (blockSize);
+            const auto playingB = lfo.advanceBlock (blockSize);
+            expect (std::abs (playingB - playingA) > 1.0e-6f);
+
+            lfo.updateFromPlayHead (0.0, false, -1.0);
+            const auto missingStoppedA = lfo.advanceBlock (blockSize);
+            const auto missingStoppedB = lfo.advanceBlock (blockSize * 4);
+            expectWithinAbsoluteError (missingStoppedA, missingStoppedB, 1.0e-6f);
+
+            beginTest ("invalid tempo keeps the last valid tempo");
+            expectWithinAbsoluteError (lfo.getEffectiveRateHz(), 2.0f, 1.0e-4f);
+        }
+
+
+        void testReverbBypassSmoothing()
+        {
+            beginTest ("reverb bypass crossfades instead of switching in one sample");
+
+            Reverb reverb;
+            reverb.prepare (testRate, blockSize, 2);
+            reverb.setWetLevel (0.65f);
+            reverb.setEnabled (true);
+
+            juce::AudioBuffer<float> buffer (2, blockSize);
+
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < blockSize; ++i)
+                    buffer.setSample (ch, i, 0.25f);
+
+            for (int i = 0; i < 16; ++i)
+                reverb.process (buffer, 0, blockSize);
+
+            expectGreaterThan (reverb.getEnableMix(), 0.99f);
+
+            reverb.setEnabled (false);
+            expectGreaterThan (reverb.getEnableMix(), 0.99f,
+                               "disabling must set a target, not jump the current mix");
+
+            buffer.clear();
+            reverb.process (buffer, 0, blockSize);
+            expect (reverb.getEnableMix() > 0.0f && reverb.getEnableMix() < 1.0f,
+                    "first bypass block should be inside the crossfade");
+
+            for (int i = 0; i < 32; ++i)
+            {
+                buffer.clear();
+                reverb.process (buffer, 0, blockSize);
+            }
+
+            expectWithinAbsoluteError (reverb.getEnableMix(), 0.0f, 1.0e-4f);
+        }
+
+
+
+        void testBypassedReverbTailStillRetires()
+        {
+            beginTest ("bypassed reverb tracks and retires its hidden tail");
+
+            Reverb reverb;
+            reverb.prepare (testRate, blockSize, 2);
+            reverb.setWetLevel (0.65f);
+            reverb.setEnabled (true);
+
+            juce::AudioBuffer<float> buffer (2, blockSize);
+            buffer.clear();
+            buffer.setSample (0, 0, 1.0f);
+            buffer.setSample (1, 0, 1.0f);
+
+            reverb.process (buffer, 0, blockSize);
+            reverb.setEnabled (false);
+
+            bool sawHiddenTail = false;
+
+            for (int i = 0; i < 8; ++i)
+            {
+                buffer.clear();
+                reverb.process (buffer, 0, blockSize);
+                sawHiddenTail = sawHiddenTail || reverb.hasTailEnergy();
+            }
+
+            expect (sawHiddenTail, "tail must remain tracked after bypass reaches dry");
+
+            for (int i = 0; i < 2000 && reverb.hasTailEnergy(); ++i)
+            {
+                buffer.clear();
+                reverb.process (buffer, 0, blockSize);
+            }
+
+            expect (! reverb.hasTailEnergy(), "hidden tail must eventually retire");
+        }
+
+        void testOutputGainInitialisesAtUnity()
+        {
+            beginTest ("default output gain starts at unity without an unintended startup fade");
+
+            EffectsChain effects;
+            effects.prepare (testRate, blockSize, 2);
+
+            expectWithinAbsoluteError (effects.getCurrentOutputGain(), 1.0f, 1.0e-6f);
+
+            effects.setOutputGainDb (-6.0f);
+            expectWithinAbsoluteError (effects.getCurrentOutputGain(), 1.0f, 1.0e-6f,
+                                       "gain changes should ramp from the established current value");
+        }
+
+
+        void testEnergyTrackerUsesElapsedTime()
+        {
+            beginTest ("tail energy decay depends on elapsed audio time, not host block size");
+
+            dsp::EnergyTracker smallBlocks;
+            dsp::EnergyTracker largeBlocks;
+            smallBlocks.prepare (48000.0, 1.5);
+            largeBlocks.prepare (48000.0, 1.5);
+
+            smallBlocks.push (1.0f, 64);
+            largeBlocks.push (1.0f, 1024);
+
+            for (int samples = 0; samples < 48000; samples += 64)
+                smallBlocks.push (0.0f, 64);
+
+            for (int samples = 0; samples < 48000; samples += 1024)
+                largeBlocks.push (0.0f, juce::jmin (1024, 48000 - samples));
+
+            expectWithinAbsoluteError (smallBlocks.getEnergy(), largeBlocks.getEnergy(), 0.002f);
+
+            beginTest ("silent tail retires within the configured decay window");
+            dsp::EnergyTracker tracker;
+            tracker.prepare (48000.0, 1.5);
+            tracker.push (1.0f, 512);
+
+            for (int samples = 0; samples < 96000; samples += 512)
+                tracker.push (0.0f, juce::jmin (512, 96000 - samples));
+
+            expect (tracker.isSilent());
+        }
+
+
+        void testTimeBasedDecayCoefficient()
+        {
+            beginTest ("time-based decay is invariant to host callback size");
+
+            const auto targetSeconds = 0.37;
+            const auto small = dsp::decayCoefficient (64.0 / 48000.0, targetSeconds, 0.001);
+            const auto large = dsp::decayCoefficient (1024.0 / 48000.0, targetSeconds, 0.001);
+
+            double smallAccum = 1.0;
+            for (int samples = 0; samples < 48000; samples += 64)
+                smallAccum *= dsp::decayCoefficient (
+                    static_cast<double> (juce::jmin (64, 48000 - samples)) / 48000.0,
+                    targetSeconds, 0.001);
+
+            double largeAccum = 1.0;
+            for (int samples = 0; samples < 48000; samples += 1024)
+                largeAccum *= dsp::decayCoefficient (
+                    static_cast<double> (juce::jmin (1024, 48000 - samples)) / 48000.0,
+                    targetSeconds, 0.001);
+
+            expect (small > 0.0 && small < 1.0);
+            expect (large > 0.0 && large < 1.0);
+            expectWithinAbsoluteError (smallAccum, largeAccum, 1.0e-6);
+        }
+
+
+        void testDefensiveClampRejectsNonFinite()
+        {
+            beginTest ("DSP clamp maps non-finite floating values to the lower bound");
+
+            expectWithinAbsoluteError (
+                dsp::clamp (std::numeric_limits<float>::quiet_NaN(), 0.0f, 1.0f),
+                0.0f, 0.0f);
+            expectWithinAbsoluteError (
+                dsp::clamp (std::numeric_limits<float>::infinity(), -1.0f, 1.0f),
+                -1.0f, 0.0f);
+            expectWithinAbsoluteError (
+                dsp::clamp (-std::numeric_limits<float>::infinity(), -1.0f, 1.0f),
+                -1.0f, 0.0f);
+
+            expectEquals (dsp::clamp (12, 0, 10), 10);
+            expectEquals (dsp::clamp (-2, 0, 10), 0);
         }
 
         void testEffectsChainStaysFinite()

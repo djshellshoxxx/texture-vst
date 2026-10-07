@@ -1,7 +1,7 @@
 # TEXTURE — Release Validation Record
 
 **Status:** In progress  
-**Branch:** `codex/spec-compliance-motion`  
+**Branch:** `codex/post-merge-development`  
 **Updated:** 2026-10-06
 
 This file records evidence for beta/release claims. A target is not marked verified
