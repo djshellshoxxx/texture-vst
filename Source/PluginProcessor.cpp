@@ -1063,7 +1063,7 @@ namespace texture
             auto& layer = layers[index];
 
             publishSample (layer, SampleBuffer::makeEmpty());
-            layer.file = {};
+            layer.file = juce::File();
             layer.originalName.clear();
             engines[index].allSoundOff();
             setSampleStart (layerIndex, data.sampleStarts[index], false);
@@ -1198,7 +1198,7 @@ namespace texture
 
         currentPresetName.clear();
         currentPresetCategory = "Cinematic";
-        currentPresetFile = {};
+        currentPresetFile = juce::File();
         presetDirty = false;
 
         Logging::clearLog();
@@ -1378,7 +1378,7 @@ namespace texture
                 slot.setProperty (identifier,
                                   snapshot.hasProperty (identifier)
                                       ? snapshot.getProperty (identifier)
-                                      : getParameterValue (id, params::defaultValueFor (id)),
+                                      : juce::var (getParameterValue (id, params::defaultValueFor (id))),
                                   nullptr);
             }
 
@@ -1424,7 +1424,7 @@ namespace texture
 
         const auto preset = root.getChildWithName (StateSchema::presetTag);
 
-        currentPresetFile = {};
+        currentPresetFile = juce::File();
         currentPresetName.clear();
         currentPresetCategory = "Cinematic";
 
@@ -1455,7 +1455,7 @@ namespace texture
                     snapshot.setProperty (identifier,
                                           child.hasProperty (identifier)
                                               ? child.getProperty (identifier)
-                                              : getParameterValue (id, params::defaultValueFor (id)),
+                                              : juce::var (getParameterValue (id, params::defaultValueFor (id))),
                                           nullptr);
                 }
 
@@ -1499,7 +1499,7 @@ namespace texture
             const auto index = static_cast<size_t> (layerIndex);
             auto& layer = layers[index];
             publishSample (layer, SampleBuffer::makeEmpty());
-            layer.file = {};
+            layer.file = juce::File();
             layer.originalName.clear();
             engines[index].allSoundOff();
             setSampleStart (layerIndex, 0.0f, false);

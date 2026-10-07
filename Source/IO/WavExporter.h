@@ -69,7 +69,7 @@ namespace texture
                               const Options& options,
                               const juce::File& destination)
         {
-            return render ({ sample, {} }, settings, options, destination);
+            return render (std::array<SampleBufferPtr, 2> { sample, nullptr }, settings, options, destination);
         }
 
         /** Bit depths offered in the export dialog. */

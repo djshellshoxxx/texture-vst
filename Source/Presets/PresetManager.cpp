@@ -91,10 +91,10 @@ namespace texture
             if (id == params::layerBlend)  return inRange (params::layerBlendMin, params::layerBlendMax);
 
             if (id == params::reverbOn || id == params::lfoSync)
-                return numeric == 0.0 || numeric == 1.0;
+                return juce::exactlyEqual (numeric, 0.0) || juce::exactlyEqual (numeric, 1.0);
 
             if (id == params::lfoDivision)
-                return numeric == std::floor (numeric)
+                return juce::exactlyEqual (numeric, std::floor (numeric))
                     && numeric >= 0.0
                     && numeric < static_cast<double> (params::numDivisions);
 

@@ -3,6 +3,7 @@
 #include "../Source/Engine/SampleBuffer.h"
 #include "../Source/License/LicenseManager.h"
 #include "../Source/Presets/PresetManager.h"
+#include "../Source/Utility/StateSchema.h"
 
 #include <juce_events/juce_events.h>
 
@@ -23,6 +24,11 @@ namespace texture
     inline juce::String& operator<< (juce::String& target, PresetManager::Status status)
     {
         return target << PresetManager::describe (status);
+    }
+
+    inline juce::String& operator<< (juce::String& target, StateSchema::Status status)
+    {
+        return target << "StateSchema::Status(" << static_cast<int> (status) << ")";
     }
 }
 

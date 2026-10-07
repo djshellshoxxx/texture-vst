@@ -98,7 +98,7 @@ namespace texture::tests
             const auto parsed = juce::JSON::parse (text);
 
             expect (parsed.isObject());
-            expectEquals (static_cast<int> (parsed.getProperty ("schema_version", 0)), 1);
+            expectEquals (static_cast<int> (parsed.getProperty ("schema_version", 0)), PresetManager::currentSchemaVersion);
             expectEquals (parsed.getProperty ("preset_name", "").toString(), juce::String ("Round Trip"));
             expect (parsed.getProperty ("parameters", juce::var()).isObject());
             expect (file.getSize() <= PresetManager::maxPresetFileSizeBytes);

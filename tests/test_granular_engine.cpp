@@ -1,6 +1,8 @@
 #include "TestHelpers.h"
 
 #include "../Source/Effects/EffectsChain.h"
+
+#include <limits>
 #include "../Source/Engine/GranularEngine.h"
 #include "../Source/Modulation/MorphLFO.h"
 
@@ -77,6 +79,7 @@ namespace texture::tests
             testLfoSummation();
             testLfoTransportSync();
             testEffectsChainStaysFinite();
+            testEffectsChainScrubsNonFiniteInput();
             testReverbBypassSmoothing();
             testBypassedReverbTailStillRetires();
             testOutputGainInitialisesAtUnity();
@@ -813,6 +816,43 @@ namespace texture::tests
                 effects.process (buffer, 0, blockSize);
 
             expectWithinAbsoluteError (peakOf (buffer), 0.0f, 1.0e-6f);
+        }
+
+        void testEffectsChainScrubsNonFiniteInput()
+        {
+            beginTest ("an Inf or NaN sample entering the chain is scrubbed, not amplified");
+
+            // Regression for the fuzzer: at low drive tanh(Inf) * 1/tanh(drive) used
+            // to put a ~40x full-scale spike into the reverb.
+            for (const auto poison : { std::numeric_limits<float>::infinity(),
+                                       -std::numeric_limits<float>::infinity(),
+                                       std::numeric_limits<float>::quiet_NaN() })
+            {
+                EffectsChain effects;
+                effects.prepare (testRate, blockSize, 2);
+
+                auto targets = deriveMorphTargets (0.6f);
+                targets.saturatorDrive = 0.02f;
+                effects.setMorphTargets (targets);
+
+                juce::AudioBuffer<float> buffer (2, blockSize);
+                float worst = 0.0f;
+
+                for (int i = 0; i < 50; ++i)
+                {
+                    buffer.clear();
+
+                    if (i == 0)
+                        for (int ch = 0; ch < 2; ++ch)
+                            buffer.setSample (ch, 3, poison);
+
+                    effects.process (buffer, 0, blockSize);
+                    expect (isFinite (buffer));
+                    worst = juce::jmax (worst, peakOf (buffer));
+                }
+
+                expectLessThan (worst, 1.0e-3f);
+            }
         }
     };
 
