@@ -64,6 +64,9 @@ target_compile_definitions(generate_placeholder_samples
 set(TEXTURE_FACTORY_SAMPLES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/factory_samples")
 set(TEXTURE_SAMPLE_STAMP "${CMAKE_CURRENT_BINARY_DIR}/factory_samples.stamp")
 
+# A cross-compiled generator cannot run on the build machine. The plugin writes the
+# same files on first launch, so a cross build only loses the developer copies.
+if(NOT CMAKE_CROSSCOMPILING)
 add_custom_command(
     OUTPUT "${TEXTURE_SAMPLE_STAMP}"
     COMMAND generate_placeholder_samples "${TEXTURE_FACTORY_SAMPLES_DIR}"
@@ -73,6 +76,9 @@ add_custom_command(
     VERBATIM)
 
 add_custom_target(texture_factory_samples DEPENDS "${TEXTURE_SAMPLE_STAMP}")
+else()
+add_custom_target(texture_factory_samples)
+endif()
 
 # --- Plugin -------------------------------------------------------------------
 set(TEXTURE_FORMATS VST3 Standalone)

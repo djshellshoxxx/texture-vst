@@ -56,6 +56,23 @@ which also covers troubleshooting and the debug tools.
 
 ---
 
+## Installing a release
+
+Releases are on the GitHub **Releases** page. Each one carries, per platform:
+
+| Asset | What it is |
+|---|---|
+| `…-Windows-x64-Setup.exe` | Installer. Choose Standalone, VST3 (`Common Files\VST3`) and/or CLAP (`Common Files\CLAP`). Uninstall from Windows Settings; your presets and samples are kept. |
+| `…-Windows-x64-Portable.zip` | The standalone app. Unzip anywhere and run `Texture.exe`. |
+| `…-Windows-x64-VST3.zip` / `…-CLAP.zip` | The bare plug-ins, for manual installs. |
+| `…-Linux-x64-Installer.sh` | Per-user installer: `sh Texture-…-Installer.sh` installs to `~/.local/bin`, `~/.vst3`, `~/.clap` and adds a menu entry. |
+| `…-Linux-x64-Portable.tar.gz` / `…-VST3.tar.gz` / `…-CLAP.tar.gz` | The app and bare plug-ins. |
+| `SHA256SUMS.txt` | Checksums for every asset. |
+
+`packaging/package_release.sh` produces all of these from finished builds.
+
+---
+
 ## Building
 
 ### Requirements
@@ -105,6 +122,14 @@ cmake --build build/release --config Release
 
 Warnings are errors for TEXTURE's own sources and only for those. JUCE emits
 warnings we do not own, so its targets are left alone.
+
+### Cross-compiling the Windows build from Linux
+
+JUCE 8 does not support MinGW, so `cmake/WindowsCrossClangCl.cmake` targets the MSVC
+ABI with clang-cl and lld-link, the Windows SDK and VC runtime from NuGet, and LLVM's
+libc++ (built once for `x86_64-pc-windows-msvc`), all with the static runtime. The
+file header documents the sysroot layout it expects. Build steps that run Windows
+programs (`juce_vst3_helper`) need Wine. A native MSVC build remains the reference.
 
 ### Presets
 
