@@ -241,3 +241,9 @@ ctest --test-dir build/release -C Release --output-on-failure
   never gets a runner on this repo (every job ends in seconds with no steps, runner
   id 0 - an account billing/minutes block), so the release binaries were built
   locally: Linux natively, Windows by cross-compiling with MinGW-w64.
+- 2026-10-07 (later): v0.0.1 beta packaged and released. pluginval strictness 5 passes on
+  the Linux VST3. Windows binaries cross-built with clang-cl/libc++ pass the unit tests
+  and fuzzer under Wine; the Windows GUI cannot be checked under Wine (JUCE VBlankThread
+  vs Wine's WaitForVBlank stub) and needs a real Windows run. NSIS installer and Linux
+  installer verified. Assets: installer, portable, VST3 and CLAP for Windows x64 and
+  Linux x64, plus SHA256SUMS. See docs/RELEASE_VALIDATION.md.

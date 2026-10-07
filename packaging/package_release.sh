@@ -8,7 +8,8 @@
 # for the Windows installer, makensis (NSIS 3).
 set -euo pipefail
 
-version="$1"; out="$(realpath -m "$2")"; win="${3:-}"; lin="${4:-}"
+version="$1"; out="$(realpath -m "$2")"
+win="${3:+$(realpath "$3")}"; lin="${4:+$(realpath "$4")}"
 root="$(cd "$(dirname "$0")/.." && pwd)"
 name="Texture-v${version}"
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT

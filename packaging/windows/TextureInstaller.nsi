@@ -44,10 +44,12 @@ Function .onInit
         Abort
     ${EndIf}
     SetRegView 64
+    SetShellVarContext all   ; machine-wide install, so shortcuts go to every user's Start menu
 FunctionEnd
 
 Function un.onInit
     SetRegView 64
+    SetShellVarContext all
 FunctionEnd
 
 Section "Standalone app" SecStandalone
