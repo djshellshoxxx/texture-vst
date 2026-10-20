@@ -90,3 +90,8 @@ add_test(NAME texture_fuzz COMMAND Texture_Tests fuzz)
 
 set_tests_properties(texture_unit_tests PROPERTIES TIMEOUT 600)
 set_tests_properties(texture_fuzz PROPERTIES TIMEOUT 300)
+
+# Pure waveform math also runs without JUCE for focused boundary/sanitizer checks.
+add_executable(Texture_WaveformMathTests test_waveform_math.cpp)
+texture_apply_strict_warnings(Texture_WaveformMathTests test_waveform_math.cpp)
+add_test(NAME texture_waveform_math COMMAND Texture_WaveformMathTests)

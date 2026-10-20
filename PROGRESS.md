@@ -116,6 +116,9 @@ ctest --test-dir build/release -C Release --output-on-failure
 
 ## What is left
 
+Latest review: see `docs/REVIEW_2026-10-20.md` for branch ancestry, waveform and
+Randomize fixes, focused test evidence, and current CI/release discrepancies.
+
 1. **Milestone 10, the manual sweep.** `docs/MANUAL_TEST_PLAN.md` is written and
    ready to work through, but it needs a human at a DAW with an audio device.
    Reaper is installed on the build machine and the VST3 is already in
