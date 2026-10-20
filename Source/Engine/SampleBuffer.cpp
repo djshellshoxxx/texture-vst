@@ -1,4 +1,5 @@
 #include "SampleBuffer.h"
+#include "WaveformMath.h"
 
 #include <cmath>
 
@@ -51,12 +52,11 @@ namespace texture
         if (numSamples <= 0 || numChannels <= 0)
             return;
 
-        const auto samplesPerBin = juce::jmax (1, numSamples / waveformResolution);
-
         for (int bin = 0; bin < waveformResolution; ++bin)
         {
-            const auto start = juce::jmin (numSamples - 1, bin * samplesPerBin);
-            const auto end = juce::jmin (numSamples, start + samplesPerBin);
+            const auto range = waveform::binRange (bin, numSamples, waveformResolution);
+            const auto start = range.begin;
+            const auto end = range.end;
 
             float binPeak = 0.0f;
             double sumOfSquares = 0.0;
@@ -90,13 +90,11 @@ namespace texture
         // Normalise for display only — the audio itself is never rescaled.
         if (globalPeak > 0.0f)
         {
-            const auto inverse = 1.0f / globalPeak;
-
             for (auto& v : peaks)
-                v *= inverse;
+                v = waveform::normalise (v, globalPeak);
 
             for (auto& v : rms)
-                v *= inverse;
+                v = waveform::normalise (v, globalPeak);
         }
     }
 

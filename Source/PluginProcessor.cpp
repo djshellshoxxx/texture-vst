@@ -1189,9 +1189,11 @@ namespace texture
         undoManager.beginNewTransaction();
         auto& random = juce::Random::getSystemRandom();
 
-        // Every press starts from defaults so results do not drift towards extremes.
+        // Start sound-design parameters from defaults so results do not drift.
+        // TUNE calibrates the source sample and must survive randomisation.
         for (const auto* id : params::allIDs)
-            setParameterValue (id, params::defaultValueFor (id));
+            if (juce::String (id) != params::tune)
+                setParameterValue (id, params::defaultValueFor (id));
 
         setParameterValue (params::morph, random.nextFloat());
         setParameterValue (params::attack, juce::jmap (random.nextFloat(), 5.0f, 2500.0f));

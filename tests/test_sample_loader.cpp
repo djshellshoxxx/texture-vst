@@ -25,6 +25,7 @@ namespace texture::tests
             testIndependentRequestLanes();
             testLaneCancellation();
             testWaveformCache();
+            testWaveformBoundaries();
             testPresetRouting();
         }
 
@@ -361,6 +362,26 @@ namespace texture::tests
 
             loader.setCallback (nullptr);
             loader.waitForPendingLoads();
+        }
+
+        void testWaveformBoundaries()
+        {
+            beginTest ("waveform includes the final frame of a non-divisible clip");
+            juce::AudioBuffer<float> audio (2, 513);
+            audio.clear();
+            audio.setSample (1, 512, 0.75f);
+            SampleBuffer sample (std::move (audio), 48000.0, juce::File(), 2, 48000.0, false);
+            expectWithinAbsoluteError (sample.getGlobalPeak(), 0.75f, 1.0e-6f);
+            expectWithinAbsoluteError (sample.getWaveformPeaks().back(), 1.0f, 1.0e-6f);
+
+            beginTest ("two-frame waveform spans the display proportionally");
+            juce::AudioBuffer<float> shortAudio (1, 2);
+            shortAudio.setSample (0, 0, 0.25f);
+            shortAudio.setSample (0, 1, 0.5f);
+            SampleBuffer shortSample (std::move (shortAudio), 48000.0, juce::File(), 1, 48000.0, false);
+            for (int bin = 0; bin < SampleBuffer::waveformResolution; ++bin)
+                expectWithinAbsoluteError (shortSample.getWaveformPeaks()[static_cast<size_t> (bin)],
+                                           bin < 256 ? 0.5f : 1.0f, 1.0e-6f);
         }
 
         void testWaveformCache()
