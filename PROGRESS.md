@@ -250,3 +250,8 @@ Randomize fixes, focused test evidence, and current CI/release discrepancies.
   vs Wine's WaitForVBlank stub) and needs a real Windows run. NSIS installer and Linux
   installer verified. Assets: installer, portable, VST3 and CLAP for Windows x64 and
   Linux x64, plus SHA256SUMS. See docs/RELEASE_VALIDATION.md.
+
+
+## 2026-10-20: Development specification package
+
+Created [26 feature specifications](docs/development/README.md) covering the full recommended feature roadmap and the explicitly requested workflow/performance controls. Added Afterimage Loom and Resonant Drift effect designs, shared parameter/state/real-time contracts, dependency and module plans, acceptance tests, source notes and a machine-readable manifest. All are proposed; spectral hybridization is research-gated. No application source or build configuration was changed. Continue with the foundation batch in docs/development/DELIVERY_PLAN.md; implement one complete feature/dependency milestone per PR.

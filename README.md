@@ -374,3 +374,8 @@ checks, no crash reporting.
 This project follows the [Circuit Drift Labs Shared Audio Plugin Standard](docs/standards/CDL_PLUGIN_BASELINE.md). It is required for the plug-in target; standalone-only requirements apply only when a standalone target is included. The [product specification](docs/PRODUCT_SPEC.md) supplements the shared standard.
 Current implementation status and exceptions are tracked in the
 [baseline compliance record](docs/BASELINE_COMPLIANCE.md).
+
+
+## Planned feature specifications
+
+The [development specification index](docs/development/README.md) contains 26 proposed feature specifications, including two new effect designs. Each defines behaviour, controls, state, modular integration and acceptance criteria. These documents describe planned work, not features already implemented.
