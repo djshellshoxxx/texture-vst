@@ -33,7 +33,7 @@ Ships as **VST3**, **AU** (macOS), **CLAP** (optional) and a **standalone** app.
 | **Engine** | 16-voice granular sampler, up to 8 grains per voice, linear-interpolated resampling |
 | **MORPH** | One knob driving grain count, length, overlap, position jitter, detune, stereo spread, reverb send, chorus depth, saturation and a high-shelf lift |
 | **Envelope** | One ADSR per voice, with a long 1.2 s default release |
-| **Grain** | TUNE (±24 semitones, for samples not recorded at C3), REVERSE (chance each grain plays backwards), SHIMMER (octave-up grains blended into the cloud) |
+| **Grain** | TUNE (±24 semitones), per-layer source root and ±100-cent fine calibration, REVERSE (chance each grain plays backwards), SHIMMER (octave-up grains blended into the cloud) |
 | **Effects** | Saturator → chorus → reverb → high shelf → DC blocker → output gain, fixed order |
 | **Undo** | Ctrl/Cmd+Z undoes any control change, randomise, reset, preset load or A/B recall; Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y redoes |
 | **Input** | Drag and drop WAV, AIFF, FLAC, MP3, OGG, or a `.texture` preset |
@@ -48,7 +48,7 @@ matrix and no delay. Scope discipline is the product.
 ## Quick start
 
 1. Drop any audio file onto the left panel, or click it to browse.
-2. Play a chord. Samples are assumed to be tuned to **C3 (MIDI 60)**.
+2. Play a chord. Samples default to **C3 (MIDI 60)**. Use each sample panel's root-note and fine-cent controls to calibrate it independently; root changes apply to new notes and fine changes glide over 20 ms. The existing TUNE control remains a separate whole-semitone offset.
 3. Turn MORPH.
 
 That is the entire workflow. Press **F1** inside the plugin for the full manual,
@@ -58,18 +58,21 @@ which also covers troubleshooting and the debug tools.
 
 ## Installing a release
 
-Releases are on the GitHub **Releases** page. Each one carries, per platform:
+Releases are on the GitHub **Releases** page. A tagged release is built and tested
+on the Windows, macOS and Linux CI runners before the release job publishes these
+assets:
 
 | Asset | What it is |
 |---|---|
-| `…-Windows-x64-Setup.exe` | Installer. Choose Standalone, VST3 (`Common Files\VST3`) and/or CLAP (`Common Files\CLAP`). Uninstall from Windows Settings; your presets and samples are kept. |
-| `…-Windows-x64-Portable.zip` | The standalone app. Unzip anywhere and run `Texture.exe`. |
-| `…-Windows-x64-VST3.zip` / `…-CLAP.zip` | The bare plug-ins, for manual installs. |
-| `…-Linux-x64-Installer.sh` | Per-user installer: `sh Texture-…-Installer.sh` installs to `~/.local/bin`, `~/.vst3`, `~/.clap` and adds a menu entry. |
-| `…-Linux-x64-Portable.tar.gz` / `…-VST3.tar.gz` / `…-CLAP.tar.gz` | The app and bare plug-ins. |
+| `…-Windows-x64-Standalone.zip` | The standalone app. Unzip anywhere and run `Texture.exe`. |
+| `…-Windows-x64-VST3.zip` | VST3 bundle for manual installation. |
+| `…-macOS-universal-Standalone.zip` | Universal standalone app bundle for Apple silicon and Intel. Beta builds are unsigned and not notarized. |
+| `…-macOS-universal-VST3.zip` / `…-AU.zip` | VST3 and Audio Unit bundles for manual installation. Beta builds are unsigned and not notarized. |
 | `SHA256SUMS.txt` | Checksums for every asset. |
 
-`packaging/package_release.sh` produces all of these from finished builds.
+Push a `v*` tag to run the release build and publish the assets after every build
+and test job succeeds. `packaging/package_platform_release.sh` packages the tested
+Windows and macOS build artefacts.
 
 ---
 
@@ -378,4 +381,4 @@ Current implementation status and exceptions are tracked in the
 
 ## Planned feature specifications
 
-The [development specification index](docs/development/README.md) contains 26 proposed feature specifications, including two new effect designs. Each defines behaviour, controls, state, modular integration and acceptance criteria. These documents describe planned work, not features already implemented.
+The [development specification index](docs/development/README.md) tracks 26 feature specifications, including two new effect designs. F01 Audition and Hold, F04 per-layer source pitch calibration, and F12 reproducible seeded variation are implemented in the current development branch; the other proposals remain planned. Each specification defines behaviour, controls, state, modular integration and acceptance criteria.

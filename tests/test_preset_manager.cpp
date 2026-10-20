@@ -31,8 +31,13 @@ namespace texture::tests
             data.setParameter (params::lfoDivision, 3.0f);
             data.setParameter (params::layerBlend, 0.5f);
             data.setParameter (params::tune, -7.0f);
+            data.setParameter (params::layer1Root, 69.0f);
+            data.setParameter (params::layer2Root, 48.0f);
+            data.setParameter (params::layer1FineCents, 13.2f);
+            data.setParameter (params::layer2FineCents, -22.7f);
             data.setParameter (params::reverse, 0.375f);
             data.setParameter (params::shimmer, 0.625f);
+            data.setParameter (params::randomMode, 1.0f);
 
             return data;
         }

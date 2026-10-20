@@ -197,7 +197,8 @@ set(TEXTURE_SOURCES
     Source/Utility/ControlValueParser.h
     Source/Utility/ControlValueClipboard.h
     Source/Utility/ParameterIDs.cpp
-    Source/Utility/ParameterIDs.h)
+    Source/Utility/ParameterIDs.h
+    Source/Utility/VersionedRandomStreams.h)
 
 target_sources(Texture PRIVATE ${TEXTURE_SOURCES})
 

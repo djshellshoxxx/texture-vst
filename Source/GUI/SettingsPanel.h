@@ -96,6 +96,17 @@ namespace texture
         juce::Slider defaultGainSlider;
         juce::TextButton audioSettingsButton { "Audio / MIDI setup..." };
         juce::TextButton clearMappingsButton { "Clear all MIDI mappings" };
+        juce::Label randomModeLabel { {}, "Random variation" };
+        std::unique_ptr<ParameterChoiceBox> randomModeBox;
+        juce::Label randomSeedLabel { {}, "Seed" };
+        juce::TextEditor randomSeedField;
+        juce::TextButton copySeedButton { "Copy" };
+        juce::TextButton newSeedButton { "New seed" };
+        juce::TextButton resetEvolutionButton { "Reset evolution" };
+        juce::Label randomSeedStatus;
+
+        void refreshRandomSeedField();
+        void commitRandomSeedField();
 
         // About tab
         juce::Label aboutText;

@@ -228,6 +228,52 @@ namespace texture
         };
         addAndMakeVisible (clearMappingsButton);
 
+        styleFieldLabel (randomModeLabel);
+        addAndMakeVisible (randomModeLabel);
+        randomModeBox = std::make_unique<ParameterChoiceBox> (
+            processor, params::randomMode, juce::StringArray { "Legacy", "Repeat", "Evolve" },
+            "Legacy keeps the original sound. Repeat reproduces each note from the seed. Evolve varies repeated notes deterministically.");
+        addAndMakeVisible (*randomModeBox);
+
+        styleFieldLabel (randomSeedLabel);
+        addAndMakeVisible (randomSeedLabel);
+        randomSeedField.setFont (TextureLookAndFeel::monoFont (12.0f));
+        randomSeedField.setInputRestrictions (16, "0123456789abcdefABCDEF");
+        randomSeedField.setTitle ("16 digit hexadecimal random seed");
+        randomSeedField.setTooltip ("Patch seed used by Repeat and Evolve modes. The seed is saved with the project.");
+        randomSeedField.onReturnKey = [this] { commitRandomSeedField(); };
+        randomSeedField.onFocusLost = [this] { commitRandomSeedField(); };
+        addAndMakeVisible (randomSeedField);
+
+        copySeedButton.setTooltip ("Copy the current 16 digit seed to the clipboard");
+        copySeedButton.onClick = [this]
+        {
+            juce::SystemClipboard::copyTextToClipboard (VersionedRandomStreams::seedToHex (processor.getRandomSeed()));
+            randomSeedStatus.setText ("Seed copied.", juce::dontSendNotification);
+        };
+        addAndMakeVisible (copySeedButton);
+
+        newSeedButton.setTooltip ("Generate a new seed for Repeat and Evolve modes");
+        newSeedButton.onClick = [this]
+        {
+            processor.generateNewRandomSeed();
+            refreshRandomSeedField();
+            randomSeedStatus.setText ("New seed saved with this patch.", juce::dontSendNotification);
+        };
+        addAndMakeVisible (newSeedButton);
+
+        resetEvolutionButton.setTooltip ("Restart the Evolve note sequence at the next audio block");
+        resetEvolutionButton.onClick = [this]
+        {
+            processor.resetRandomEvolution();
+            randomSeedStatus.setText ("Evolution will restart at the next audio block.", juce::dontSendNotification);
+        };
+        addAndMakeVisible (resetEvolutionButton);
+
+        styleBodyLabel (randomSeedStatus);
+        addAndMakeVisible (randomSeedStatus);
+        refreshRandomSeedField();
+
         // --- About tab ---------------------------------------------------------
         styleBodyLabel (aboutText);
         aboutText.setText (
@@ -290,6 +336,29 @@ namespace texture
 
         refreshLicenseState();
         setTab (Tab::license);
+    }
+
+
+    void SettingsPanel::refreshRandomSeedField()
+    {
+        randomSeedField.setText (VersionedRandomStreams::seedToHex (processor.getRandomSeed()),
+                                 juce::dontSendNotification);
+    }
+
+    void SettingsPanel::commitRandomSeedField()
+    {
+        std::uint64_t seed = 0;
+        const auto text = randomSeedField.getText().trim().toStdString();
+        if (! VersionedRandomStreams::parseSeedHex (text, seed))
+        {
+            randomSeedStatus.setText ("Enter exactly 16 hexadecimal digits.", juce::dontSendNotification);
+            refreshRandomSeedField();
+            return;
+        }
+
+        processor.setRandomSeed (seed);
+        refreshRandomSeedField();
+        randomSeedStatus.setText ("Seed saved with this patch.", juce::dontSendNotification);
     }
 
     SettingsPanel::~SettingsPanel()
@@ -405,7 +474,9 @@ namespace texture
                  &presetFolderLabel, &presetFolderButton, &revealPresetFolderButton,
                  &sampleFolderLabel, &sampleFolderButton, &revealSampleFolderButton,
                  &defaultGainLabel, &defaultGainSlider,
-                 &audioSettingsButton, &clearMappingsButton })
+                 &audioSettingsButton, &clearMappingsButton, &randomModeLabel,
+                 randomModeBox.get(), &randomSeedLabel, &randomSeedField, &copySeedButton,
+                 &newSeedButton, &resetEvolutionButton, &randomSeedStatus })
             component->setVisible (isPreferences);
 
         for (auto* component : std::initializer_list<juce::Component*> {
@@ -418,6 +489,7 @@ namespace texture
 
         if (isPreferences)
         {
+            refreshRandomSeedField();
             presetFolderLabel.setText ("Presets: " + processor.getPresetManager()
                                                           .getPresetSearchRoot().getFullPathName(),
                                        juce::dontSendNotification);
@@ -679,31 +751,46 @@ namespace texture
 
             case Tab::preferences:
             {
-                tooltipsToggle.setBounds (content.removeFromTop (26));
-                reducedMotionToggle.setBounds (content.removeFromTop (26));
-                content.removeFromTop (layout::grid);
+                tooltipsToggle.setBounds (content.removeFromTop (22));
+                reducedMotionToggle.setBounds (content.removeFromTop (22));
+                content.removeFromTop (4);
 
-                presetFolderLabel.setBounds (content.removeFromTop (30));
-                auto presetRow = content.removeFromTop (26);
+                presetFolderLabel.setBounds (content.removeFromTop (22));
+                auto presetRow = content.removeFromTop (24);
                 presetFolderButton.setBounds (presetRow.removeFromLeft (presetRow.getWidth() / 2 - 2));
                 presetRow.removeFromLeft (4);
                 revealPresetFolderButton.setBounds (presetRow);
-                content.removeFromTop (layout::grid);
+                content.removeFromTop (4);
 
-                sampleFolderLabel.setBounds (content.removeFromTop (30));
-                auto sampleRow = content.removeFromTop (26);
+                sampleFolderLabel.setBounds (content.removeFromTop (22));
+                auto sampleRow = content.removeFromTop (24);
                 sampleFolderButton.setBounds (sampleRow.removeFromLeft (sampleRow.getWidth() / 2 - 2));
                 sampleRow.removeFromLeft (4);
                 revealSampleFolderButton.setBounds (sampleRow);
-                content.removeFromTop (layout::grid);
+                content.removeFromTop (4);
 
                 defaultGainLabel.setBounds (content.removeFromTop (14));
-                defaultGainSlider.setBounds (content.removeFromTop (26));
-                content.removeFromTop (layout::grid);
-
-                audioSettingsButton.setBounds (content.removeFromTop (28));
+                defaultGainSlider.setBounds (content.removeFromTop (24));
                 content.removeFromTop (4);
-                clearMappingsButton.setBounds (content.removeFromTop (28));
+
+                auto modeRow = content.removeFromTop (24);
+                randomModeLabel.setBounds (modeRow.removeFromLeft (92));
+                randomModeBox->setBounds (modeRow);
+                auto seedRow = content.removeFromTop (24);
+                randomSeedLabel.setBounds (seedRow.removeFromLeft (40));
+                randomSeedField.setBounds (seedRow.removeFromLeft (104));
+                seedRow.removeFromLeft (3);
+                copySeedButton.setBounds (seedRow.removeFromLeft (48));
+                seedRow.removeFromLeft (3);
+                newSeedButton.setBounds (seedRow.removeFromLeft (60));
+                resetEvolutionButton.setBounds (content.removeFromTop (24));
+                randomSeedStatus.setBounds (content.removeFromTop (16));
+                content.removeFromTop (4);
+
+                auto actionRow = content.removeFromTop (24);
+                audioSettingsButton.setBounds (actionRow.removeFromLeft (actionRow.getWidth() / 2 - 2));
+                actionRow.removeFromLeft (4);
+                clearMappingsButton.setBounds (actionRow);
                 break;
             }
 

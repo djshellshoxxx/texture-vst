@@ -1,6 +1,6 @@
 # F04: Fine tuning and source-note controls
 
-Status: Proposed, not implemented. Revision 1, 2026-10-20.
+Status: Core implementation complete in the current development branch; user-preference layer linking and optional note detection remain deferred. Automated pitch arithmetic and state coverage is included; manual tuning validation remains pending. Revision 1, 2026-10-20.
 Effort: Medium. Dependencies: none.
 Binding foundation: [Shared contracts](00_SHARED_CONTRACTS.md).
 

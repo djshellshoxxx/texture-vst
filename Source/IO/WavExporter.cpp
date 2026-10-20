@@ -6,6 +6,7 @@
 #include "../Engine/GranularEngine.h"
 #include "../Modulation/MorphLFO.h"
 #include "../Utility/DspHelpers.h"
+#include "../Utility/VersionedRandomStreams.h"
 
 #include <memory>
 
@@ -42,6 +43,12 @@ namespace texture
     {
         Result result;
         result.file = destination;
+
+        if (settings.randomAlgorithmVersion != VersionedRandomStreams::algorithmVersion)
+        {
+            result.message = "This random-stream version is not supported by the offline renderer.";
+            return result;
+        }
 
         if (samples[0] == nullptr || ! samples[0]->isValid())
         {
@@ -86,8 +93,14 @@ namespace texture
             engines[static_cast<size_t> (layer)]->prepare (sampleRate, renderBlockSize);
             engines[static_cast<size_t> (layer)]->setAdsrParameters (
                 settings.attackMs, settings.decayMs, settings.sustain, settings.releaseMs);
+            engines[static_cast<size_t> (layer)]->setSourcePitchCalibration (
+                settings.sourceRootMidiNotes[static_cast<size_t> (layer)],
+                settings.sourceFineCents[static_cast<size_t> (layer)]);
             engines[static_cast<size_t> (layer)]->setSampleStart (
                 juce::jlimit (0.0f, 1.0f, settings.sampleStart[static_cast<size_t> (layer)]));
+            const auto layerSeed = settings.randomSeed ^ (static_cast<std::uint64_t> (layer + 1)
+                                                           * UINT64_C (0x9E3779B97F4A7C15));
+            engines[static_cast<size_t> (layer)]->setRandomConfig (settings.randomMode, layerSeed);
         }
 
         lfo.prepare (sampleRate);
@@ -229,8 +242,10 @@ namespace texture
                     continue;
 
                 layerBlock.clear();
+                auto layerTargets = targets;
+                layerTargets.sourceFineCents = settings.sourceFineCents[static_cast<size_t> (layer)];
                 engines[static_cast<size_t> (layer)]->renderNextBlock (
-                    sample, targets, layerBlock, 0, numSamples);
+                    sample, layerTargets, layerBlock, 0, numSamples);
 
                 for (int ch = 0; ch < 2; ++ch)
                     block.addFrom (ch, 0, layerBlock, ch, 0, numSamples,

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_data_structures/juce_data_structures.h>
+#include "VersionedRandomStreams.h"
 
 #include <cmath>
 
@@ -32,7 +33,8 @@ namespace texture
             invalidSampleData,
             duplicateSingleton,
             invalidSecretData,
-            invalidCompareData
+            invalidCompareData,
+            invalidFeatureData
         };
 
         struct Result
@@ -71,6 +73,19 @@ namespace texture
                     return { Status::futureVersion,
                              "Plugin state was written by a newer major version and cannot be applied safely." };
             }
+
+            if (root.hasProperty ("randomSeedV1"))
+            {
+                const auto seedText = root.getProperty ("randomSeedV1").toString();
+                if (seedText.length() != 16 || ! seedText.containsOnly ("0123456789abcdefABCDEF"))
+                    return { Status::invalidFeatureData,
+                             "Plugin state contains an invalid random seed." };
+            }
+            if (root.hasProperty ("randomAlgorithmVersion")
+                && static_cast<int> (root.getProperty ("randomAlgorithmVersion"))
+                    != static_cast<int> (VersionedRandomStreams::algorithmVersion))
+                return { Status::invalidFeatureData,
+                         "Plugin state uses an unsupported random algorithm version." };
 
             const auto parameters = root.getChildWithName (parametersTag);
 

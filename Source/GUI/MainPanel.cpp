@@ -69,6 +69,8 @@ namespace texture
 
     MainPanel::~MainPanel()
     {
+        auditionPressed = false;
+        processor.stopAudition();
         stopTimer();
         removeMouseListener (&undoGestureListener);
         processor.removeListener (this);
@@ -248,6 +250,67 @@ namespace texture
         addAndMakeVisible (layerProBadge);
 
         addAndMakeVisible (dataStream);
+
+        auditionHeader.setText ("AUDITION", juce::dontSendNotification);
+        auditionHeader.setFont (TextureLookAndFeel::labelFont());
+        auditionHeader.setColour (juce::Label::textColourId, colours::textMuted);
+        addAndMakeVisible (auditionHeader);
+
+        for (int note = 0; note < 128; ++note)
+        {
+            static constexpr std::array<const char*, 12> pitchNames {
+                "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
+            };
+            const auto name = juce::String (note) + " "
+                            + pitchNames[static_cast<size_t> (note % 12)]
+                            + juce::String (note / 12 - 2);
+            auditionNoteBox.addItem (name, note + 1);
+        }
+        auditionNoteBox.setSelectedId (61, juce::dontSendNotification); // MIDI 60, C3 in TEXTURE.
+        auditionNoteBox.setTooltip ("Audition note. Each entry shows the MIDI number and note name.");
+        auditionNoteBox.onChange = [this] { updateAuditionState(); };
+        addAndMakeVisible (auditionNoteBox);
+
+        auditionChordBox.addItemList ({ "Single", "Major", "Minor", "Fifth" }, 1);
+        auditionChordBox.setSelectedId (1, juce::dontSendNotification);
+        auditionChordBox.setTooltip ("Audition a single note or a simple chord.");
+        auditionChordBox.onChange = [this] { updateAuditionState(); };
+        addAndMakeVisible (auditionChordBox);
+
+        auditionVelocitySlider.setSliderStyle (juce::Slider::LinearHorizontal);
+        auditionVelocitySlider.setRange (1.0, 127.0, 1.0);
+        auditionVelocitySlider.setValue (96.0, juce::dontSendNotification);
+        auditionVelocitySlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 34, 18);
+        auditionVelocitySlider.setTooltip ("Audition MIDI velocity (1–127).");
+        auditionVelocitySlider.onValueChange = [this] { updateAuditionState(); };
+        addAndMakeVisible (auditionVelocitySlider);
+
+        auditionButton.setTooltip ("Press and hold to audition. Release to stop unless Hold is active.");
+        auditionButton.onPressedStateChanged = [this] (bool down)
+        {
+            auditionPressed = down;
+            updateAuditionState();
+        };
+        auditionButton.setWantsKeyboardFocus (true);
+        auditionButton.setColour (juce::TextButton::buttonColourId, colours::accentPrimary);
+        auditionButton.setColour (juce::TextButton::textColourOffId, colours::background);
+        addAndMakeVisible (auditionButton);
+
+        auditionHoldButton.setClickingTogglesState (true);
+        auditionHoldButton.setTooltip ("Keep the audition note or chord playing after releasing the button.");
+        auditionHoldButton.onClick = [this] { updateAuditionState(); };
+        addAndMakeVisible (auditionHoldButton);
+
+        auditionStopButton.setTooltip ("Stop the audition only. External MIDI notes keep playing.");
+        auditionStopButton.onClick = [this]
+        {
+            auditionPressed = false;
+            auditionHoldButton.setToggleState (false, juce::dontSendNotification);
+            processor.stopAudition();
+        };
+        addAndMakeVisible (auditionStopButton);
+
+        updateAuditionAvailability();
         addAndMakeVisible (toast);
     }
 
@@ -400,7 +463,7 @@ namespace texture
         topRow.removeFromLeft (layout::grid * 2);
 
         // Layer 2 gets a slim strip under layer 1 so the Pro feature is discoverable.
-        auto layerStrip = sampleArea.removeFromBottom (62);
+        auto layerStrip = sampleArea.removeFromBottom (84);
         dropZoneA->setBounds (sampleArea.withTrimmedBottom (layout::grid));
 
         auto layerHeaderRow = layerStrip.removeFromTop (14);
@@ -469,9 +532,48 @@ namespace texture
 
         lfoArea.removeFromLeft (layout::grid);
 
-        // The stream fills whatever space is left right of the controls (theme.md).
-        dataStream.setBounds (lfoArea);
-        dataStream.setVisible (lfoArea.getWidth() >= 80);
+        // A compact audition strip uses the formerly empty right edge. Keep the
+        // diagnostic stream at very narrow sizes where the audition strip cannot fit.
+        if (lfoArea.getWidth() >= 170)
+        {
+            auditionHeader.setVisible (true);
+            auditionNoteBox.setVisible (true);
+            auditionChordBox.setVisible (true);
+            auditionVelocitySlider.setVisible (true);
+            auditionButton.setVisible (true);
+            auditionHoldButton.setVisible (true);
+            auditionStopButton.setVisible (true);
+            auditionHeader.setBounds (lfoArea.removeFromTop (14));
+            lfoArea.removeFromTop (1);
+            auto noteRow = lfoArea.removeFromTop (22);
+            auditionNoteBox.setBounds (noteRow.removeFromLeft (88));
+            noteRow.removeFromLeft (4);
+            auditionChordBox.setBounds (noteRow);
+            lfoArea.removeFromTop (2);
+            auditionVelocitySlider.setBounds (lfoArea.removeFromTop (20));
+            lfoArea.removeFromTop (2);
+            auto auditionButtons = lfoArea.removeFromTop (22);
+            const auto buttonWidth = juce::jmax (42, (auditionButtons.getWidth() - 8) / 3);
+            auditionButton.setBounds (auditionButtons.removeFromLeft (buttonWidth));
+            auditionButtons.removeFromLeft (4);
+            auditionHoldButton.setBounds (auditionButtons.removeFromLeft (buttonWidth));
+            auditionButtons.removeFromLeft (4);
+            auditionStopButton.setBounds (auditionButtons);
+            dataStream.setBounds (0, 0, 0, 0);
+            dataStream.setVisible (false);
+        }
+        else
+        {
+            auditionHeader.setVisible (false);
+            auditionNoteBox.setVisible (false);
+            auditionChordBox.setVisible (false);
+            auditionVelocitySlider.setVisible (false);
+            auditionButton.setVisible (false);
+            auditionHoldButton.setVisible (false);
+            auditionStopButton.setVisible (false);
+            dataStream.setBounds (lfoArea);
+            dataStream.setVisible (lfoArea.getWidth() >= 80);
+        }
 
         auto lfoHeaderRow = lfoControls.removeFromTop (14);
         lfoHeader.setBounds (lfoHeaderRow.removeFromLeft (100));
@@ -1203,6 +1305,8 @@ namespace texture
             dropZoneA->refreshFromProcessor();
         else if (layerIndex == 1 && dropZoneB != nullptr)
             dropZoneB->refreshFromProcessor();
+
+        updateAuditionAvailability();
     }
 
     void MainPanel::toastRequested (const juce::String& message, SampleLoader::Severity severity)
@@ -1222,7 +1326,47 @@ namespace texture
 
         tierBadge.setPro (processor.isPro());
         updateProGating();
+        if (! processor.isAuditionRequested())
+            auditionHoldButton.setToggleState (false, juce::dontSendNotification);
+        updateAuditionAvailability();
         repaint();
+    }
+
+    void MainPanel::updateAuditionAvailability()
+    {
+        auto hasSample = false;
+
+        for (int layer = 0; layer < TextureAudioProcessor::numLayers; ++layer)
+        {
+            const auto sample = processor.getSampleForLayer (layer);
+            hasSample = hasSample || (sample != nullptr && sample->isValid());
+        }
+
+        auditionNoteBox.setEnabled (hasSample);
+        auditionChordBox.setEnabled (hasSample);
+        auditionVelocitySlider.setEnabled (hasSample);
+        auditionButton.setEnabled (hasSample);
+        auditionHoldButton.setEnabled (hasSample);
+        auditionStopButton.setEnabled (hasSample || processor.isAuditionRequested());
+        auditionButton.setTooltip (hasSample
+                                       ? "Press and hold to audition. Release to stop unless Hold is active."
+                                       : "Load a sample into either layer to enable note audition.");
+
+        if (! hasSample && (auditionPressed || auditionHoldButton.getToggleState()))
+        {
+            auditionPressed = false;
+            auditionHoldButton.setToggleState (false, juce::dontSendNotification);
+            processor.stopAudition();
+        }
+    }
+
+    void MainPanel::updateAuditionState()
+    {
+        const auto note = juce::jmax (0, auditionNoteBox.getSelectedId() - 1);
+        const auto velocity = juce::roundToInt (auditionVelocitySlider.getValue());
+        const auto chord = juce::jmax (0, auditionChordBox.getSelectedId() - 1);
+        const auto enabled = auditionPressed || auditionHoldButton.getToggleState();
+        processor.setAuditionNoteSet (note, velocity, chord, enabled);
     }
 
     void MainPanel::updateProGating()
@@ -1262,6 +1406,10 @@ namespace texture
 
     void MainPanel::timerCallback()
     {
+        if (! processor.isAuditionRequested() && auditionHoldButton.getToggleState())
+            auditionHoldButton.setToggleState (false, juce::dontSendNotification);
+
+        updateAuditionAvailability();
         levelLed.setLevel (processor.getSmoothedOutputPeak());
         levelMeter.pushLevels (processor.readChannelPeak (0), processor.readChannelPeak (1),
                                juce::Time::getMillisecondCounterHiRes());

@@ -1,6 +1,6 @@
 # F12: Saved seed variation
 
-Status: Proposed, not implemented. Revision 1, 2026-10-20.
+Status: Implemented in the current development branch: deterministic random lanes, Legacy/Repeat/Evolve mode, editable seed, Copy/New seed, Reset evolution, project metadata, seed editing undo, and offline WAV export seed/mode/version capture. Automated vectors, state, UI-controller and export coverage is included; manual host validation remains pending. Revision 1, 2026-10-20.
 Effort: Medium. Dependencies: none.
 Binding foundation: [Shared contracts](00_SHARED_CONTRACTS.md).
 

@@ -59,6 +59,21 @@ namespace texture
         void setTooltipsEnabled (bool shouldBeEnabled);
 
     private:
+        class MomentaryAuditionButton final : public juce::TextButton
+        {
+        public:
+            MomentaryAuditionButton() : juce::TextButton ("AUDITION") {}
+            std::function<void (bool)> onPressedStateChanged;
+
+        private:
+            void buttonStateChanged() override
+            {
+                juce::TextButton::buttonStateChanged();
+                if (onPressedStateChanged != nullptr)
+                    onPressedStateChanged (isDown());
+            }
+        };
+
         void timerCallback() override;
 
         void buildHeader();
@@ -80,6 +95,8 @@ namespace texture
         void updateProGating();
         void updateDataStream();
         void revealSecret();
+        void updateAuditionState();
+        void updateAuditionAvailability();
 
         TextureAudioProcessor& processor;
 
@@ -97,6 +114,14 @@ namespace texture
         juce::TextButton compareAButton { "A" };
         juce::TextButton compareBButton { "B" };
         juce::Label midiLearnStatus;
+        MomentaryAuditionButton auditionButton;
+        juce::TextButton auditionHoldButton { "HOLD" };
+        juce::TextButton auditionStopButton { "STOP" };
+        juce::ComboBox auditionNoteBox;
+        juce::ComboBox auditionChordBox;
+        juce::Slider auditionVelocitySlider;
+        juce::Label auditionHeader;
+        bool auditionPressed { false };
 
         // Controls
         std::unique_ptr<DropZone> dropZoneA;
