@@ -1,0 +1,347 @@
+{
+  "schema": 1,
+  "status": "specifications_only",
+  "baseline": "38d9aec4556fc3b6594fe53888ea15d36698e43e",
+  "date": "2026-10-20",
+  "features": [
+    {
+      "id": "F01",
+      "file": "F01_AUDITION_HOLD.md",
+      "title": "Audition button and Hold",
+      "effort": "Easy–medium",
+      "deps": "none",
+      "benefit": "Usability",
+      "phase": 1,
+      "status": "proposed",
+      "dependencies": []
+    },
+    {
+      "id": "F02",
+      "file": "F02_PARAMETER_LOCKS.md",
+      "title": "Parameter locks",
+      "effort": "Easy–medium",
+      "deps": "none",
+      "benefit": "Usability",
+      "phase": 1,
+      "status": "proposed",
+      "dependencies": []
+    },
+    {
+      "id": "F03",
+      "file": "F03_GENTLE_MUTATE.md",
+      "title": "Gentle Mutate",
+      "effort": "Easy–medium",
+      "deps": "F02; F12 for reproducible operation seeds",
+      "benefit": "Exploration",
+      "phase": 1,
+      "status": "proposed",
+      "dependencies": [
+        "F02",
+        "F12"
+      ]
+    },
+    {
+      "id": "F04",
+      "file": "F04_FINE_TUNING_SOURCE_NOTE.md",
+      "title": "Fine tuning and source-note controls",
+      "effort": "Medium",
+      "deps": "none",
+      "benefit": "Musical accuracy",
+      "phase": 1,
+      "status": "proposed",
+      "dependencies": []
+    },
+    {
+      "id": "F05",
+      "file": "F05_PORTABLE_MEDIA.md",
+      "title": "Portable sample bundles and relinking",
+      "effort": "Medium",
+      "deps": "shared schema-3 contract",
+      "benefit": "Portability",
+      "phase": 2,
+      "status": "proposed",
+      "dependencies": []
+    },
+    {
+      "id": "F06",
+      "file": "F06_BACKGROUND_EXPORT.md",
+      "title": "Configurable background WAV export",
+      "effort": "Medium",
+      "deps": "shared RenderPatch; F01 chord definitions",
+      "benefit": "Export",
+      "phase": 2,
+      "status": "proposed",
+      "dependencies": [
+        "F01"
+      ]
+    },
+    {
+      "id": "F07",
+      "file": "F07_TONE_SPACE.md",
+      "title": "Independent tone and space controls",
+      "effort": "Medium",
+      "deps": "shared target precedence",
+      "benefit": "Mix control",
+      "phase": 2,
+      "status": "proposed",
+      "dependencies": []
+    },
+    {
+      "id": "F08",
+      "file": "F08_CURATED_LIBRARY.md",
+      "title": "Curated factory library",
+      "effort": "Easy engineering; substantial sound design",
+      "deps": "F05 for optional sample packs",
+      "benefit": "Content",
+      "phase": 2,
+      "status": "proposed",
+      "dependencies": [
+        "F05"
+      ]
+    },
+    {
+      "id": "F09",
+      "file": "F09_VARIATION_HISTORY.md",
+      "title": "Variation history",
+      "effort": "Medium",
+      "deps": "F03; shared immutable patch snapshot",
+      "benefit": "Exploration",
+      "phase": 2,
+      "status": "proposed",
+      "dependencies": [
+        "F03"
+      ]
+    },
+    {
+      "id": "F10",
+      "file": "F10_FREEZE_SCAN.md",
+      "title": "Freeze and scan",
+      "effort": "Medium",
+      "deps": "shared position precedence; F12 for repeatable random streams",
+      "benefit": "Sound design",
+      "phase": 3,
+      "status": "proposed",
+      "dependencies": [
+        "F12"
+      ]
+    },
+    {
+      "id": "F11",
+      "file": "F11_MONO_LEGATO_GLIDE.md",
+      "title": "Mono, legato and glide",
+      "effort": "Medium",
+      "deps": "F04 pitch model",
+      "benefit": "Performance",
+      "phase": 2,
+      "status": "proposed",
+      "dependencies": [
+        "F04"
+      ]
+    },
+    {
+      "id": "F12",
+      "file": "F12_SAVED_SEED.md",
+      "title": "Saved seed variation",
+      "effort": "Medium",
+      "deps": "none",
+      "benefit": "Reproducibility",
+      "phase": 1,
+      "status": "proposed",
+      "dependencies": []
+    },
+    {
+      "id": "F13",
+      "file": "F13_GRAIN_PANEL.md",
+      "title": "Expandable grain controls",
+      "effort": "Medium",
+      "deps": "shared target precedence",
+      "benefit": "Sound design",
+      "phase": 3,
+      "status": "proposed",
+      "dependencies": []
+    },
+    {
+      "id": "F14",
+      "file": "F14_MODULATION_SHAPES.md",
+      "title": "Additional modulation shapes",
+      "effort": "Medium",
+      "deps": "F12 for random shapes",
+      "benefit": "Modulation",
+      "phase": 3,
+      "status": "proposed",
+      "dependencies": [
+        "F12"
+      ]
+    },
+    {
+      "id": "F15",
+      "file": "F15_DRAG_AUDIO.md",
+      "title": "Drag rendered audio to the DAW",
+      "effort": "Medium",
+      "deps": "F06",
+      "benefit": "Workflow",
+      "phase": 2,
+      "status": "proposed",
+      "dependencies": [
+        "F06"
+      ]
+    },
+    {
+      "id": "F16",
+      "file": "F16_MORPH_PERSONALITIES.md",
+      "title": "MORPH personalities",
+      "effort": "Medium",
+      "deps": "F13; F19 for Pulse",
+      "benefit": "Product identity",
+      "phase": 3,
+      "status": "proposed",
+      "dependencies": [
+        "F13",
+        "F19"
+      ]
+    },
+    {
+      "id": "F17",
+      "file": "F17_ATTACK_TO_CLOUD.md",
+      "title": "Attack-to-cloud",
+      "effort": "Medium–hard",
+      "deps": "F04; shared RenderPatch",
+      "benefit": "Product identity",
+      "phase": 3,
+      "status": "proposed",
+      "dependencies": [
+        "F04"
+      ]
+    },
+    {
+      "id": "F18",
+      "file": "F18_SAMPLE_JOURNEYS.md",
+      "title": "Sample journeys",
+      "effort": "Medium–hard",
+      "deps": "F10; F14 curve validation",
+      "benefit": "Movement",
+      "phase": 3,
+      "status": "proposed",
+      "dependencies": [
+        "F10",
+        "F14"
+      ]
+    },
+    {
+      "id": "F19",
+      "file": "F19_RHYTHMIC_GRAINS.md",
+      "title": "Rhythmic grain mode",
+      "effort": "Medium–hard",
+      "deps": "F12; F13",
+      "benefit": "Rhythm",
+      "phase": 3,
+      "status": "proposed",
+      "dependencies": [
+        "F12",
+        "F13"
+      ]
+    },
+    {
+      "id": "F20",
+      "file": "F20_TEXTURE_FAMILY.md",
+      "title": "Texture family generator",
+      "effort": "Medium–hard",
+      "deps": "F02, F03, F06, F09, F12",
+      "benefit": "Exploration",
+      "phase": 3,
+      "status": "proposed",
+      "dependencies": [
+        "F02",
+        "F03",
+        "F06",
+        "F09",
+        "F12"
+      ]
+    },
+    {
+      "id": "F21",
+      "file": "F21_SNAPSHOT_MORPH.md",
+      "title": "Morph between sound snapshots",
+      "effort": "Hard",
+      "deps": "F04, F07, F12; shared snapshot/undo model",
+      "benefit": "Performance",
+      "phase": 4,
+      "status": "proposed",
+      "dependencies": [
+        "F04",
+        "F07",
+        "F12"
+      ]
+    },
+    {
+      "id": "F22",
+      "file": "F22_LIVE_CAPTURE.md",
+      "title": "Live audio capture",
+      "effort": "Hard",
+      "deps": "F05; immutable SampleBuffer publication",
+      "benefit": "Capture",
+      "phase": 4,
+      "status": "proposed",
+      "dependencies": [
+        "F05"
+      ]
+    },
+    {
+      "id": "F23",
+      "file": "F23_MPE.md",
+      "title": "MPE expression",
+      "effort": "Hard",
+      "deps": "F04, F11, F13",
+      "benefit": "Expression",
+      "phase": 4,
+      "status": "proposed",
+      "dependencies": [
+        "F04",
+        "F11",
+        "F13"
+      ]
+    },
+    {
+      "id": "F24",
+      "file": "F24_SPECTRAL_HYBRID.md",
+      "title": "Spectral hybridization",
+      "effort": "Very hard; research-gated",
+      "deps": "F05, F06, F12",
+      "benefit": "Research",
+      "phase": 5,
+      "status": "research_gated",
+      "dependencies": [
+        "F05",
+        "F06",
+        "F12"
+      ]
+    },
+    {
+      "id": "F25",
+      "file": "F25_AFTERIMAGE_LOOM.md",
+      "title": "Afterimage Loom effect",
+      "effort": "Medium–hard",
+      "deps": "F12; shared effect routing and RenderPatch",
+      "benefit": "New effect",
+      "phase": 3,
+      "status": "proposed",
+      "dependencies": [
+        "F12"
+      ]
+    },
+    {
+      "id": "F26",
+      "file": "F26_RESONANT_DRIFT.md",
+      "title": "Resonant Drift effect",
+      "effort": "Medium–hard",
+      "deps": "F04; F12; shared effect routing",
+      "benefit": "New effect",
+      "phase": 3,
+      "status": "proposed",
+      "dependencies": [
+        "F04",
+        "F12"
+      ]
+    }
+  ]
+}
