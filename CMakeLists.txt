@@ -165,6 +165,8 @@ set(TEXTURE_SOURCES
     Source/Modulation/CurveMailbox.h
     Source/Modulation/ModulationOscillator.cpp
     Source/Modulation/ModulationOscillator.h
+    Source/Modulation/PersonalityMap.cpp
+    Source/Modulation/PersonalityMap.h
     Source/Modulation/HeldNoteCounter.h
     Source/Modulation/CurveEdit.h
     Source/Modulation/CurveMailbox.h
@@ -243,6 +245,8 @@ set(TEXTURE_SOURCES
     Source/GUI/GrainControlsPanel.h
     Source/GUI/RhythmControlsPanel.cpp
     Source/GUI/RhythmControlsPanel.h
+    Source/GUI/PersonalityControlsPanel.cpp
+    Source/GUI/PersonalityControlsPanel.h
     Source/GUI/CurveEditor.cpp
     Source/GUI/CurveEditor.h
     Source/GUI/ModulationPanel.cpp

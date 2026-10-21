@@ -239,9 +239,15 @@ namespace texture
             targets.reverseChance = settings.reverseChance;
             targets.shimmerAmount = settings.shimmerAmount;
             {
+                GrainRenderInputs inputs;
+                inputs.rhythm = settings.rhythm;
+                inputs.morph = effectiveMorph;
+                inputs.personality = personality::fromIndex (settings.personality);
+                inputs.personalityIntensity = settings.personalityIntensity;
+
                 TransportSpan transport;
                 transport.bpm = settings.hostBpm;
-                renderController->beginBlock (settings.rhythm,
+                renderController->beginBlock (inputs, targets,
                                               settings.grain.follow[static_cast<std::size_t> (GrainField::size)],
                                               transport, numSamples);
             }

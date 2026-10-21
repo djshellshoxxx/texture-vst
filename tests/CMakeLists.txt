@@ -35,6 +35,7 @@ set(TEXTURE_TEST_SOURCES
     test_export_job.cpp
     test_rendered_audio_cache.cpp
     test_grain_clock.cpp
+    test_personality_map.cpp
     test_fuzz.cpp
     TestHelpers.h
 
@@ -59,6 +60,7 @@ set(TEXTURE_TEST_SOURCES
     ../Source/Modulation/MorphLFO.cpp
     ../Source/Modulation/ModulationCurve.cpp
     ../Source/Modulation/ModulationOscillator.cpp
+    ../Source/Modulation/PersonalityMap.cpp
 
     ../Source/IO/AtomicFileWriter.cpp
     ../Source/IO/BundleArchive.cpp
@@ -132,6 +134,8 @@ set_tests_properties(texture_fuzz PROPERTIES TIMEOUT 300)
 # feature and CI runs them. The unit category above does not include them.
 add_test(NAME texture_rhythm COMMAND Texture_Tests texture-rhythm)
 set_tests_properties(texture_rhythm PROPERTIES TIMEOUT 600)
+add_test(NAME texture_personality COMMAND Texture_Tests texture-personality)
+set_tests_properties(texture_personality PROPERTIES TIMEOUT 600)
 
 # Pure waveform math also runs without JUCE for focused boundary/sanitizer checks.
 add_executable(Texture_WaveformMathTests test_waveform_math.cpp)

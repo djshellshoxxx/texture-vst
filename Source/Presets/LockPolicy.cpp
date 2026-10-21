@@ -88,10 +88,16 @@ namespace texture
             { params::grainGate,           LockGroup::grain,           true,  false },
             { params::grainBurst,          LockGroup::grain,           true,  false },
             { params::grainFirstImmediate, LockGroup::grain,           false, false },
+            // F16 personalities. The style is a choice and is never mutated; the intensity moves
+            // only while a style other than Legacy is selected (see isPersonalityParameterMutable).
+            { params::morphPersonality,     LockGroup::motion,         false, false },
+            { params::personalityIntensity, LockGroup::motion,         true,  false },
         } };
 
         static_assert (LockPolicy::numFields == static_cast<std::size_t> (params::numParameters),
                        "Lock registry must cover every registered parameter.");
+        static_assert (LockPolicy::maxLocks == LockPolicy::numFields,
+                       "A full lock list must always fit: one entry per field.");
     }
 
     const std::array<LockPolicy::FieldInfo, LockPolicy::numFields>& LockPolicy::fields() noexcept

@@ -8,21 +8,51 @@ namespace texture
     {
         sampleRate = (newSampleRate > 0.0 && std::isfinite (newSampleRate)) ? newSampleRate : 44100.0;
         clock.prepare (sampleRate);
+        personalityRamp.prepare (sampleRate);
         reset();
     }
 
     void GrainRenderController::reset() noexcept
     {
         clock.reset();
+        personalityRamp.reset();
         events.clear();
         span = {};
+    }
+
+    void GrainRenderController::beginBlock (const GrainRenderInputs& inputs, MorphTargets& targets,
+                                            bool shouldGateSetDuration, const TransportSpan& transport,
+                                            int numSamples) noexcept
+    {
+        // The personality maps from the MORPH-derived targets, which are the legacy values it blends toward.
+        const auto legacy = targets;
+        const auto mapped = personalityRamp.advance (inputs.morph, inputs.personality, inputs.personalityIntensity,
+                                                     legacy, inputs.rhythm.gate, numSamples);
+        PersonalityMap::apply (targets, mapped);
+
+        // Pulse engages the grid at its own division and gate. Its other settings stay the user's.
+        auto effective = inputs.rhythm;
+
+        if (mapped.pulse)
+        {
+            effective.rhythmic = true;
+            effective.division = mapped.pulseDivision;
+            effective.gate = mapped.pulseGate;
+        }
+
+        beginRhythm (effective, shouldGateSetDuration, transport);
     }
 
     void GrainRenderController::beginBlock (const RhythmSettings& rhythmSettings, bool shouldGateSetDuration,
                                             const TransportSpan& transport, int numSamples) noexcept
     {
         juce::ignoreUnused (numSamples);
+        beginRhythm (rhythmSettings, shouldGateSetDuration, transport);
+    }
 
+    void GrainRenderController::beginRhythm (const RhythmSettings& rhythmSettings, bool shouldGateSetDuration,
+                                             const TransportSpan& transport) noexcept
+    {
         rhythm = rhythmSettings;
         gateSetsDuration = shouldGateSetDuration;
         blockTransport = transport;

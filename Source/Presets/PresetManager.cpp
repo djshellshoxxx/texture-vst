@@ -204,6 +204,13 @@ namespace texture
             if (id == params::grainFirstImmediate)
                 return juce::exactlyEqual (numeric, 0.0) || juce::exactlyEqual (numeric, 1.0);
 
+            // F16 MORPH personalities. Legacy with any intensity is the original mapping.
+            if (id == params::morphPersonality)
+                return juce::exactlyEqual (numeric, std::floor (numeric))
+                    && numeric >= 0.0 && numeric < static_cast<double> (params::personalityCount);
+
+            if (id == params::personalityIntensity) return inRange (params::personalityIntensityMin, params::personalityIntensityMax);
+
             if (id == params::lfoSlewMs)   return inRange (params::lfoSlewMsMin, params::lfoSlewMsMax);
 
             return false;

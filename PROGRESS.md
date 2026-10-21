@@ -406,3 +406,18 @@ Deviations and gaps:
 - Gentle Mutate and Randomize are reviewed, not automated, because the test binary does not link the processor.
 - Rhythmic panel: layout checked by build only; not run in the standalone. No DAW, listening or CPU evidence yet.
 
+## 2026-10-21: F16 MORPH personalities
+
+Implemented F16 core. Two appended parameters: `morph_personality` (Legacy default, Cloud, Pulse, Fracture, Swarm) and `personality_intensity` (0 to 1, default 0.5). `PersonalityMap` (pure) gives each style's grain targets at a MORPH position, blended toward the MORPH-derived values by intensity. Cloud sets duration, jitter, detune and spread. Pulse sets jitter and the gate and engages the F19 grid, with its division chosen by four MORPH regions (1/4, 1/8, 1/16, 1/32). Fracture adds to the reverse chance and clamps. Swarm sets duration, detune, jitter and spread. Legacy, and zero intensity, return an identity flag that leaves the targets untouched, so the default path does no arithmetic. `PersonalityRamp` crossfades continuous targets over 20 ms on a style change, and holds the previous scheduler choice for the same 20 ms. The mapping runs in `GrainRenderController` before the F13 manual overrides, so an explicit grain value wins. Both the live processor and the offline renderer use it. Randomize leaves the style alone. Gentle Mutate may move the intensity only while a style other than Legacy is selected.
+
+Evidence: 11,070 personality checks in `texture-personality` pass under Linux and clang. They cover the identity at 1,001 MORPH positions for every style at zero intensity, finite and bounded targets at five intensities, the Cloud, Fracture and Swarm endpoints, the linear intensity blend, the four Pulse regions, the Pulse gate, reverse clamping, the override precedence, the 20 ms crossfade and scheduler hold, the absence of a jump between blocks, a sample-exact equivalence between the controller and a hand-applied mapping, and bit-identical default rendering through the controller. The full existing suite passes (131,051 checks). `LockPolicy::maxLocks` now equals the field count (66), because the registry outgrew the old 64 bound.
+
+Deviations and gaps:
+- No factory presets yet. The specification asks for at least two per implemented personality; these need listening work and are not delivered.
+- Endpoints are proposals from the specification. They have not been auditioned or gain-matched, so their musical balance is unverified.
+- Personalities change grain targets only. Tone, space and the effect chain are untouched, as the specification allows.
+- The 20 ms transition is a crossfade of continuous targets and a hold of the scheduler. It is not an audio crossfade of two grain sets.
+- Style switching under host automation, undo and export parity are reviewed through the shared controller, not driven in a host or the standalone.
+- Randomize leaves the personality alone, a decision recorded here rather than in the specification.
+- The Character panel is laid out by build only; not run in the standalone. No DAW, listening or CPU evidence.
+

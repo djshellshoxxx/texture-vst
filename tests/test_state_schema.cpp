@@ -176,7 +176,7 @@ namespace texture::tests
             beginTest ("oversized and empty lock lists are rejected");
             {
                 std::vector<juce::String> many;
-                for (int i = 0; i <= 64; ++i)
+                for (std::size_t i = 0; i <= LockPolicy::maxLocks; ++i)
                     many.push_back ("morph");
 
                 auto oversized = makeRoot ("1.0.0", true);

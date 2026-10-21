@@ -68,6 +68,8 @@ namespace texture::params
         if (parameterID == grainGate) return "Grain Gate";
         if (parameterID == grainBurst) return "Grain Burst";
         if (parameterID == grainFirstImmediate) return "Grain First Immediate";
+        if (parameterID == morphPersonality) return "MORPH Personality";
+        if (parameterID == personalityIntensity) return "Personality Intensity";
 
         return parameterID;
     }
@@ -110,6 +112,11 @@ namespace texture::params
                 return true;
 
         return false;
+    }
+
+    bool isPersonalityParameter (const juce::String& parameterID)
+    {
+        return parameterID == morphPersonality || parameterID == personalityIntensity;
     }
 
     bool isRhythmParameter (const juce::String& parameterID)
@@ -190,6 +197,8 @@ namespace texture::params
         if (parameterID == grainGate) return grainGateDefault;
         if (parameterID == grainBurst) return static_cast<float> (grainBurstDefault);
         if (parameterID == grainFirstImmediate) return grainFirstImmediateDefault ? 1.0f : 0.0f;
+        if (parameterID == morphPersonality) return static_cast<float> (personalityDefault);
+        if (parameterID == personalityIntensity) return personalityIntensityDefault;
 
         return 0.0f;
     }

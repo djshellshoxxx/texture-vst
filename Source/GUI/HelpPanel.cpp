@@ -184,6 +184,23 @@ namespace texture
         text.add ("  Grain Density does not apply.");
         text.add ("");
 
+        text.add ("MORPH PERSONALITY (sliders button, Character section)");
+        text.add ("  Changes how MORPH shapes the grains. Legacy is the original mapping. Intensity");
+        text.add ("  sets how far a style departs from Legacy: zero is Legacy, one is the full style.");
+        text.add ("  Cloud    Long, soft, wide grains that smear into a pad. Example: a slow pad at");
+        text.add ("           MORPH 80% becomes a lush bed.");
+        text.add ("  Pulse    Puts the grains on a grid whose division tightens as MORPH rises: 1/4,");
+        text.add ("           1/8, 1/16, then 1/32 in four regions. Example: a pluck at MORPH 60% shimmers");
+        text.add ("           in sixteenths. Pulse needs intensity above zero.");
+        text.add ("  Fracture Short, gritty grains, some played backwards, with more jitter as MORPH");
+        text.add ("           rises. Example: a vocal at MORPH 90% breaks into glass.");
+        text.add ("  Swarm    Detuned, widely panned grains. Example: one held note at MORPH 70% opens");
+        text.add ("           into a chorus.");
+        text.add ("  A style change takes 20 ms to crossfade, and the grid holds its choice for that");
+        text.add ("  time. Grain Size, Density and the other Grains controls set manually still win");
+        text.add ("  over a style. Reverse keeps its own chance and the style adds to it.");
+        text.add ("");
+
         text.add ("=== RIGHT-CLICK ON ANY CONTROL ===");
         text.add ("  Reset to default");
         text.add ("  Enter value...");

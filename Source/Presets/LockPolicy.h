@@ -42,12 +42,13 @@ namespace texture
     class LockPolicy final
     {
     public:
-        /** Upper bound on the persisted lock list. Larger lists reject the state. */
-        static constexpr std::size_t maxLocks = 64;
+        /** Upper bound on the persisted lock list: one entry per registered field, since each
+            known ID can appear once. Larger lists reject the state. */
+        static constexpr std::size_t maxLocks = 66;
         static constexpr std::size_t maxIdLength = 64;
 
         /** Registry of lockable fields, in the same order as params::allIDs. */
-        static constexpr std::size_t numFields = 64;
+        static constexpr std::size_t numFields = 66;
 
         struct FieldInfo
         {

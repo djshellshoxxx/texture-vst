@@ -75,6 +75,10 @@ namespace texture::params
     inline constexpr const char* grainBurst          = "grain_burst";
     inline constexpr const char* grainFirstImmediate = "grain_first_immediate";
 
+    // F16 MORPH personalities. Appended. Legacy is the default and keeps MORPH's mapping.
+    inline constexpr const char* morphPersonality     = "morph_personality";
+    inline constexpr const char* personalityIntensity = "personality_intensity";
+
     // F10 freeze and scan. Appended, one set per layer.
     inline constexpr const char* layer1ScanMode     = "layer_1_scan_mode";
     inline constexpr const char* layer1ScanPosition = "layer_1_scan_position";
@@ -103,7 +107,8 @@ namespace texture::params
         lfoShape, lfoRetrigger, lfoPhase, lfoSlewMs,
         layer1ScanMode, layer1ScanPosition, layer1ScanSpeed, layer1Freeze, layer1FreezeSpread,
         layer2ScanMode, layer2ScanPosition, layer2ScanSpeed, layer2Freeze, layer2FreezeSpread,
-        grainClock, grainDivision, grainSwing, grainProbability, grainGate, grainBurst, grainFirstImmediate
+        grainClock, grainDivision, grainSwing, grainProbability, grainGate, grainBurst, grainFirstImmediate,
+        morphPersonality, personalityIntensity
     };
 
     inline constexpr int numParameters = static_cast<int> (std::size (allIDs));
@@ -188,6 +193,11 @@ namespace texture::params
     inline constexpr int grainBurstMin = 1,            grainBurstMax = 4,     grainBurstDefault = 1;
     inline constexpr bool grainFirstImmediateDefault = true;
 
+    // F16 ranges. Legacy (0) is the default; intensity only matters for the other styles.
+    inline constexpr int personalityCount = 5;         // Legacy, Cloud, Pulse, Fracture, Swarm
+    inline constexpr int personalityDefault = 0;
+    inline constexpr float personalityIntensityMin = 0.0f, personalityIntensityMax = 1.0f, personalityIntensityDefault = 0.5f;
+
     /** Grid labels for grain_division, in choice order. */
     inline constexpr const char* grainDivisionNames[] = { "1/4", "1/8", "1/16", "1/32", "1/8T", "1/16T" };
 
@@ -206,6 +216,9 @@ namespace texture::params
 
     /** True for the F19 rhythmic grain controls. Randomize leaves them as the user set them. */
     bool isRhythmParameter (const juce::String& parameterID);
+
+    /** True for the F16 personality controls. Randomize leaves them as the user set them. */
+    bool isPersonalityParameter (const juce::String& parameterID);
 
     /** True for the F10 scan and freeze controls. Randomize leaves them as the user set them. */
     bool isScanParameter (const juce::String& parameterID);

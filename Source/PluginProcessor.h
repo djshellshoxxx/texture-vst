@@ -327,6 +327,14 @@ namespace texture
             block, the value is computed from the current MORPH setting. Message thread. */
         float getGrainEffectiveValue (GrainField field) const;
 
+        /** The F16 personality style index and intensity as the parameters hold them. Message thread. */
+        int getPersonalityStyle() const noexcept
+        {
+            return personalityParameters.style != nullptr
+                       ? juce::roundToInt (personalityParameters.style->load (std::memory_order_relaxed))
+                       : params::personalityDefault;
+        }
+
         /** The F19 rhythmic grain settings as the parameters hold them. Message thread. */
         RhythmSettings getRhythmSettings() const noexcept { return readRhythmSettings(); }
 
@@ -657,6 +665,16 @@ namespace texture
 
         /** Reads the F19 parameters. Audio thread. */
         RhythmSettings readRhythmSettings() const noexcept;
+
+        /** F16 personality parameters, cached like every other parameter. */
+        struct PersonalityParameters
+        {
+            std::atomic<float>* style { nullptr };
+            std::atomic<float>* intensity { nullptr };
+        } personalityParameters;
+
+        /** Reads the grain-level inputs for one block: rhythm, personality and MORPH. Audio thread. */
+        GrainRenderInputs readGrainRenderInputs (float morph) const noexcept;
 
         /** Per-block composition of the grain features (F19). Audio thread only. */
         GrainRenderController renderController;

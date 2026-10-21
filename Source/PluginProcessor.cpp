@@ -605,6 +605,9 @@ namespace texture
         rhythmParameters.burst          = apvts.getRawParameterValue (params::grainBurst);
         rhythmParameters.firstImmediate = apvts.getRawParameterValue (params::grainFirstImmediate);
 
+        personalityParameters.style     = apvts.getRawParameterValue (params::morphPersonality);
+        personalityParameters.intensity = apvts.getRawParameterValue (params::personalityIntensity);
+
         const std::array<std::array<const char*, 5>, numLayers> scanIDs {{
             { params::layer1ScanMode, params::layer1ScanPosition, params::layer1ScanSpeed,
               params::layer1Freeze, params::layer1FreezeSpread },
@@ -684,6 +687,22 @@ namespace texture
         settings.firstGrainImmediate = read (rhythmParameters.firstImmediate,
                                              params::grainFirstImmediateDefault ? 1.0f : 0.0f) > 0.5f;
         return settings;
+    }
+
+    GrainRenderInputs TextureAudioProcessor::readGrainRenderInputs (float morph) const noexcept
+    {
+        GrainRenderInputs inputs;
+        inputs.rhythm = readRhythmSettings();
+        inputs.morph = morph;
+
+        const auto styleIndex = personalityParameters.style != nullptr
+                                    ? juce::roundToInt (personalityParameters.style->load (std::memory_order_relaxed))
+                                    : params::personalityDefault;
+        inputs.personality = personality::fromIndex (styleIndex);
+        inputs.personalityIntensity = personalityParameters.intensity != nullptr
+                                          ? personalityParameters.intensity->load (std::memory_order_relaxed)
+                                          : params::personalityIntensityDefault;
+        return inputs;
     }
 
     float TextureAudioProcessor::getGrainEffectiveValue (GrainField field) const
@@ -1016,7 +1035,9 @@ namespace texture
         followMorphValues[2].store (currentTargets.reverbSend, std::memory_order_relaxed);
         followMorphValues[3].store (currentTargets.highShelfTiltDb, std::memory_order_relaxed);
 
-        // F19: the grid for this block. The transport is the host's, or free-running without one.
+        // F16 personality and F19 grid for this block, before the manual overrides (F13) resolve,
+        // so an explicit grain value still wins over a personality. The transport is the host's,
+        // or free-running without one.
         {
             TransportSpan transport;
             transport.hasPlayhead = hostHasPlayhead;
@@ -1026,7 +1047,7 @@ namespace texture
             transport.bpm = hostBpm;
 
             const auto grainSettings = readGrainSettings();
-            renderController.beginBlock (readRhythmSettings(),
+            renderController.beginBlock (readGrainRenderInputs (morphNow), currentTargets,
                                          grainSettings.follow[static_cast<std::size_t> (GrainField::size)],
                                          transport, numSamples);
         }
@@ -2338,7 +2359,8 @@ namespace texture
                 && ! params::isToneSpaceParameter (id)
                 && ! params::isPerformanceParameter (id)
                 && ! params::isScanParameter (id)
-                && ! params::isRhythmParameter (id))
+                && ! params::isRhythmParameter (id)
+                && ! params::isPersonalityParameter (id))
                 write (id, params::defaultValueFor (id));
 
         write (params::morph, random.nextFloat());
@@ -2477,7 +2499,8 @@ namespace texture
             field.group = info.group;
             field.eligible = info.mutableByDefault && (! info.proOnly || licenseManager.isPro())
                              && isGrainParameterMutable (info.id, grainSettings)
-                             && rhythm::isRhythmParameterMutable (info.id, readRhythmSettings().rhythmic);
+                             && rhythm::isRhythmParameterMutable (info.id, readRhythmSettings().rhythmic)
+                             && isPersonalityParameterMutable (info.id, getPersonalityStyle());
 
             const auto* parameter = apvts.getParameter (juce::String (std::string (info.id)));
             if (parameter == nullptr)
@@ -2754,6 +2777,8 @@ namespace texture
         settings.mono = readPerformanceSettings();
         settings.grain = readGrainSettings();
         settings.rhythm = readRhythmSettings();
+        settings.personality = getPersonalityStyle();
+        settings.personalityIntensity = getParameterValue (params::personalityIntensity, params::personalityIntensityDefault);
         settings.lfoShape = juce::roundToInt (getParameterValue (params::lfoShape, static_cast<float> (params::lfoShapeDefault)));
         settings.lfoRetrigger = juce::roundToInt (getParameterValue (params::lfoRetrigger, static_cast<float> (params::lfoRetriggerDefault)));
         settings.lfoPhase = getParameterValue (params::lfoPhase, params::lfoPhaseDefault);
