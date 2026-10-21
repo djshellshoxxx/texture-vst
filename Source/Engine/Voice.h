@@ -55,6 +55,13 @@ namespace texture
         void retarget (int midiNote, float velocity, int midiChannel, juce::int64 noteStamp,
                        int glideSamples, int velocityRampSamples);
 
+        /** Moves the read head to a normalised position on the next block (F10 unfreeze). */
+        void requestReadJump (float normalised) noexcept
+        {
+            pendingStart = juce::jlimit (0.0f, 1.0f, normalised);
+            startPending = true;
+        }
+
         /** Begins the release stage. The voice keeps rendering until the tail ends. */
         void stopNote();
 

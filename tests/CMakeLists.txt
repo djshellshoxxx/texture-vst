@@ -27,6 +27,7 @@ set(TEXTURE_TEST_SOURCES
     test_mono_legato.cpp
     test_grain_controls.cpp
     test_modulation_shapes.cpp
+    test_scan_position.cpp
     test_variation_history.cpp
     test_media_manifest.cpp
     test_bundle_archive.cpp
@@ -38,6 +39,7 @@ set(TEXTURE_TEST_SOURCES
 
     ../Source/Engine/Grain.cpp
     ../Source/Engine/GrainTargetResolver.cpp
+    ../Source/Engine/SamplePositionController.cpp
     ../Source/Engine/GranularEngine.cpp
     ../Source/Engine/MonoNoteStack.cpp
     ../Source/Engine/SampleBuffer.cpp

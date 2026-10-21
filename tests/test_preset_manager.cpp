@@ -53,6 +53,16 @@ namespace texture::tests
             data.setParameter (params::lfoRetrigger, 2.0f);
             data.setParameter (params::lfoPhase, 0.25f);
             data.setParameter (params::lfoSlewMs, 35.0f);
+            data.setParameter (params::layer1ScanMode, 2.0f);
+            data.setParameter (params::layer1ScanPosition, 0.4f);
+            data.setParameter (params::layer1ScanSpeed, -1.5f);
+            data.setParameter (params::layer1Freeze, 1.0f);
+            data.setParameter (params::layer1FreezeSpread, 0.3f);
+            data.setParameter (params::layer2ScanMode, 1.0f);
+            data.setParameter (params::layer2ScanPosition, 0.7f);
+            data.setParameter (params::layer2ScanSpeed, 0.5f);
+            data.setParameter (params::layer2Freeze, 0.0f);
+            data.setParameter (params::layer2FreezeSpread, 0.6f);
             data.setParameter (params::glideMs, 240.0f);
             data.setParameter (params::glideMode, 0.0f);
             data.setParameter (params::lfoDivision, 3.0f);

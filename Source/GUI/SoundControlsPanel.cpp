@@ -5,6 +5,7 @@
 #include "GrainControlsPanel.h"
 #include "LookAndFeel.h"
 #include "ModulationPanel.h"
+#include "ScanPanel.h"
 
 namespace texture
 {
@@ -86,10 +87,12 @@ namespace texture
               glideModeBox (owner, params::glideMode, juce::StringArray { "Always", "Overlap only" },
                             "Always: glide on every mono note. Overlap only: glide only when a key lands on a held one."),
               grainPanel (owner, [this] { if (onLayoutChanged) onLayoutChanged(); }),
-              modulationPanel (owner, [this] { if (onLayoutChanged) onLayoutChanged(); })
+              modulationPanel (owner, [this] { if (onLayoutChanged) onLayoutChanged(); }),
+              scanPanel (owner, [this] { if (onLayoutChanged) onLayoutChanged(); })
         {
             addAndMakeVisible (grainPanel);
             addAndMakeVisible (modulationPanel);
+            addAndMakeVisible (scanPanel);
 
             for (auto* header : { &toneHeader, &spaceHeader, &performanceHeader })
             {
@@ -232,6 +235,7 @@ namespace texture
                 height += knobHeight;
             height += gap + grainPanel.preferredHeight();      // F13 grains, collapsed by default
             height += gap + modulationPanel.preferredHeight(); // F14 motion shapes, collapsed by default
+            height += gap + scanPanel.preferredHeight();       // F10 scan and freeze, collapsed by default
             height += gap + rowHeight;                         // performance header
             if (performanceHeader.getToggleState())
                 height += rowHeight + gap / 2 + knobHeight;    // mode and priority, glide row
@@ -281,6 +285,9 @@ namespace texture
 
             area.removeFromTop (gap);
             modulationPanel.setBounds (area.removeFromTop (modulationPanel.preferredHeight()));
+
+            area.removeFromTop (gap);
+            scanPanel.setBounds (area.removeFromTop (scanPanel.preferredHeight()));
 
             area.removeFromTop (gap);
             const auto performanceOpen = performanceHeader.getToggleState();
@@ -490,6 +497,7 @@ namespace texture
 
         GrainControlsPanel grainPanel;
         ModulationPanel modulationPanel;
+        ScanPanel scanPanel;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Body)
     };

@@ -260,8 +260,11 @@ namespace texture
         if (sourceLength <= 0 || grainDurationSamples <= 0)
             return;
 
-        // 1. Start position: voice read head plus jitter proportional to MORPH.
-        auto start = readPosition;
+        // 1. Start position: the layer's scan centre when one is active (F10), otherwise the
+        //    voice read head. Jitter is proportional to the target's jitter either way.
+        auto start = targets.scanCentre >= 0.0f
+                         ? static_cast<double> (targets.scanCentre) * static_cast<double> (sourceLength - 1)
+                         : readPosition;
 
         if (targets.positionJitter > 0.0f)
         {
@@ -484,7 +487,9 @@ namespace texture
             chunkStart = chunkEnd;
         }
 
-        normalisedReadPosition = static_cast<float> (readPosition / sourceLengthAsDouble);
+        normalisedReadPosition = targets.scanCentre >= 0.0f
+                                     ? targets.scanCentre
+                                     : static_cast<float> (readPosition / sourceLengthAsDouble);
 
         // Apply the amplitude envelope and mix into the engine output.
         float envelopeLevel = lastEnvelopeLevel;

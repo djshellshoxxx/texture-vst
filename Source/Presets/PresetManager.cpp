@@ -166,6 +166,23 @@ namespace texture
                     && numeric >= 0.0 && numeric < static_cast<double> (params::lfoRetriggerCount);
 
             if (id == params::lfoPhase)    return inRange (params::lfoPhaseMin, params::lfoPhaseMax);
+
+            // F10 freeze and scan, per layer.
+            if (id == params::layer1ScanMode || id == params::layer2ScanMode)
+                return juce::exactlyEqual (numeric, std::floor (numeric))
+                    && numeric >= 0.0 && numeric < static_cast<double> (params::scanModeCount);
+
+            if (id == params::layer1ScanPosition || id == params::layer2ScanPosition)
+                return inRange (params::scanPositionMin, params::scanPositionMax);
+
+            if (id == params::layer1ScanSpeed || id == params::layer2ScanSpeed)
+                return inRange (params::scanSpeedMin, params::scanSpeedMax);
+
+            if (id == params::layer1Freeze || id == params::layer2Freeze)
+                return juce::exactlyEqual (numeric, 0.0) || juce::exactlyEqual (numeric, 1.0);
+
+            if (id == params::layer1FreezeSpread || id == params::layer2FreezeSpread)
+                return inRange (params::freezeSpreadMin, params::freezeSpreadMax);
             if (id == params::lfoSlewMs)   return inRange (params::lfoSlewMsMin, params::lfoSlewMsMax);
 
             return false;

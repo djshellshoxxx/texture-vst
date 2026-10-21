@@ -134,6 +134,8 @@ set(TEXTURE_SOURCES
     Source/Engine/Voice.h
     Source/Engine/GrainTargetResolver.cpp
     Source/Engine/GrainTargetResolver.h
+    Source/Engine/SamplePositionController.cpp
+    Source/Engine/SamplePositionController.h
     Source/Engine/AuditionChords.h
 
     Source/Effects/Chorus.cpp
@@ -239,6 +241,8 @@ set(TEXTURE_SOURCES
     Source/GUI/CurveEditor.h
     Source/GUI/ModulationPanel.cpp
     Source/GUI/ModulationPanel.h
+    Source/GUI/ScanPanel.cpp
+    Source/GUI/ScanPanel.h
     Source/GUI/WaveformDisplay.cpp
     Source/GUI/WaveformDisplay.h
     Source/GUI/Widgets.cpp

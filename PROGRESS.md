@@ -378,3 +378,18 @@ Deviations and gaps:
 - The processor glue (retrigger wiring, curve mailbox publication, A/B recall undo) is reviewed, not automated, because the test binary does not link the processor.
 - No DAW, listening or CPU evidence. The shapes are on the Pro tier as the LFO is.
 
+## 2026-10-21: F10 freeze and scan
+
+Implemented F10 core. Ten appended parameters, one set per layer: `layer_N_scan_mode` (Legacy default, Manual, Scan), `layer_N_scan_position`, `layer_N_scan_speed` (source lengths per second, -4 to 4), `layer_N_freeze` and `layer_N_freeze_spread`. `SamplePositionController` (pure) owns the centre for one layer. Legacy with Freeze off is inactive, so the default path is untouched. Manual glides to the position over 20 ms. Scan advances and wraps. Freeze latches the centre at the block boundary. Until the processor's write of the position arrives, the centre holds, so a freeze never jumps. A later edit moves a frozen centre over 20 ms. Freeze jitter is the spread times a quarter of the source. Ending a freeze in Legacy moves the voices to the frozen centre. A new sample releases any freeze. Grains start at the centre through `MorphTargets::scanCentre`; the voices' own read heads are used when it is negative. The processor writes the latched centre into scan_position on the message thread, from the 60 Hz timer. Export takes the same settings through `RenderSettings`. Randomize leaves these controls alone, and they sit in the grain lock group, none of them mutable by Gentle Mutate. A collapsed "Scan and freeze" section in the overlay has one row per layer.
+
+Evidence: `texture_unit_tests` passes 129,170 checks. `test_scan_position` covers the default inactivity, the 20 ms glide, scan advance and wrap, direct moves while scanning, the latch once, the acknowledgment and user edits, the Legacy unfreeze jump, a new sample resetting a freeze, empty and non-finite input, and extreme speed. At the engine level it checks that a manual position reads a sounding region and not a silent one, that a Legacy freeze keeps sounding after the read head has passed the sound while the unfrozen engine goes silent, that note-off with a freeze on retires every voice, and that positions 0 and 1 on a one-frame sample stay finite. The legacy render fixtures are unchanged. The preset round trip gained the F10 values. Both the Linux and clang builds pass. In the standalone under Xvfb the section lays out correctly.
+
+Deviations and gaps:
+- The frozen position reaches scan_position on the message thread, within one 60 Hz timer tick, and a saved patch captures it. Before that, the audio thread holds the centre.
+- Jitter outside a freeze is the MORPH jitter, not the spread. The spread applies only while frozen.
+- Scan speed is in normalised centre per second. It does not follow tempo.
+- Journey (F18) is not implemented, so Freeze does not yet interact with it.
+- Layer 2 scan controls are not gated by the Pro layer-blend rule. The layer is inaudible without Pro, so nothing plays.
+- The processor glue (the latch write, the Randomize exclusion, the export settings) is reviewed and checked in the standalone, not automated, because the test binary does not link the processor.
+- Freeze was checked for layout only in the standalone. Its effect on sound has not been listened to, and no DAW or CPU evidence exists.
+

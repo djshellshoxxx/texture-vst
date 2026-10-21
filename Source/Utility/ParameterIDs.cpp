@@ -51,6 +51,16 @@ namespace texture::params
         if (parameterID == lfoRetrigger) return "LFO Retrigger";
         if (parameterID == lfoPhase)     return "LFO Phase";
         if (parameterID == lfoSlewMs)    return "LFO Slew";
+        if (parameterID == layer1ScanMode) return "Layer 1 Scan Mode";
+        if (parameterID == layer1ScanPosition) return "Layer 1 Scan Position";
+        if (parameterID == layer1ScanSpeed) return "Layer 1 Scan Speed";
+        if (parameterID == layer1Freeze) return "Layer 1 Freeze";
+        if (parameterID == layer1FreezeSpread) return "Layer 1 Freeze Spread";
+        if (parameterID == layer2ScanMode) return "Layer 2 Scan Mode";
+        if (parameterID == layer2ScanPosition) return "Layer 2 Scan Position";
+        if (parameterID == layer2ScanSpeed) return "Layer 2 Scan Speed";
+        if (parameterID == layer2Freeze) return "Layer 2 Freeze";
+        if (parameterID == layer2FreezeSpread) return "Layer 2 Freeze Spread";
 
         return parameterID;
     }
@@ -79,6 +89,16 @@ namespace texture::params
         for (const auto* id : { grainSizeMs, grainSizeFollow, grainDensityHz, grainDensityFollow,
                                 grainJitter, grainJitterFollow, grainDetuneCents, grainDetuneFollow,
                                 grainPanSpread, grainPanFollow })
+            if (parameterID == id)
+                return true;
+
+        return false;
+    }
+
+    bool isScanParameter (const juce::String& parameterID)
+    {
+        for (const auto* id : { layer1ScanMode, layer1ScanPosition, layer1ScanSpeed, layer1Freeze, layer1FreezeSpread,
+                                layer2ScanMode, layer2ScanPosition, layer2ScanSpeed, layer2Freeze, layer2FreezeSpread })
             if (parameterID == id)
                 return true;
 
@@ -141,6 +161,11 @@ namespace texture::params
         if (parameterID == lfoRetrigger) return static_cast<float> (lfoRetriggerDefault);
         if (parameterID == lfoPhase)     return lfoPhaseDefault;
         if (parameterID == lfoSlewMs)    return lfoSlewMsDefault;
+        if (parameterID == layer1ScanMode || parameterID == layer2ScanMode) return static_cast<float> (scanModeDefault);
+        if (parameterID == layer1ScanPosition || parameterID == layer2ScanPosition) return scanPositionDefault;
+        if (parameterID == layer1ScanSpeed || parameterID == layer2ScanSpeed) return scanSpeedDefault;
+        if (parameterID == layer1Freeze || parameterID == layer2Freeze) return freezeDefault ? 1.0f : 0.0f;
+        if (parameterID == layer1FreezeSpread || parameterID == layer2FreezeSpread) return freezeSpreadDefault;
 
         return 0.0f;
     }

@@ -95,6 +95,7 @@ namespace texture
                                                            * UINT64_C (0x9E3779B97F4A7C15));
             engines[index]->setRandomConfig (settings.randomMode, layerSeed);
             engines[index]->setVoiceConfig (settings.mono);
+            engines[index]->setScanSettings (settings.scan[index]);
         }
 
         lfo.prepare (sampleRate);

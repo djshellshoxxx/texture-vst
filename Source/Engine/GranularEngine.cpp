@@ -34,6 +34,9 @@ namespace texture
         for (auto& voice : voices)
             voice.prepare (preparedSampleRate);
 
+        scanController.prepare (preparedSampleRate);
+        lastScanSource = nullptr;
+
         reset();
     }
 
@@ -652,16 +655,49 @@ namespace texture
         auto* leftOut = output.getWritePointer (0, startSample);
         auto* rightOut = output.getWritePointer (1, startSample);
 
+        // Scan and freeze (F10). A new sample releases any freeze, as a saved position would.
+        if (source != lastScanSource)
+        {
+            scanController.reset (scanSettings.position);
+            lastScanSource = source;
+        }
+
+        const auto legacyCentre = static_cast<double> (displayReadPosition.load (std::memory_order_relaxed));
+        const auto scan = scanController.advance (scanSettings, numSamples,
+                                                  static_cast<double> (source->getNumSamples()),
+                                                  legacyCentre, targets.positionJitter);
+
+        if (scan.latched)
+        {
+            freezeLatchValue.store (scan.latchedCentre, std::memory_order_relaxed);
+            freezeLatchPending.store (true, std::memory_order_release);
+        }
+
+        MorphTargets scanned;
+        const MorphTargets* effective = &targets;
+
+        if (scan.active)
+        {
+            scanned = targets;
+            scanned.scanCentre = static_cast<float> (scan.centre);
+            scanned.positionJitter = scan.jitter;
+            effective = &scanned;
+        }
+
         int rendered = 0;
         float newestPosition = displayReadPosition.load (std::memory_order_relaxed);
         juce::int64 newestStamp = -1;
+
+        if (scan.jumped)
+            for (auto& voice : voices)
+                voice.requestReadJump (static_cast<float> (scan.centre));
 
         for (auto& voice : voices)
         {
             if (! voice.isActive())
                 continue;
 
-            voice.renderAdding (*source, targets, scratch, leftOut, rightOut, numSamples);
+            voice.renderAdding (*source, *effective, scratch, leftOut, rightOut, numSamples);
             ++rendered;
 
             if (voice.getNoteStamp() > newestStamp)

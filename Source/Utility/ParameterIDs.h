@@ -66,6 +66,18 @@ namespace texture::params
     inline constexpr const char* lfoPhase      = "lfo_phase";
     inline constexpr const char* lfoSlewMs     = "lfo_slew_ms";
 
+    // F10 freeze and scan. Appended, one set per layer.
+    inline constexpr const char* layer1ScanMode     = "layer_1_scan_mode";
+    inline constexpr const char* layer1ScanPosition = "layer_1_scan_position";
+    inline constexpr const char* layer1ScanSpeed    = "layer_1_scan_speed";
+    inline constexpr const char* layer1Freeze       = "layer_1_freeze";
+    inline constexpr const char* layer1FreezeSpread = "layer_1_freeze_spread";
+    inline constexpr const char* layer2ScanMode     = "layer_2_scan_mode";
+    inline constexpr const char* layer2ScanPosition = "layer_2_scan_position";
+    inline constexpr const char* layer2ScanSpeed    = "layer_2_scan_speed";
+    inline constexpr const char* layer2Freeze       = "layer_2_freeze";
+    inline constexpr const char* layer2FreezeSpread = "layer_2_freeze_spread";
+
     /** Every ID in preset/serialisation order. Append only: positions are part of
         the lock registry's contract and of the preset file layout. */
     inline constexpr const char* allIDs[] = {
@@ -79,7 +91,9 @@ namespace texture::params
         grainSizeMs, grainSizeFollow, grainDensityHz, grainDensityFollow,
         grainJitter, grainJitterFollow, grainDetuneCents, grainDetuneFollow,
         grainPanSpread, grainPanFollow,
-        lfoShape, lfoRetrigger, lfoPhase, lfoSlewMs
+        lfoShape, lfoRetrigger, lfoPhase, lfoSlewMs,
+        layer1ScanMode, layer1ScanPosition, layer1ScanSpeed, layer1Freeze, layer1FreezeSpread,
+        layer2ScanMode, layer2ScanPosition, layer2ScanSpeed, layer2Freeze, layer2FreezeSpread
     };
 
     inline constexpr int numParameters = static_cast<int> (std::size (allIDs));
@@ -145,6 +159,14 @@ namespace texture::params
     inline constexpr float lfoPhaseMin = 0.0f,         lfoPhaseMax = 1.0f,   lfoPhaseDefault = 0.0f;
     inline constexpr float lfoSlewMsMin = 0.0f,        lfoSlewMsMax = 100.0f, lfoSlewMsDefault = 10.0f;
 
+    // F10 ranges. Legacy (0) with Freeze off is the default, so the read position is unchanged.
+    inline constexpr int scanModeCount = 3;            // Legacy, Manual, Scan
+    inline constexpr int scanModeDefault = 0;
+    inline constexpr float scanPositionMin = 0.0f,     scanPositionMax = 1.0f, scanPositionDefault = 0.0f;
+    inline constexpr float scanSpeedMin = -4.0f,       scanSpeedMax = 4.0f,    scanSpeedDefault = 0.0f;
+    inline constexpr bool  freezeDefault = false;
+    inline constexpr float freezeSpreadMin = 0.0f,     freezeSpreadMax = 1.0f, freezeSpreadDefault = 0.1f;
+
     /** Tempo divisions offered when LFO sync is engaged. */
     inline constexpr const char* divisionNames[] = { "1/1", "1/2", "1/4", "1/8", "1/16" };
     inline constexpr int numDivisions = static_cast<int> (std::size (divisionNames));
@@ -157,6 +179,9 @@ namespace texture::params
 
     /** True for the F14 modulation shape controls. */
     bool isModulationShapeParameter (const juce::String& parameterID);
+
+    /** True for the F10 scan and freeze controls. Randomize leaves them as the user set them. */
+    bool isScanParameter (const juce::String& parameterID);
 
     /** Human-readable name shown in the host's automation list. */
     juce::String displayNameFor (const juce::String& parameterID);
@@ -196,6 +221,9 @@ namespace texture
         float reverseChance;      // 0 .. 1, probability a grain plays backwards
         float shimmerAmount;      // 0 .. 1, octave-up grains blended into the cloud
 
+        // F10: a manual read centre for the layer, normalised, or -1 when the layer reads from
+        // its own read head (Legacy, not frozen). Set by SamplePositionController via the engine.
+        float scanCentre { -1.0f };
         // F13: spawn rate in grains per second per voice, set only when grain density is
         // manual. Zero keeps the legacy cadence, which derives the hop from duration and
         // overlap. Written by GrainTargetResolver, never by MORPH.
@@ -224,6 +252,7 @@ namespace texture
         t.reverseChance     = 0.0f;
         t.shimmerAmount     = 0.0f;
         t.grainDensityHz    = 0.0f;
+        t.scanCentre        = -1.0f;
         return t;
     }
 }

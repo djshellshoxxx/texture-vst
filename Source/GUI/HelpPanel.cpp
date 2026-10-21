@@ -154,6 +154,15 @@ namespace texture
         text.add ("  Curve    Drag points in the box. Double-click to add, right-click to remove.");
         text.add ("           Arrow keys move a selected point. Each edit is one undo step.");
         text.add ("  Random shapes repeat for the same patch seed, so a saved seed gives the same motion.");
+        text.add ("");
+        text.add ("SCAN AND FREEZE (sliders button, Scan and freeze section, per layer)");
+        text.add ("  Mode     Legacy: the original read position, which moves with each note.");
+        text.add ("           Manual: grains read at the Position knob. Scan: Position moves at Speed,");
+        text.add ("           in source lengths per second, and wraps around the sample.");
+        text.add ("  Position Where grains read. This does not trim the sample; the waveform does.");
+        text.add ("  Freeze   Holds the current read point. Notes keep sounding and release as usual.");
+        text.add ("           Turning Freeze on writes the point into Position, so a saved patch");
+        text.add ("           returns to it. Spread sets how far grains wander while frozen.");
         text.add ("  Each voice holds 8 grains. If the settings ask for more, extra grains are");
         text.add ("  skipped and the Grains section says the pool is full.");
         text.add ("");

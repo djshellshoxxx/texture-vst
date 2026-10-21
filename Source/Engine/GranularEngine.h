@@ -1,6 +1,7 @@
 #pragma once
 
 #include "MonoNoteStack.h"
+#include "SamplePositionController.h"
 #include "Voice.h"
 #include "../Utility/VersionedRandomStreams.h"
 
@@ -63,6 +64,20 @@ namespace texture
         void setRandomConfig (int mode, std::uint64_t seed) noexcept
         { randomMode = mode < 0 || mode > 2 ? 0 : mode; randomSeed = seed; }
         void resetEvolution() noexcept { evolutionCounter = 0; }
+        /** Scan and freeze for this layer (F10). Set once per block. Audio thread only. */
+        void setScanSettings (const ScanSettings& settings) noexcept { scanSettings = sanitiseScanSettings (settings); }
+
+        /** If a freeze began since the last call, returns true with its captured centre. The
+            processor writes that into scan_position on the message thread. */
+        bool takeFreezeLatch (double& centre) noexcept
+        {
+            if (! freezeLatchPending.exchange (false, std::memory_order_acq_rel))
+                return false;
+
+            centre = freezeLatchValue.load (std::memory_order_relaxed);
+            return true;
+        }
+
         /** Per-layer pitch calibration. Root is captured by voices at note-on;
             fine tuning is smoothed by each active voice. Audio thread only. */
         void setSourcePitchCalibration (int rootMidiNote, float fineCents) noexcept;
@@ -140,6 +155,13 @@ namespace texture
 
         std::array<Voice, maxVoices> voices {};
         juce::AudioBuffer<float> scratch;
+
+        // Scan and freeze (F10). Audio thread state; the latch is handed to the message thread.
+        ScanSettings scanSettings;
+        SamplePositionController scanController;
+        const SampleBuffer* lastScanSource { nullptr };
+        std::atomic<bool> freezeLatchPending { false };
+        std::atomic<double> freezeLatchValue { 0.0 };
 
         VoiceMode voiceMode { VoiceMode::poly };
         NotePriority notePriority { NotePriority::last };

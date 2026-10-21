@@ -67,6 +67,18 @@ namespace texture
             { params::lfoRetrigger,        LockGroup::motion,          false, true  },
             { params::lfoPhase,            LockGroup::motion,          true,  true  },
             { params::lfoSlewMs,           LockGroup::motion,          true,  true  },
+            // F10 freeze and scan. Position, speed and the freeze switch change what the
+            // layer plays, so Gentle Mutate leaves them alone. Lockable as the grain group.
+            { params::layer1ScanMode,      LockGroup::grain,           false, false },
+            { params::layer1ScanPosition,  LockGroup::grain,           false, false },
+            { params::layer1ScanSpeed,     LockGroup::grain,           false, false },
+            { params::layer1Freeze,        LockGroup::grain,           false, false },
+            { params::layer1FreezeSpread,  LockGroup::grain,           false, false },
+            { params::layer2ScanMode,      LockGroup::grain,           false, false },
+            { params::layer2ScanPosition,  LockGroup::grain,           false, false },
+            { params::layer2ScanSpeed,     LockGroup::grain,           false, false },
+            { params::layer2Freeze,        LockGroup::grain,           false, false },
+            { params::layer2FreezeSpread,  LockGroup::grain,           false, false },
         } };
 
         static_assert (LockPolicy::numFields == static_cast<std::size_t> (params::numParameters),

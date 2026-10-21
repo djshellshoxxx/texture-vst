@@ -3,6 +3,7 @@
 #include "../Effects/ToneSpace.h"
 #include "../Engine/GrainTargetResolver.h"
 #include "../Engine/MonoNoteStack.h"
+#include "../Engine/SamplePositionController.h"
 #include "../Modulation/ModulationCurve.h"
 #include "../Engine/SampleBuffer.h"
 
@@ -55,6 +56,7 @@ namespace texture
             float lfoSlewMs { 10.0f };
             ModulationCurve lfoCurve;     // used only by the Curve shape
             double hostBpm { 120.0 };     // tempo for Host retrigger when no host is present
+            std::array<ScanSettings, 2> scan {};   // F10: Legacy with Freeze off unless set
             int midiNote { 60 };          // C3
             float velocity { 0.9f };
         };

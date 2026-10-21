@@ -392,6 +392,41 @@ namespace texture
             Range { params::lfoPhaseMin, params::lfoPhaseMax, 0.0001f }, params::lfoPhaseDefault,
             juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentFormatter)));
 
+        // --- F10 freeze and scan, one set per layer. Appended: Legacy with Freeze off reads as before.
+        const std::array<std::array<const char*, 5>, numLayers> scanLayout {{
+            { params::layer1ScanMode, params::layer1ScanPosition, params::layer1ScanSpeed,
+              params::layer1Freeze, params::layer1FreezeSpread },
+            { params::layer2ScanMode, params::layer2ScanPosition, params::layer2ScanSpeed,
+              params::layer2Freeze, params::layer2FreezeSpread } }};
+
+        for (const auto& ids : scanLayout)
+        {
+            layout.add (std::make_unique<juce::AudioParameterChoice> (
+                juce::ParameterID { ids[0], 1 }, params::displayNameFor (ids[0]),
+                juce::StringArray { "Legacy", "Manual", "Scan" }, params::scanModeDefault));
+
+            layout.add (std::make_unique<juce::AudioParameterFloat> (
+                juce::ParameterID { ids[1], 1 }, params::displayNameFor (ids[1]),
+                Range { params::scanPositionMin, params::scanPositionMax, 0.0001f }, params::scanPositionDefault,
+                juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentFormatter)));
+
+            layout.add (std::make_unique<juce::AudioParameterFloat> (
+                juce::ParameterID { ids[2], 1 }, params::displayNameFor (ids[2]),
+                Range { params::scanSpeedMin, params::scanSpeedMax, 0.0001f }, params::scanSpeedDefault,
+                juce::AudioParameterFloatAttributes().withStringFromValueFunction ([] (float value, int)
+                {
+                    return juce::String (value, 2) + " src/s";
+                })));
+
+            layout.add (std::make_unique<juce::AudioParameterBool> (
+                juce::ParameterID { ids[3], 1 }, params::displayNameFor (ids[3]), params::freezeDefault));
+
+            layout.add (std::make_unique<juce::AudioParameterFloat> (
+                juce::ParameterID { ids[4], 1 }, params::displayNameFor (ids[4]),
+                Range { params::freezeSpreadMin, params::freezeSpreadMax, 0.0001f }, params::freezeSpreadDefault,
+                juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentFormatter)));
+        }
+
         layout.add (std::make_unique<juce::AudioParameterFloat> (
             juce::ParameterID { params::lfoSlewMs, 1 }, params::displayNameFor (params::lfoSlewMs),
             Range { params::lfoSlewMsMin, params::lfoSlewMsMax, 0.0001f }, params::lfoSlewMsDefault,
@@ -562,10 +597,49 @@ namespace texture
             grainParameters.follow[i] = apvts.getRawParameterValue (grainFollowParameterID (static_cast<GrainField> (i)));
         }
 
+        const std::array<std::array<const char*, 5>, numLayers> scanIDs {{
+            { params::layer1ScanMode, params::layer1ScanPosition, params::layer1ScanSpeed,
+              params::layer1Freeze, params::layer1FreezeSpread },
+            { params::layer2ScanMode, params::layer2ScanPosition, params::layer2ScanSpeed,
+              params::layer2Freeze, params::layer2FreezeSpread } }};
+
+        for (size_t layer = 0; layer < static_cast<size_t> (numLayers); ++layer)
+        {
+            scanParameters[layer].mode     = apvts.getRawParameterValue (scanIDs[layer][0]);
+            scanParameters[layer].position = apvts.getRawParameterValue (scanIDs[layer][1]);
+            scanParameters[layer].speed    = apvts.getRawParameterValue (scanIDs[layer][2]);
+            scanParameters[layer].freeze   = apvts.getRawParameterValue (scanIDs[layer][3]);
+            scanParameters[layer].spread   = apvts.getRawParameterValue (scanIDs[layer][4]);
+        }
+
         modulationParameters.shape     = apvts.getRawParameterValue (params::lfoShape);
         modulationParameters.retrigger = apvts.getRawParameterValue (params::lfoRetrigger);
         modulationParameters.phase     = apvts.getRawParameterValue (params::lfoPhase);
         modulationParameters.slewMs    = apvts.getRawParameterValue (params::lfoSlewMs);
+    }
+
+    ScanSettings TextureAudioProcessor::readScanSettings (int layerIndex) const noexcept
+    {
+        const auto index = static_cast<size_t> (juce::jlimit (0, numLayers - 1, layerIndex));
+        const auto& p = scanParameters[index];
+
+        const auto read = [] (const std::atomic<float>* value, float fallback)
+        {
+            return value != nullptr ? value->load (std::memory_order_relaxed) : fallback;
+        };
+
+        ScanSettings settings;
+        settings.mode = scanModeFromIndex (juce::roundToInt (read (p.mode, 0.0f)));
+        settings.position = read (p.position, params::scanPositionDefault);
+        settings.speed = read (p.speed, params::scanSpeedDefault);
+        settings.freeze = read (p.freeze, 0.0f) > 0.5f;
+        settings.freezeSpread = read (p.spread, params::freezeSpreadDefault);
+        return sanitiseScanSettings (settings);
+    }
+
+    ScanSettings TextureAudioProcessor::getScanSettings (int layerIndex) const
+    {
+        return readScanSettings (layerIndex);
     }
 
     GrainControlSettings TextureAudioProcessor::getGrainControlSettings() const
@@ -958,6 +1032,9 @@ namespace texture
         for (auto& engine : engines)
             engine.setVoiceConfig (monoConfig);
 
+        for (size_t layer = 0; layer < engines.size(); ++layer)
+            engines[layer].setScanSettings (readScanSettings (static_cast<int> (layer)));
+
         effects.setToneSpace (readToneSpaceSettings());
         effects.setMorphTargets (currentTargets);
         effects.getSecretEffect().setBitDepth (secretBitDepth.load (std::memory_order_relaxed));
@@ -1269,6 +1346,17 @@ namespace texture
             || deferredPluginStateNotification.load (std::memory_order_acquire))
         {
             handleAsyncUpdate();
+        }
+
+        // F10: a freeze captured its centre on the audio thread. Write it to scan_position here,
+        // so saving and restoring the patch returns to the frozen place. Never from processBlock.
+        for (size_t layer = 0; layer < engines.size(); ++layer)
+        {
+            double frozenCentre = 0.0;
+
+            if (engines[layer].takeFreezeLatch (frozenCentre))
+                setParameterValue (layer == 0 ? params::layer1ScanPosition : params::layer2ScanPosition,
+                                   static_cast<float> (frozenCentre));
         }
 
         // A finished render is collected here even when no export window is open, so
@@ -2188,7 +2276,8 @@ namespace texture
                 && juce::String (id) != params::layer1FineCents
                 && juce::String (id) != params::layer2FineCents
                 && ! params::isToneSpaceParameter (id)
-                && ! params::isPerformanceParameter (id))
+                && ! params::isPerformanceParameter (id)
+                && ! params::isScanParameter (id))
                 write (id, params::defaultValueFor (id));
 
         write (params::morph, random.nextFloat());
@@ -2608,6 +2697,7 @@ namespace texture
         settings.lfoSlewMs = getParameterValue (params::lfoSlewMs, params::lfoSlewMsDefault);
         settings.lfoCurve = lfoCurve;
         settings.hostBpm = lastHostBpm.load (std::memory_order_relaxed);
+        settings.scan = { getScanSettings (0), getScanSettings (1) };
 
         const auto secret = getSecretSettings();
         settings.gritBits = secret.bitDepth;

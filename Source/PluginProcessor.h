@@ -9,6 +9,7 @@
 #include "Effects/ToneSpace.h"
 #include "Engine/GrainTargetResolver.h"
 #include "Engine/MonoNoteStack.h"
+#include "Engine/SamplePositionController.h"
 #include "Modulation/CurveMailbox.h"
 #include "Modulation/HeldNoteCounter.h"
 #include "Modulation/ModulationCurve.h"
@@ -328,6 +329,10 @@ namespace texture
         /** True when the last block asked for more grains than a voice can hold. */
         bool isGrainOversubscribed() const noexcept { return grainOversubscribedFlag.load (std::memory_order_relaxed); }
 
+        // --- Freeze and scan (F10) --------------------------------------------
+        /** The scan and freeze settings a layer renders with, read from the parameters. */
+        ScanSettings getScanSettings (int layerIndex) const;
+
         // --- Modulation shapes (F14) -----------------------------------------
         /** The user curve for the MORPH LFO's Curve shape. Message thread. */
         ModulationCurve getModulationCurve() const { return lfoCurve; }
@@ -628,6 +633,21 @@ namespace texture
 
         /** Reads the F13 parameters. Audio thread. */
         GrainControlSettings readGrainSettings() const noexcept;
+
+        /** F10 scan and freeze parameters for one layer, cached like every other parameter. */
+        struct ScanParameters
+        {
+            std::atomic<float>* mode { nullptr };
+            std::atomic<float>* position { nullptr };
+            std::atomic<float>* speed { nullptr };
+            std::atomic<float>* freeze { nullptr };
+            std::atomic<float>* spread { nullptr };
+        };
+
+        std::array<ScanParameters, numLayers> scanParameters {};
+
+        /** Reads one layer's scan settings. Audio thread. */
+        ScanSettings readScanSettings (int layerIndex) const noexcept;
 
         /** F14 modulation parameters, cached like every other parameter. */
         struct ModulationParameters
