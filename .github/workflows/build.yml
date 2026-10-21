@@ -132,7 +132,7 @@ jobs:
           path: release-input
           merge-multiple: false
 
-      - name: Package standalone apps and plug-in bundles
+      - name: Package standalone apps and plug-in bundles (Windows, macOS, Linux)
         run: packaging/package_platform_release.sh "${GITHUB_REF_NAME#v}" release-input release-assets
 
       - name: Publish GitHub Release
