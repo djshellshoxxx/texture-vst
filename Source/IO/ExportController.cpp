@@ -34,6 +34,9 @@ namespace texture
                                           request.bitDepth, request.destination,
                                           cancelRequested, framesDone);
 
+            if (result.succeeded && request.afterSuccess)
+                request.afterSuccess (result);
+
             {
                 const juce::ScopedLock sl (lock);
                 pending = std::move (result);

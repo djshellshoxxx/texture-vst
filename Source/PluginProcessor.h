@@ -12,6 +12,7 @@
 #include "IO/FactoryContent.h"
 #include "IO/ExportController.h"
 #include "IO/MediaStore.h"
+#include "IO/RenderedAudioCache.h"
 #include "IO/PortableMediaWorker.h"
 #include "IO/SampleLoader.h"
 #include "IO/WavExporter.h"
@@ -33,6 +34,7 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace texture
@@ -221,6 +223,40 @@ namespace texture
         std::shared_ptr<const PatchSnapshot> captureExportSnapshot() const;
 
         ExportController& getExportController() noexcept { return exportController; }
+
+        /** Starts a render. `forDrag` makes the finished file the drag tile's render. The
+            processor owns that bookkeeping, so it completes even when no window is open. */
+        bool startExportJob (ExportController::Request request, bool forDrag);
+
+        /** Collects a finished render and updates the drag tile. Message thread only. */
+        bool collectFinishedExport (WavExporter::Result& result);
+
+        /** The last collected render result, and a counter that changes with each one. */
+        const WavExporter::Result& getLastExportResult() const noexcept { return lastExportResult; }
+        int getExportSerial() const noexcept { return exportSerial; }
+
+        /** A finished render kept for the drag tile (F15). The file is complete and named. */
+        struct RenderedAudio
+        {
+            juce::File file;
+            juce::String name;
+            double lengthSeconds { 0.0 };
+            double sampleRate { 48000.0 };
+            int bitDepth { 24 };
+            juce::int64 bytes { 0 };
+            std::vector<float> peaks;
+        };
+
+        const RenderedAudio* getLastRenderedAudio() const noexcept { return lastRender.has_value() ? &*lastRender : nullptr; }
+
+        RenderedAudioCache& getRenderedAudioCache() noexcept { return renderedAudioCache; }
+
+        /** The user's persistent render folder, or the default when none is chosen. */
+        juce::File getRenderedAudioDirectory();
+
+        /** Saves the choice in user settings. Refused while a render is running, because a
+            job may be writing into the current folder. */
+        bool setRenderedAudioDirectory (const juce::File& directory);
         PortableMediaWorker& getPortableMediaWorker() noexcept { return portableMediaWorker; }
         MediaStore& getMediaStore() noexcept { return mediaStore; }
         juce::File getPortableStagingDirectory() const;
@@ -473,7 +509,21 @@ namespace texture
         // while the preset manager they read from is still alive.
         PortableMediaWorker portableMediaWorker;
         MediaStore mediaStore { MediaStore::defaultDirectory() };
+        // Declared before the export controller, so any render job is joined before the
+        // cache it finalises into is destroyed.
+        RenderedAudioCache renderedAudioCache { RenderedAudioCache::defaultDirectory() };
         ExportController exportController;
+        std::optional<RenderedAudio> lastRender;
+
+        struct DragRender
+        {
+            double sampleRate { 48000.0 };
+            int bitDepth { 24 };
+        };
+
+        std::optional<DragRender> dragRender;
+        WavExporter::Result lastExportResult;
+        int exportSerial { 0 };
         MidiLearn midiLearn;
         SampleLoader sampleLoader;
         std::array<std::atomic<bool>, numLayers> sampleLoadMarksDirty {};

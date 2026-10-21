@@ -181,6 +181,8 @@ set(TEXTURE_SOURCES
     Source/IO/ExportJob.h
     Source/IO/ExportController.cpp
     Source/IO/ExportController.h
+    Source/IO/RenderedAudioCache.cpp
+    Source/IO/RenderedAudioCache.h
 
     Source/Presets/PresetManager.cpp
     Source/Presets/PresetManager.h
@@ -210,6 +212,8 @@ set(TEXTURE_SOURCES
     Source/GUI/PortableMediaDialogs.h
     Source/GUI/ExportDialog.cpp
     Source/GUI/ExportDialog.h
+    Source/GUI/RenderedAudioTile.cpp
+    Source/GUI/RenderedAudioTile.h
     Source/GUI/MainPanel.h
     Source/GUI/MorphKnob.cpp
     Source/GUI/MorphKnob.h

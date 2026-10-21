@@ -368,6 +368,8 @@ namespace texture
             if (store->containsKey ("default_gain_db"))
                 setParameterValue (params::gainDb, static_cast<float> (store->getDoubleValue ("default_gain_db", params::gainDefaultDb)));
 
+        renderedAudioCache.setDirectory (getRenderedAudioDirectory());
+
         enforceTierLimits();
 
         for (const auto* id : params::allIDs)
@@ -1026,6 +1028,63 @@ namespace texture
         {
             handleAsyncUpdate();
         }
+
+        // A finished render is collected here even when no export window is open, so
+        // the drag tile and the toast are right whichever window the user has.
+        WavExporter::Result finished;
+
+        if (exportController.getState() == ExportController::State::finished)
+            collectFinishedExport (finished);
+    }
+
+    bool TextureAudioProcessor::startExportJob (ExportController::Request request, bool forDrag)
+    {
+        DragRender drag;
+        drag.sampleRate = request.sampleRate;
+        drag.bitDepth = request.bitDepth;
+
+        if (! exportController.start (std::move (request)))
+            return false;
+
+        dragRender = forDrag ? std::optional<DragRender> (drag) : std::nullopt;
+        return true;
+    }
+
+    bool TextureAudioProcessor::collectFinishedExport (WavExporter::Result& result)
+    {
+        if (! exportController.takeResult (result))
+            return false;
+
+        if (dragRender.has_value())
+        {
+            if (result.succeeded)
+            {
+                RenderedAudio audio;
+                audio.file = result.file;
+                audio.name = result.file.getFileNameWithoutExtension();
+                audio.lengthSeconds = result.lengthSeconds;
+                audio.sampleRate = dragRender->sampleRate;
+                audio.bitDepth = dragRender->bitDepth;
+                audio.bytes = result.fileSizeBytes;
+                audio.peaks = result.peaks;
+                lastRender = std::move (audio);
+            }
+
+            dragRender.reset();
+        }
+
+        if (result.clippedSamples > 0 && result.succeeded)
+            result.message << " " << juce::String (result.clippedSamples)
+                           << " samples reached full scale; nothing was limited.";
+
+        lastExportResult = result;
+        ++exportSerial;
+
+        postToast (result.succeeded ? result.message
+                                    : (result.cancelled ? juce::String ("Render cancelled. Nothing was written.")
+                                                        : result.message),
+                   result.succeeded ? SampleLoader::Severity::info : SampleLoader::Severity::warning);
+        return true;
     }
 
     void TextureAudioProcessor::handleAsyncUpdate()
@@ -1556,6 +1615,34 @@ namespace texture
             snapshot->samples[static_cast<size_t> (layer)] = getSampleForLayer (layer);
 
         return snapshot;
+    }
+
+    juce::File TextureAudioProcessor::getRenderedAudioDirectory()
+    {
+        if (auto* store = applicationProperties.getUserSettings())
+        {
+            const auto saved = juce::File (store->getValue ("renderedAudioDirectory"));
+
+            if (saved != juce::File() && saved.isDirectory())
+                return saved;
+        }
+
+        return RenderedAudioCache::defaultDirectory();
+    }
+
+    bool TextureAudioProcessor::setRenderedAudioDirectory (const juce::File& directory)
+    {
+        if (exportController.isBusy() || directory == juce::File() || ! directory.isDirectory())
+            return false;
+
+        if (auto* store = applicationProperties.getUserSettings())
+        {
+            store->setValue ("renderedAudioDirectory", directory.getFullPathName());
+            store->saveIfNeeded();
+        }
+
+        renderedAudioCache.setDirectory (directory);
+        return true;
     }
 
     juce::File TextureAudioProcessor::getPortableStagingDirectory() const

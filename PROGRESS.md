@@ -330,3 +330,17 @@ Gaps:
 - Live versus offline DSP comparison on identical timelines is not done.
 - Rendering on a worker is not measured against the 250 ms cancel budget on slow storage; the per-block check is the only bound.
 - No DAW or platform verification; no 24-hour or callback-budget measurement.
+
+## 2026-10-21: F15 drag rendered audio to the DAW
+
+Implemented F15 core. `RenderedAudioCache` (pure) owns the application-managed folder, the leases and the 2 GiB cap. Names are sanitised and carry a content ID (the first 8 hex of SHA-256); a finished render that duplicates stored audio is reused, and a different file is never overwritten. The only deletion path is `clearUnleased()`, a user action that skips leased files and touches only `.wav` files in the cache folder. The export folder is a user setting. `RenderedAudioTile` shows the last finished render with a waveform, starts an operating-system file drag only from a complete, existing file, and holds a lease until the drag ends. "Render for drag" in the export window renders the current configuration into the cache. The naming and hashing run on the worker through the controller's post-success hook. The processor collects every finished render on its own timer, so the drag tile updates even when the window is closed. Clearing and folder changes are refused while a render runs.
+
+Evidence: `test_rendered_audio_cache` covers unique and sanitised reservations, Unicode folders, content-ID naming, reuse of identical audio, leases and their release, the cap and its message, the rule that nothing is deleted implicitly, the deletion boundary, folder changes, and missing files. `test_export_job` covers the post-success hook ordering. The plugin target builds.
+
+Gaps:
+- No drag has been verified in any DAW or on Windows, macOS or Linux desktop environments. Manual host checks with screenshots and imported duration and channel count are still required.
+- Cancelled drags, dropped drags and editor closure during a drag are not automated.
+- The cache cap is fixed at 2 GiB; it is not a user setting.
+- A crash during a render can leave a `.partial` file; no startup sweep exists yet.
+- The Help panel does not describe drag renders.
+- Processor-level dispatch is not automated (the test binary does not link the processor).

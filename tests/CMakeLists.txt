@@ -30,6 +30,7 @@ set(TEXTURE_TEST_SOURCES
     test_bundle_archive.cpp
     test_export_planner.cpp
     test_export_job.cpp
+    test_rendered_audio_cache.cpp
     test_fuzz.cpp
     TestHelpers.h
 
@@ -60,6 +61,7 @@ set(TEXTURE_TEST_SOURCES
     ../Source/IO/ExportPlanner.cpp
     ../Source/IO/ExportJob.cpp
     ../Source/IO/ExportController.cpp
+    ../Source/IO/RenderedAudioCache.cpp
     ../Source/IO/SampleLoader.cpp
     ../Source/IO/WavExporter.cpp
 

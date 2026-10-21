@@ -320,6 +320,32 @@ namespace texture::tests
                 expectEquals (countPartialFiles (temp.get()), 0);
             }
 
+            beginTest ("the post-success hook runs before the result is published and may amend it");
+            {
+                TemporaryDirectory temp;
+                ExportController controller;
+                ExportController::Request request;
+                request.snapshot = std::make_shared<const PatchSnapshot> (makeSnapshot());
+                request.plan = shortPlan();
+                request.sampleRate = 48000.0;
+                request.bitDepth = 24;
+                request.destination = temp.child ("hooked.wav");
+
+                std::atomic<bool> ran { false };
+                request.afterSuccess = [&ran] (WavExporter::Result& result)
+                {
+                    ran.store (true);
+                    result.message = "amended";
+                };
+
+                expect (controller.start (request));
+                expect (waitUntil ([&] { return controller.getState() == ExportController::State::finished; }, 30000));
+                WavExporter::Result result;
+                expect (controller.takeResult (result));
+                expect (ran.load(), "the hook ran on the worker before the result was handed back");
+                expect (result.succeeded && result.message == "amended", result.message);
+            }
+
             beginTest ("the controller refuses requests it cannot run");
             {
                 TemporaryDirectory temp;

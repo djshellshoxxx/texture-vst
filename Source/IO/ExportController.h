@@ -5,6 +5,7 @@
 #include <juce_core/juce_core.h>
 
 #include <atomic>
+#include <functional>
 #include <memory>
 
 namespace texture
@@ -35,6 +36,11 @@ namespace texture
             double sampleRate { 48000.0 };
             int bitDepth { 24 };
             juce::File destination;
+
+            /** Optional. Runs on the worker after a successful render, before the result is
+                published, so slow follow-up file work (F15 naming and hashing) stays off the
+                message thread. The render must not be considered complete until it returns. */
+            std::function<void (WavExporter::Result&)> afterSuccess;
         };
 
         ExportController() = default;
