@@ -37,10 +37,10 @@ namespace texture
         }
     }
 
-    bool BundleFormat::isAllowedExtension (const juce::String& extension) noexcept
+    bool BundleFormat::isAllowedExtension (const juce::String& candidate) noexcept
     {
         for (const auto* allowed : allowedExtensions)
-            if (extension == allowed)
+            if (candidate == allowed)
                 return true;
 
         return false;
@@ -101,9 +101,9 @@ namespace texture
         return isSha256 (name.substring (0, dot)) && isAllowedExtension (name.substring (dot + 1));
     }
 
-    juce::String BundleFormat::mediaEntryName (const juce::String& sha256, const juce::String& extension)
+    juce::String BundleFormat::mediaEntryName (const juce::String& sha256, const juce::String& fileExtension)
     {
-        return juce::String (mediaFolder) + sha256 + "." + extension.toLowerCase();
+        return juce::String (mediaFolder) + sha256 + "." + fileExtension.toLowerCase();
     }
 
     juce::String MediaManifest::describe (Status status)
