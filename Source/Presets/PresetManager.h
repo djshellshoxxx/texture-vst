@@ -130,6 +130,11 @@ namespace texture
 
         static juce::String describe (Status status);
 
+        /** The range rules preset loading applies to one parameter value. Sound snapshots
+            (F09) use the same check, so an in-memory variation can never hold a value a
+            preset file would refuse. */
+        static bool isValidParameterValue (const juce::String& id, double value);
+
     private:
         juce::PropertiesFile* getStore() const;
         void indexDirectory (const juce::File& directory, bool isFactory);

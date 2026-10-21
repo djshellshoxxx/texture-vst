@@ -17,6 +17,9 @@
 #include "Presets/LockPolicy.h"
 #include "Presets/MutationPlanner.h"
 #include "Presets/PresetManager.h"
+#include "Presets/SoundSnapshot.h"
+#include "Presets/VariationHistory.h"
+#include "Presets/VariationPreview.h"
 #include "Utility/AtomicHelpers.h"
 #include "Utility/Logging.h"
 #include "Utility/MidiLearn.h"
@@ -243,6 +246,34 @@ namespace texture
         /** Deletes preferences, mappings, license and cached presets. Destructive. */
         void hardResetAllSettings();
 
+        // --- Variation history (F09) ------------------------------------------
+        // Session-local: not saved with the host state or presets, and cleared by a
+        // project restore. Message thread only. Previews are ordinary undo steps, so
+        // undo and redo always see the sound the user heard.
+
+        using VariationList = VariationHistory<SoundSnapshot>;
+
+        /** Cap on sample audio the history may keep alive, counting each buffer once. */
+        static constexpr std::size_t variationMediaBudgetBytes = 256u * 1024u * 1024u;
+
+        const VariationList& getVariations() const noexcept { return variations; }
+        std::uint64_t getVariationRevision() const noexcept { return variations.revision(); }
+        std::size_t getRetainedMediaBytes() const;
+        bool isPreviewingVariation() const noexcept { return variationPreview.isActive(); }
+        std::size_t getPreviewingVariationIndex() const noexcept { return variationPreview.getActiveIndex(); }
+
+        /** Records the sound as it is now, after a successful Randomize or Mutate. */
+        void recordVariation (const juce::String& operation);
+
+        /** Previous and Next walk the history and preview the entry they land on. */
+        bool previousVariation();
+        bool nextVariation();
+        void previewVariation (std::size_t index);
+        void acceptVariation();
+        void cancelVariation();
+        bool setVariationPinned (std::size_t index, bool shouldPin);
+        void clearVariations();
+
         // --- A/B compare ------------------------------------------------------
         void storeCompareSlot (int slotIndex);
         void recallCompareSlot (int slotIndex);
@@ -367,6 +398,21 @@ namespace texture
         juce::ValueTree captureParameterTree() const;
         void applyParameterTree (const juce::ValueTree& tree);
         std::vector<MutationField> buildMutationFields() const;
+
+        // --- Variation history (F09) ------------------------------------------
+        SoundSnapshot captureSoundSnapshot() const;
+
+        /** Applies a complete sound. Refused as a whole if any value is out of range, the
+            same rule preset loading uses. Message thread only. */
+        bool applySoundSnapshot (const SoundSnapshot& snapshot);
+
+        class SoundSnapshotAction;
+        struct VariationPreviewHost;
+        friend class SoundSnapshotAction;
+        friend struct VariationPreviewHost;
+
+        VariationList variations;
+        VariationPreview<SoundSnapshot> variationPreview;
 
         /** Configures the properties file before any service reads from it.
 

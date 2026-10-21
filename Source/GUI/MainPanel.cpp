@@ -351,6 +351,12 @@ namespace texture
 
         soundPanel = std::make_unique<SoundControlsPanel> (processor);
         soundPanel->onClose = [this] { soundPanel->setVisible (false); };
+        soundPanel->onStarVariation = [this] (std::size_t index)
+        {
+            // Star exports a normal preset: preview the variation, then use the Save dialog.
+            processor.previewVariation (index);
+            saveCurrentPreset (true);
+        };
         addChildComponent (*soundPanel);
 
         envelopeHeader.onMenuRequested = [this] { showGroupLockMenu (LockGroup::envelope, envelopeHeader); };

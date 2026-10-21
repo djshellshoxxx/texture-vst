@@ -25,6 +25,9 @@ namespace texture
         /** Raised when the user closes the panel. */
         std::function<void()> onClose;
 
+        /** Raised when the user stars a variation: the owner previews it and opens the Save dialog. */
+        std::function<void (std::size_t)> onStarVariation;
+
         /** Re-reads the mode and enables the controls that apply. Call when shown. */
         void refresh();
 

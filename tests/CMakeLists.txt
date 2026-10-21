@@ -25,6 +25,7 @@ set(TEXTURE_TEST_SOURCES
     test_legacy_render_fixtures.cpp
     test_tone_space.cpp
     test_mono_legato.cpp
+    test_variation_history.cpp
     test_fuzz.cpp
     TestHelpers.h
 

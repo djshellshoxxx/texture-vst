@@ -288,3 +288,16 @@ Gaps:
 - The stack holds 32 keys per engine; beyond that the oldest released key, then the oldest held key, is evicted.
 - No DAW, listening or CPU evidence. Performance controls are available on both tiers pending the release decision.
 
+## 2026-10-21: F09 variation history
+
+Implemented F09 core. Randomize and Mutate record the sound they produce. `VariationHistory` (pure, 32 entries, eight pins, cursor walking) evicts the oldest unpinned entry first, and keeps retained sample audio within 256 MiB, counting each buffer once. Entries hold a `SoundSnapshot`: every parameter, both sample references with starts and file identities, and the seed. Media is shared by immutable reference. `VariationPreview` (pure) applies a variation as one undo step named "Preview variation". Cancel undoes that step exactly; accept keeps the sound. Moving between variations cancels the earlier preview first. Snapshots are validated with the preset load rules (`PresetManager::isValidParameterValue`). History is session-local: a project restore clears it. The overlay gains a Variations section with previous and next, accept and cancel, clear, a retained-media readout and a list with Star (preview, then the normal Save dialog) and Pin.
+
+Evidence: `texture_unit_tests` covers the history, pins, cursor, the preview state machine with a fake host, shared-media accounting and the range rules (`test_variation_history`). The plugin target builds.
+
+Gaps:
+- The processor glue (apply, restore, budget eviction, processor destruction while previewing, and host restore) has no automated test: the test binary does not link the processor. Those paths were reviewed, not run.
+- If the user edits after a preview, Cancel keeps the preview rather than reverting the edit, and says so.
+- Undoing a preview leaves it on the redo stack, so redo can bring it back. A later edit clears that.
+- Accepted Family candidates (F20) are not implemented, so they do not record variations.
+- No DAW or keyboard/accessibility pass for the new controls yet.
+

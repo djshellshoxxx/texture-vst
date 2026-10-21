@@ -1169,6 +1169,229 @@ namespace texture
     //  Samples
     // =========================================================================
 
+    // =========================================================================
+    //  Variation history (F09)
+    // =========================================================================
+
+    namespace
+    {
+        constexpr const char* previewUndoName = "Preview variation";
+    }
+
+    /** One undo step that moves the whole sound: parameters, samples and seed. */
+    class TextureAudioProcessor::SoundSnapshotAction final : public juce::UndoableAction
+    {
+    public:
+        SoundSnapshotAction (TextureAudioProcessor& host, SoundSnapshot beforeState, SoundSnapshot afterState)
+            : owner (host), before (std::move (beforeState)), after (std::move (afterState))
+        {
+        }
+
+        bool perform() override { return owner.applySoundSnapshot (after); }
+        bool undo() override { return owner.applySoundSnapshot (before); }
+
+    private:
+        TextureAudioProcessor& owner;
+        SoundSnapshot before;
+        SoundSnapshot after;
+    };
+
+    /** Adapts the processor to the pure preview state machine. */
+    struct TextureAudioProcessor::VariationPreviewHost
+    {
+        TextureAudioProcessor& owner;
+
+        SoundSnapshot captureState() const { return owner.captureSoundSnapshot(); }
+
+        void applyPreview (const SoundSnapshot& target)
+        {
+            owner.undoManager.beginNewTransaction (previewUndoName);
+            owner.undoManager.perform (new SoundSnapshotAction (owner, owner.captureSoundSnapshot(), target));
+        }
+
+        void restorePreview (const SoundSnapshot& /*before*/)
+        {
+            // Undo is exact while the preview is the newest step. If the user has edited
+            // since, that edit wins: the preview is kept rather than silently reverted.
+            if (owner.undoManager.getUndoDescription() == previewUndoName && owner.undoManager.undo())
+                return;
+
+            owner.postToast ("The preview stays: something changed after it.", SampleLoader::Severity::info);
+        }
+    };
+
+    SoundSnapshot TextureAudioProcessor::captureSoundSnapshot() const
+    {
+        SoundSnapshot snapshot;
+
+        for (size_t i = 0; i < snapshot.parameters.size(); ++i)
+        {
+            const auto* id = params::allIDs[i];
+            snapshot.parameters[i] = getParameterValue (id, params::defaultValueFor (id));
+        }
+
+        for (size_t layer = 0; layer < static_cast<size_t> (numLayers); ++layer)
+        {
+            snapshot.media[layer] = getSampleForLayer (static_cast<int> (layer));
+            snapshot.files[layer] = layers[layer].file;
+            snapshot.originalNames[layer] = layers[layer].originalName;
+            snapshot.sampleStarts[layer] = getSampleStart (static_cast<int> (layer));
+        }
+
+        snapshot.seed = randomSeed.load (std::memory_order_relaxed);
+        return snapshot;
+    }
+
+    bool TextureAudioProcessor::applySoundSnapshot (const SoundSnapshot& snapshot)
+    {
+        // The same validator as preset loading: every value finite and inside its range.
+        for (size_t i = 0; i < snapshot.parameters.size(); ++i)
+            if (! PresetManager::isValidParameterValue (params::allIDs[i], snapshot.parameters[i]))
+                return false;
+
+        for (const auto start : snapshot.sampleStarts)
+            if (! std::isfinite (start) || start < 0.0f || start > 1.0f)
+                return false;
+
+        for (size_t i = 0; i < snapshot.parameters.size(); ++i)
+            setParameterValue (params::allIDs[i], snapshot.parameters[i]);
+
+        enforceTierLimits();
+        randomSeed.store (snapshot.seed, std::memory_order_relaxed);
+
+        for (size_t layer = 0; layer < static_cast<size_t> (numLayers); ++layer)
+        {
+            const auto index = static_cast<int> (layer);
+            auto& state = layers[layer];
+
+            // A load still in flight must not overwrite the sound being restored.
+            sampleLoader.cancelPendingLoad (index);
+
+            const auto target = snapshot.media[layer] != nullptr ? snapshot.media[layer] : SampleBuffer::makeEmpty();
+
+            if (target.get() != state.messageThreadCopy.get())
+                publishSample (state, target);
+
+            state.file = snapshot.files[layer];
+            state.originalName = snapshot.originalNames[layer];
+            setSampleStart (index, snapshot.sampleStarts[layer], false);
+            notifyListeners (&Listener::sampleChanged, index);
+        }
+
+        markPresetDirty();
+        notifyPluginStateChanged();
+        return true;
+    }
+
+    std::size_t TextureAudioProcessor::getRetainedMediaBytes() const
+    {
+        std::vector<const SampleBuffer*> references;
+
+        for (size_t i = 0; i < variations.size(); ++i)
+            for (const auto& media : variations.at (i).payload.media)
+                references.push_back (media.get());
+
+        return uniqueMediaBytes (std::move (references));
+    }
+
+    void TextureAudioProcessor::recordVariation (const juce::String& operation)
+    {
+        // A new variation supersedes any preview: the sound now heard is the new one.
+        variationPreview.accept();
+
+        const auto candidate = captureSoundSnapshot();
+
+        // Keep retained sample audio within budget by evicting the oldest unpinned entries.
+        const auto bytesWithCandidate = [this, &candidate]
+        {
+            std::vector<const SampleBuffer*> references;
+
+            for (size_t i = 0; i < variations.size(); ++i)
+                for (const auto& media : variations.at (i).payload.media)
+                    references.push_back (media.get());
+
+            for (const auto& media : candidate.media)
+                references.push_back (media.get());
+
+            return uniqueMediaBytes (std::move (references));
+        };
+
+        while (bytesWithCandidate() > variationMediaBudgetBytes && variations.evictOldestUnpinned())
+        {
+        }
+
+        if (bytesWithCandidate() > variationMediaBudgetBytes)
+        {
+            postToast ("Variations are holding too much sample audio. Unpin or clear some to keep this one.",
+                       SampleLoader::Severity::warning);
+            return;
+        }
+
+        const auto result = variations.add (candidate, operation.toStdString(), juce::Time::currentTimeMillis());
+
+        if (result == VariationList::AddResult::rejectedAllPinned)
+            postToast ("Every variation is pinned. Unpin one, or clear the history, to keep new ones.",
+                       SampleLoader::Severity::warning);
+    }
+
+    void TextureAudioProcessor::previewVariation (std::size_t index)
+    {
+        const auto* entry = variations.find (index);
+
+        if (entry == nullptr)
+            return;
+
+        VariationPreviewHost host { *this };
+        variationPreview.begin (host, index, entry->payload);
+    }
+
+    bool TextureAudioProcessor::previousVariation()
+    {
+        if (! variations.movePrevious())
+            return false;
+
+        previewVariation (variations.getCursor());
+        return true;
+    }
+
+    bool TextureAudioProcessor::nextVariation()
+    {
+        if (! variations.moveNext())
+            return false;
+
+        previewVariation (variations.getCursor());
+        return true;
+    }
+
+    void TextureAudioProcessor::acceptVariation()
+    {
+        variationPreview.accept();
+    }
+
+    void TextureAudioProcessor::cancelVariation()
+    {
+        VariationPreviewHost host { *this };
+        variationPreview.cancel (host);
+    }
+
+    bool TextureAudioProcessor::setVariationPinned (std::size_t index, bool shouldPin)
+    {
+        if (! variations.setPinned (index, shouldPin))
+        {
+            postToast ("Only eight variations can be pinned at once.", SampleLoader::Severity::warning);
+            return false;
+        }
+
+        return true;
+    }
+
+    void TextureAudioProcessor::clearVariations()
+    {
+        // Clearing the list keeps the sound the user is hearing.
+        variationPreview.accept();
+        variations.clear();
+    }
+
     void TextureAudioProcessor::setActiveLayer (int layerIndex)
     {
         activeLayer = juce::jlimit (0, numLayers - 1, layerIndex);
@@ -1610,6 +1833,7 @@ namespace texture
 
         enforceTierLimits();
         markPresetDirty();
+        recordVariation ("Randomize");
 
         const auto lockedKept = locks.countLockedTotal();
         postToast (lockedKept > 0 ? "Randomised; " + juce::String (lockedKept) + " locked "
@@ -1815,6 +2039,7 @@ namespace texture
 
         enforceTierLimits();
         markPresetDirty();
+        recordVariation ("Mutate");
 
         result.changed = static_cast<int> (plan.changes.size());
         result.message = "Changed " + juce::String (result.changed)
@@ -2121,6 +2346,10 @@ namespace texture
         // A restored session starts a fresh history: undo must never step back into
         // whatever this instance was doing before the host loaded the project.
         undoManager.clearUndoHistory();
+
+        // Variations are session-local: a project restore starts a fresh history.
+        variationPreview.reset();
+        variations.clear();
 
         // Locks belong to this instance's host state. Restore applies values regardless
         // of locks; it only reinstates which controls are protected from later edits.

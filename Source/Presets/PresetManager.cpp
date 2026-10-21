@@ -147,6 +147,11 @@ namespace texture
         }
     }
 
+    bool PresetManager::isValidParameterValue (const juce::String& id, double value)
+    {
+        return isKnownParameterID (id) && parameterValueIsValid (id, juce::var (value));
+    }
+
     // --- PresetData ---------------------------------------------------------
 
     float PresetManager::PresetData::getParameter (const juce::String& id, float fallback) const

@@ -8,6 +8,39 @@ namespace texture
 {
     namespace
     {
+        /** One line of the variation list: a label, Star (save as preset) and Pin. */
+        struct VariationRow final : public juce::Component
+        {
+            VariationRow()
+            {
+                label.setFont (TextureLookAndFeel::labelFont());
+                label.setColour (juce::Label::textColourId, colours::textPrimary);
+                label.setMinimumHorizontalScale (0.75f);
+                addAndMakeVisible (label);
+
+                star.setTooltip ("Save this variation as a preset. Opens the normal Save dialog.");
+                addAndMakeVisible (star);
+
+                pin.setClickingTogglesState (true);
+                pin.setTooltip ("Keep this variation when the history is full. Up to eight.");
+                addAndMakeVisible (pin);
+            }
+
+            void resized() override
+            {
+                auto area = getLocalBounds();
+                pin.setBounds (area.removeFromRight (44).reduced (0, 1));
+                area.removeFromRight (4);
+                star.setBounds (area.removeFromRight (44).reduced (0, 1));
+                area.removeFromRight (4);
+                label.setBounds (area);
+            }
+
+            juce::Label label;
+            juce::TextButton star { "Star" };
+            juce::TextButton pin { "Pin" };
+        };
+
         constexpr int cardWidth = 392;
         constexpr int cardMaxHeight = 452;
         constexpr int rowHeight = 22;
@@ -24,7 +57,8 @@ namespace texture
     class SoundControlsPanel::Body final : public juce::Component
     {
     public:
-        Body (TextureAudioProcessor& owner, std::function<void()> layoutChanged)
+        Body (TextureAudioProcessor& owner, std::function<void()> layoutChanged,
+              std::function<void (std::size_t)> starVariation)
             : processor (owner),
               onLayoutChanged (std::move (layoutChanged)),
               modeBox (owner, params::toneSpaceMode,
@@ -58,6 +92,8 @@ namespace texture
                 addAndMakeVisible (*header);
             }
 
+            onStarVariation = std::move (starVariation);
+
             toneHeader.setButtonText ("Tone");
             toneHeader.setTooltip ("Show or hide the tone controls.");
             spaceHeader.setButtonText ("Space");
@@ -87,6 +123,59 @@ namespace texture
             }
 
             addAndMakeVisible (filterToggle);
+
+            variationsHeader.setButtonText ("Variations");
+            variationsHeader.setTooltip ("Show or hide the variation history: Randomize and Mutate results.");
+            variationsHeader.setClickingTogglesState (true);
+            variationsHeader.setToggleState (true, juce::dontSendNotification);
+            variationsHeader.onClick = [this] { if (onLayoutChanged) onLayoutChanged(); };
+            addAndMakeVisible (variationsHeader);
+
+            previousButton.setTooltip ("Preview the next older variation.");
+            previousButton.onClick = [this] { processor.previousVariation(); refreshVariations (true); };
+            addAndMakeVisible (previousButton);
+
+            nextButton.setTooltip ("Preview the next newer variation.");
+            nextButton.onClick = [this] { processor.nextVariation(); refreshVariations (true); };
+            addAndMakeVisible (nextButton);
+
+            acceptButton.setTooltip ("Keep the previewed sound. One undo step.");
+            acceptButton.onClick = [this] { processor.acceptVariation(); refreshVariations (true); };
+            addAndMakeVisible (acceptButton);
+
+            cancelButton.setTooltip ("Return to the sound from before the preview.");
+            cancelButton.onClick = [this] { processor.cancelVariation(); refreshVariations (true); };
+            addAndMakeVisible (cancelButton);
+
+            clearButton.setTooltip ("Forget every variation. The sound you hear is kept.");
+            clearButton.onClick = [this] { processor.clearVariations(); refreshVariations (true); };
+            addAndMakeVisible (clearButton);
+
+            variationStatus.setFont (TextureLookAndFeel::labelFont());
+            variationStatus.setColour (juce::Label::textColourId, colours::textMuted);
+            variationStatus.setMinimumHorizontalScale (0.7f);
+            addAndMakeVisible (variationStatus);
+
+            mediaLabel.setFont (TextureLookAndFeel::labelFont());
+            mediaLabel.setColour (juce::Label::textColourId, colours::textMuted);
+            mediaLabel.setMinimumHorizontalScale (0.7f);
+            addAndMakeVisible (mediaLabel);
+
+            listHeader.setButtonText ("History");
+            listHeader.setTooltip ("Show or hide the list of variations.");
+            listHeader.setClickingTogglesState (true);
+            listHeader.setToggleState (false, juce::dontSendNotification);
+            listHeader.onClick = [this] { refreshVariations (true); };
+            addAndMakeVisible (listHeader);
+
+            for (auto& row : rows)
+            {
+                row = std::make_unique<VariationRow>();
+                row->setVisible (false);
+                addChildComponent (*row);
+            }
+
+            refreshVariations (false);
 
             for (auto* label : { &voiceLabel, &priorityLabel, &glideModeLabel })
             {
@@ -134,6 +223,15 @@ namespace texture
             height += gap + rowHeight;                         // performance header
             if (performanceHeader.getToggleState())
                 height += rowHeight + gap / 2 + knobHeight;    // mode and priority, glide row
+
+            height += gap + rowHeight;                         // variations header
+            if (variationsHeader.getToggleState())
+            {
+                height += rowHeight * 3;                       // navigation, actions, media
+                height += gap + rowHeight;                     // history header
+                if (listHeader.getToggleState())
+                    height += rowHeight * static_cast<int> (juce::jmin (processor.getVariations().size(), rowCount));
+            }
             return height;
         }
 
@@ -197,7 +295,124 @@ namespace texture
                 glideModeLabel.setBounds (glideRowArea.removeFromLeft (70));
                 glideModeBox.setBounds (glideRowArea.removeFromLeft (140));
             }
+
+            area.removeFromTop (gap);
+            const auto variationsOpen = variationsHeader.getToggleState();
+            variationsHeader.setBounds (area.removeFromTop (rowHeight).removeFromLeft (120));
+
+            auto navigationRow = area.removeFromTop (variationsOpen ? rowHeight : 0);
+            auto actionRow = area.removeFromTop (variationsOpen ? rowHeight : 0);
+            auto mediaRow = area.removeFromTop (variationsOpen ? rowHeight : 0);
+
+            previousButton.setVisible (variationsOpen);
+            nextButton.setVisible (variationsOpen);
+            variationStatus.setVisible (variationsOpen);
+            acceptButton.setVisible (variationsOpen && processor.isPreviewingVariation());
+            cancelButton.setVisible (variationsOpen && processor.isPreviewingVariation());
+            clearButton.setVisible (variationsOpen);
+            mediaLabel.setVisible (variationsOpen);
+
+            if (variationsOpen)
+            {
+                previousButton.setBounds (navigationRow.removeFromLeft (76));
+                navigationRow.removeFromLeft (4);
+                nextButton.setBounds (navigationRow.removeFromLeft (76));
+                navigationRow.removeFromLeft (8);
+                variationStatus.setBounds (navigationRow);
+
+                if (processor.isPreviewingVariation())
+                {
+                    acceptButton.setBounds (actionRow.removeFromLeft (76));
+                    actionRow.removeFromLeft (4);
+                    cancelButton.setBounds (actionRow.removeFromLeft (76));
+                    actionRow.removeFromLeft (8);
+                }
+
+                clearButton.setBounds (actionRow.removeFromLeft (90));
+                mediaLabel.setBounds (mediaRow);
+            }
+
+            area.removeFromTop (gap);
+            listHeader.setVisible (variationsOpen);
+
+            if (variationsOpen)
+                listHeader.setBounds (area.removeFromTop (rowHeight).removeFromLeft (120));
+
+            const auto showList = variationsOpen && listHeader.getToggleState();
+            for (size_t i = 0; i < rows.size(); ++i)
+            {
+                auto& row = rows[i];
+                const auto shown = showList && i < processor.getVariations().size();
+                row->setVisible (shown);
+
+                if (shown)
+                    row->setBounds (area.removeFromTop (rowHeight));
+            }
         }
+
+        /** Re-reads the history: status line, media readout, and the list when it is open.
+            Called by the panel timer when the revision changes, and after every button. */
+        void refreshVariations (bool relayout)
+        {
+            const auto& list = processor.getVariations();
+            const auto previewing = processor.isPreviewingVariation();
+            const auto size = list.size();
+
+            if (previewing)
+                variationStatus.setText ("Previewing " + juce::String (static_cast<int> (processor.getPreviewingVariationIndex()) + 1)
+                                             + " of " + juce::String (static_cast<int> (size)),
+                                         juce::dontSendNotification);
+            else if (size == 0)
+                variationStatus.setText ("No variations yet. Randomize or Mutate adds one.", juce::dontSendNotification);
+            else
+                variationStatus.setText ("Variation " + juce::String (static_cast<int> (list.getCursor()) + 1)
+                                             + " of " + juce::String (static_cast<int> (size)),
+                                         juce::dontSendNotification);
+
+            const auto megabytes = static_cast<double> (processor.getRetainedMediaBytes()) / (1024.0 * 1024.0);
+            mediaLabel.setText ("Samples kept by history: " + juce::String (megabytes, 1) + " MB of "
+                                    + juce::String (static_cast<int> (TextureAudioProcessor::variationMediaBudgetBytes / (1024u * 1024u)))
+                                    + " MB",
+                                juce::dontSendNotification);
+
+            acceptButton.setVisible (previewing);
+            cancelButton.setVisible (previewing);
+
+            for (size_t i = 0; i < rows.size(); ++i)
+            {
+                if (i >= size)
+                    continue;
+
+                const auto& entry = list.at (i);
+                auto& row = *rows[i];
+                const auto marker = i == list.getCursor() ? "> " : "  ";
+                row.label.setText (marker + juce::Time (entry.createdAtMs).formatted ("%H:%M:%S") + "  "
+                                       + juce::String (entry.operation) + "  #" + juce::String (static_cast<int> (entry.sequence)),
+                                   juce::dontSendNotification);
+                row.pin.setToggleState (entry.pinned, juce::dontSendNotification);
+                row.pin.onClick = [this, i]
+                {
+                    const auto wanted = rows[i]->pin.getToggleState();
+                    processor.setVariationPinned (i, wanted);
+                    refreshVariations (false);
+                };
+                row.star.onClick = [this, i] { if (onStarVariation) onStarVariation (i); };
+            }
+
+            lastVariationRevision = processor.getVariationRevision();
+            lastPreviewing = previewing;
+
+            if (relayout && onLayoutChanged)
+                onLayoutChanged();
+        }
+
+        bool variationsNeedRefresh() const
+        {
+            return processor.getVariationRevision() != lastVariationRevision
+                || processor.isPreviewingVariation() != lastPreviewing;
+        }
+
+        void setStarHandler (std::function<void (std::size_t)> handler) { onStarVariation = std::move (handler); }
 
     private:
         static void layoutKnobs (juce::Rectangle<int> row, std::initializer_list<ParameterKnob*> knobs, bool visible)
@@ -230,6 +445,22 @@ namespace texture
         ParameterKnob reverbKnob;
         ParameterKnob chorusKnob;
 
+        static constexpr std::size_t rowCount = TextureAudioProcessor::VariationList::capacity;
+
+        juce::TextButton variationsHeader;
+        juce::TextButton previousButton { "Previous" };
+        juce::TextButton nextButton { "Next" };
+        juce::TextButton acceptButton { "Accept" };
+        juce::TextButton cancelButton { "Cancel" };
+        juce::TextButton clearButton { "Clear history" };
+        juce::Label variationStatus;
+        juce::Label mediaLabel;
+        juce::TextButton listHeader;
+        std::array<std::unique_ptr<VariationRow>, rowCount> rows;
+        std::function<void (std::size_t)> onStarVariation;
+        std::uint64_t lastVariationRevision { 0 };
+        bool lastPreviewing { false };
+
         juce::TextButton performanceHeader;
         juce::Label voiceLabel;
         ParameterChoiceBox voiceBox;
@@ -255,7 +486,8 @@ namespace texture
         closeButton.onClick = [this] { if (onClose) onClose(); };
         addAndMakeVisible (closeButton);
 
-        body = std::make_unique<Body> (owner, [this] { resized(); });
+        body = std::make_unique<Body> (owner, [this] { resized(); },
+                                       [this] (std::size_t index) { if (onStarVariation) onStarVariation (index); });
         viewport.setViewedComponent (body.get(), false);
         viewport.setScrollBarsShown (true, false);
         addAndMakeVisible (viewport);
@@ -271,14 +503,23 @@ namespace texture
     void SoundControlsPanel::refresh()
     {
         if (body != nullptr)
+        {
             body->refresh();
+            body->refreshVariations (true);
+        }
     }
 
     void SoundControlsPanel::timerCallback()
     {
-        // Keeps the status line honest when the mode changes from the host or a preset.
-        if (isVisible() && body != nullptr)
-            body->refresh();
+        // Keeps the status lines honest when the mode changes from the host or a preset,
+        // and when a variation is recorded or previewed from the keyboard.
+        if (! isVisible() || body == nullptr)
+            return;
+
+        body->refresh();
+
+        if (body->variationsNeedRefresh())
+            body->refreshVariations (true);
     }
 
     void SoundControlsPanel::paint (juce::Graphics& g)
