@@ -65,6 +65,18 @@ namespace texture
     //  Parameter layout
     // =========================================================================
 
+    namespace
+    {
+        /** Logarithmic travel between two positive limits: equal ratios take equal knob travel. */
+        juce::NormalisableRange<float> logarithmicRange (float minimum, float maximum)
+        {
+            return { minimum, maximum,
+                     [] (float start, float end, float normalised) { return start * std::pow (end / start, normalised); },
+                     [] (float start, float end, float value) { return std::log (value / start) / std::log (end / start); },
+                     [] (float start, float end, float value) { return juce::jlimit (start, end, value); } };
+        }
+    }
+
     juce::AudioProcessorValueTreeState::ParameterLayout TextureAudioProcessor::createParameterLayout()
     {
         using Range = juce::NormalisableRange<float>;
@@ -207,6 +219,63 @@ namespace texture
             juce::ParameterID { params::randomMode, 1 }, params::displayNameFor (params::randomMode),
             juce::StringArray { "Legacy", "Repeat", "Evolve" }, params::randomModeDefault));
 
+        // --- F07 tone and space. Appended: older states read the Follow MORPH defaults.
+        const auto hzFormatter = [] (float value, int)
+        {
+            return value >= 1000.0f ? juce::String (value / 1000.0f, 2) + " kHz"
+                                    : juce::String (juce::roundToInt (value)) + " Hz";
+        };
+        const auto percentFormatter = [] (float value, int)
+        {
+            return juce::String (juce::roundToInt (value * 100.0f)) + "%";
+        };
+
+        layout.add (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { params::toneSpaceMode, 1 }, params::displayNameFor (params::toneSpaceMode),
+            juce::StringArray { "Follow MORPH", "Independent" }, params::toneSpaceModeDefault));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::toneHpHz, 1 }, params::displayNameFor (params::toneHpHz),
+            logarithmicRange (params::toneHpMinHz, params::toneHpMaxHz), params::toneHpDefaultHz,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (hzFormatter)));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::toneLpHz, 1 }, params::displayNameFor (params::toneLpHz),
+            logarithmicRange (params::toneLpMinHz, params::toneLpMaxHz), params::toneLpDefaultHz,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (hzFormatter)));
+
+        layout.add (std::make_unique<juce::AudioParameterBool> (
+            juce::ParameterID { params::toneFilterOn, 1 }, params::displayNameFor (params::toneFilterOn),
+            params::toneFilterOnDefault));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::toneTiltDb, 1 }, params::displayNameFor (params::toneTiltDb),
+            Range { params::toneTiltMinDb, params::toneTiltMaxDb, 0.1f }, params::toneTiltDefaultDb,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction ([] (float value, int)
+            {
+                return (value > 0.0f ? "+" : "") + juce::String (value, 1) + " dB";
+            })));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::spaceWidth, 1 }, params::displayNameFor (params::spaceWidth),
+            Range { params::spaceWidthMin, params::spaceWidthMax, 0.0001f }, params::spaceWidthDefault,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentFormatter)));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::spaceReverb, 1 }, params::displayNameFor (params::spaceReverb),
+            Range { params::spaceReverbMin, params::spaceReverbMax, 0.0001f }, params::spaceReverbDefault,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentFormatter)));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::spaceChorus, 1 }, params::displayNameFor (params::spaceChorus),
+            Range { params::spaceChorusMin, params::spaceChorusMax, 0.0001f }, params::spaceChorusDefault,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentFormatter)));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::toneDrive, 1 }, params::displayNameFor (params::toneDrive),
+            Range { params::toneDriveMin, params::toneDriveMax, 0.0001f }, params::toneDriveDefault,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentFormatter)));
+
         return layout;
     }
 
@@ -345,6 +414,65 @@ namespace texture
         reverseParameter     = apvts.getRawParameterValue (params::reverse);
         shimmerParameter     = apvts.getRawParameterValue (params::shimmer);
         randomModeParameter  = apvts.getRawParameterValue (params::randomMode);
+
+        toneSpaceParameters.mode     = apvts.getRawParameterValue (params::toneSpaceMode);
+        toneSpaceParameters.hp       = apvts.getRawParameterValue (params::toneHpHz);
+        toneSpaceParameters.lp       = apvts.getRawParameterValue (params::toneLpHz);
+        toneSpaceParameters.filterOn = apvts.getRawParameterValue (params::toneFilterOn);
+        toneSpaceParameters.tilt     = apvts.getRawParameterValue (params::toneTiltDb);
+        toneSpaceParameters.width    = apvts.getRawParameterValue (params::spaceWidth);
+        toneSpaceParameters.reverb   = apvts.getRawParameterValue (params::spaceReverb);
+        toneSpaceParameters.chorus   = apvts.getRawParameterValue (params::spaceChorus);
+        toneSpaceParameters.drive    = apvts.getRawParameterValue (params::toneDrive);
+    }
+
+    float TextureAudioProcessor::getFollowMorphValueForGui (int index) const noexcept
+    {
+        return followMorphValues[static_cast<size_t> (juce::jlimit (0, 3, index))].load (std::memory_order_relaxed);
+    }
+
+    void TextureAudioProcessor::startIndependentFromCurrentSound()
+    {
+        const auto drive = getFollowMorphValueForGui (0);
+        const auto chorus = getFollowMorphValueForGui (1);
+        const auto reverb = getFollowMorphValueForGui (2);
+        const auto tilt = getFollowMorphValueForGui (3);
+
+        // Inverse of the independent mappings in ToneSpaceRouter::resolve, so the first
+        // Independent block renders the same drive, chorus, reverb and tilt.
+        undoManager.beginNewTransaction ("Start tone and space from current sound");
+        setParameterValue (params::toneSpaceMode, static_cast<float> (params::toneSpaceModeIndependent));
+        setParameterValue (params::toneDrive, juce::jlimit (params::toneDriveMin, params::toneDriveMax,
+                                                            (drive - 0.1f) / 0.25f));
+        setParameterValue (params::spaceChorus, juce::jlimit (params::spaceChorusMin, params::spaceChorusMax,
+                                                              chorus / 0.6f));
+        setParameterValue (params::spaceReverb, juce::jlimit (params::spaceReverbMin, params::spaceReverbMax, reverb));
+        setParameterValue (params::toneTiltDb, juce::jlimit (params::toneTiltMinDb, params::toneTiltMaxDb, tilt));
+        setParameterValue (params::spaceWidth, params::spaceWidthDefault);
+        markPresetDirty();
+        postToast ("Tone and space now start from the current sound.", SampleLoader::Severity::info);
+    }
+
+    ToneSpaceSettings TextureAudioProcessor::readToneSpaceSettings() const noexcept
+    {
+        const auto read = [] (const std::atomic<float>* value, float fallback)
+        {
+            return value != nullptr ? value->load (std::memory_order_relaxed) : fallback;
+        };
+
+        const auto& p = toneSpaceParameters;
+        ToneSpaceSettings settings;
+        settings.independent = read (p.mode, static_cast<float> (params::toneSpaceModeDefault))
+                               > 0.5f * static_cast<float> (params::toneSpaceModeIndependent);
+        settings.hpHz = read (p.hp, params::toneHpDefaultHz);
+        settings.lpHz = read (p.lp, params::toneLpDefaultHz);
+        settings.filterOn = read (p.filterOn, 0.0f) > 0.5f;
+        settings.tiltDb = read (p.tilt, params::toneTiltDefaultDb);
+        settings.width = read (p.width, params::spaceWidthDefault);
+        settings.reverbSend = read (p.reverb, params::spaceReverbDefault);
+        settings.chorusAmount = read (p.chorus, params::spaceChorusDefault);
+        settings.drive = read (p.drive, params::toneDriveDefault);
+        return sanitiseToneSpace (settings);
     }
 
     const juce::String TextureAudioProcessor::getName() const
@@ -496,6 +624,11 @@ namespace texture
         currentTargets.reverseChance = reverseParameter != nullptr ? reverseParameter->load() : params::reverseDefault;
         currentTargets.shimmerAmount = shimmerParameter != nullptr ? shimmerParameter->load() : params::shimmerDefault;
 
+        followMorphValues[0].store (currentTargets.saturatorDrive, std::memory_order_relaxed);
+        followMorphValues[1].store (currentTargets.chorusDepth, std::memory_order_relaxed);
+        followMorphValues[2].store (currentTargets.reverbSend, std::memory_order_relaxed);
+        followMorphValues[3].store (currentTargets.highShelfTiltDb, std::memory_order_relaxed);
+
         for (int layer = 0; layer < numLayers; ++layer)
         {
             const auto index = static_cast<size_t> (layer);
@@ -528,6 +661,7 @@ namespace texture
             engines[i].setAdsrParameters (attack, decay, sustain, release);
         }
 
+        effects.setToneSpace (readToneSpaceSettings());
         effects.setMorphTargets (currentTargets);
         effects.getSecretEffect().setBitDepth (secretBitDepth.load (std::memory_order_relaxed));
         effects.getSecretEffect().setDownsample (secretDownsample.load (std::memory_order_relaxed));
@@ -1378,7 +1512,8 @@ namespace texture
                 && juce::String (id) != params::layer1Root
                 && juce::String (id) != params::layer2Root
                 && juce::String (id) != params::layer1FineCents
-                && juce::String (id) != params::layer2FineCents)
+                && juce::String (id) != params::layer2FineCents
+                && ! params::isToneSpaceParameter (id))
                 write (id, params::defaultValueFor (id));
 
         write (params::morph, random.nextFloat());
@@ -1768,6 +1903,7 @@ namespace texture
                                                                      static_cast<float> (params::randomModeDefault)));
         settings.randomSeed = randomSeed.load (std::memory_order_relaxed);
         settings.randomAlgorithmVersion = VersionedRandomStreams::algorithmVersion;
+        settings.toneSpace = readToneSpaceSettings();
 
         const auto secret = getSecretSettings();
         settings.gritBits = secret.bitDepth;
@@ -1903,6 +2039,14 @@ namespace texture
         const auto parameters = root.getChildWithName (StateSchema::parametersTag);
         suppressPresetDirtyTracking.store (true, std::memory_order_release);
         apvts.replaceState (parameters.getChild (0).createCopy());
+
+        // Parameters added after the state was written are absent from it, and
+        // replaceState leaves absent parameters alone. Give them their defaults here,
+        // so an older session never inherits the previous patch's tone or performance
+        // settings. Done before the undo history is cleared, so it is not undoable.
+        StateSchema::applyDefaultsForMissingParameters (
+            parameters.getChild (0),
+            [this] (const char* id) { setParameterValue (id, params::defaultValueFor (id)); });
         randomSeed.store (VersionedRandomStreams::defaultSeed, std::memory_order_relaxed);
         if (root.hasProperty ("randomSeedV1"))
         {

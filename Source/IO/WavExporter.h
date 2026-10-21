@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../Effects/ToneSpace.h"
 #include "../Engine/SampleBuffer.h"
 
 #include <array>
@@ -41,6 +42,7 @@ namespace texture
             float gritBits { 12.0f };
             float gritDownsample { 4.0f };
             float gritMix { 0.0f };
+            ToneSpaceSettings toneSpace;  // F07: Follow MORPH unless independent
             int midiNote { 60 };          // C3
             float velocity { 0.9f };
         };

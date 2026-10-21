@@ -24,8 +24,27 @@ namespace texture::params
         if (parameterID == reverse)     return "Reverse";
         if (parameterID == shimmer)     return "Shimmer";
         if (parameterID == randomMode)  return "Random Mode";
+        if (parameterID == toneSpaceMode) return "Tone/Space Mode";
+        if (parameterID == toneHpHz)    return "Tone High-Pass";
+        if (parameterID == toneLpHz)    return "Tone Low-Pass";
+        if (parameterID == toneFilterOn) return "Tone Filter";
+        if (parameterID == toneTiltDb)  return "Tone Tilt";
+        if (parameterID == spaceWidth)  return "Space Width";
+        if (parameterID == spaceReverb) return "Space Reverb";
+        if (parameterID == spaceChorus) return "Space Chorus";
+        if (parameterID == toneDrive)   return "Tone Drive";
 
         return parameterID;
+    }
+
+    bool isToneSpaceParameter (const juce::String& parameterID)
+    {
+        for (const auto* id : { toneSpaceMode, toneHpHz, toneLpHz, toneFilterOn, toneTiltDb,
+                                spaceWidth, spaceReverb, spaceChorus, toneDrive })
+            if (parameterID == id)
+                return true;
+
+        return false;
     }
 
     float defaultValueFor (const juce::String& parameterID)
@@ -48,6 +67,15 @@ namespace texture::params
         if (parameterID == reverse)     return reverseDefault;
         if (parameterID == shimmer)     return shimmerDefault;
         if (parameterID == randomMode)  return randomModeDefault;
+        if (parameterID == toneSpaceMode) return static_cast<float> (toneSpaceModeDefault);
+        if (parameterID == toneHpHz)    return toneHpDefaultHz;
+        if (parameterID == toneLpHz)    return toneLpDefaultHz;
+        if (parameterID == toneFilterOn) return toneFilterOnDefault ? 1.0f : 0.0f;
+        if (parameterID == toneTiltDb)  return toneTiltDefaultDb;
+        if (parameterID == spaceWidth)  return spaceWidthDefault;
+        if (parameterID == spaceReverb) return spaceReverbDefault;
+        if (parameterID == spaceChorus) return spaceChorusDefault;
+        if (parameterID == toneDrive)   return toneDriveDefault;
 
         return 0.0f;
     }

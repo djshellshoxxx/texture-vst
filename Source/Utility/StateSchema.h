@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_data_structures/juce_data_structures.h>
+#include "ParameterIDs.h"
 #include "VersionedRandomStreams.h"
 #include "../Presets/LockPolicy.h"
 
@@ -54,6 +55,43 @@ namespace texture
 
             bool isOk() const noexcept { return status == Status::ok; }
         };
+
+        /** Calls `setDefault` for every registered parameter that `parameterState` does
+            not carry. Parameters are matched by their "id" property in the APVTS state.
+            Older states predate newer controls; this keeps them from inheriting values
+            the instance held before the restore. Pure: takes the callback as a template
+            so tests can record the calls. */
+        template <typename SetDefault>
+        static void applyDefaultsForMissingParameters (const juce::ValueTree& parameterState,
+                                                       SetDefault&& setDefault)
+        {
+            for (const auto* id : params::allIDs)
+            {
+                bool present = false;
+
+                for (const auto& child : parameterState)
+                {
+                    if (child.getProperty ("id").toString() == juce::String (id))
+                    {
+                        present = true;
+                        break;
+                    }
+                }
+
+                if (! present)
+                    setDefault (id);
+            }
+        }
+
+        /** Parameter IDs the state does not carry, in registry order. Test seam for the
+            migration rule above. */
+        static juce::StringArray missingParameterIDs (const juce::ValueTree& parameterState)
+        {
+            juce::StringArray missing;
+            applyDefaultsForMissingParameters (parameterState,
+                                               [&missing] (const char* id) { missing.add (id); });
+            return missing;
+        }
 
         static Result validate (const juce::ValueTree& root)
         {

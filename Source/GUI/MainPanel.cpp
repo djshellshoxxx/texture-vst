@@ -129,6 +129,9 @@ namespace texture
         lockButton.onClick = [this] { openEditTools(); };
         addAndMakeVisible (lockButton);
 
+        soundButton.onClick = [this] { openSoundControls(); };
+        addAndMakeVisible (soundButton);
+
         resetButton.onClick = [this] { processor.resetToDefaults(); };
         addAndMakeVisible (resetButton);
 
@@ -346,6 +349,10 @@ namespace texture
         editToolsPanel->onClose = [this] { editToolsPanel->setVisible (false); };
         addChildComponent (*editToolsPanel);
 
+        soundPanel = std::make_unique<SoundControlsPanel> (processor);
+        soundPanel->onClose = [this] { soundPanel->setVisible (false); };
+        addChildComponent (*soundPanel);
+
         envelopeHeader.onMenuRequested = [this] { showGroupLockMenu (LockGroup::envelope, envelopeHeader); };
         grainHeader.onMenuRequested = [this] { showGroupLockMenu (LockGroup::grain, grainHeader); };
         lfoHeader.onMenuRequested = [this] { showGroupLockMenu (LockGroup::motion, lfoHeader); };
@@ -405,6 +412,8 @@ namespace texture
         place (&compareBButton);
         place (&fileMenuButton);
         place (&randomiseButton);
+        place (&soundButton);
+        place (&lockButton);
         place (&resetButton);
         place (&helpButton);
         place (&gearButton);
@@ -447,6 +456,8 @@ namespace texture
         helpButton.setBounds (headerContent.removeFromRight (22));
         headerContent.removeFromRight (4);
         resetButton.setBounds (headerContent.removeFromRight (22));
+        headerContent.removeFromRight (4);
+        soundButton.setBounds (headerContent.removeFromRight (22));
         headerContent.removeFromRight (4);
         lockButton.setBounds (headerContent.removeFromRight (22));
         headerContent.removeFromRight (4);
@@ -812,6 +823,9 @@ namespace texture
         if (editToolsPanel != nullptr)
             editToolsPanel->setVisible (false);
 
+        if (soundPanel != nullptr)
+            soundPanel->setVisible (false);
+
         if (helpPanel != nullptr)
             helpPanel->setVisible (false);
 
@@ -843,6 +857,20 @@ namespace texture
         editToolsPanel->setVisible (true);
         editToolsPanel->toFront (true);
         editToolsPanel->grabKeyboardFocus();
+    }
+
+    void MainPanel::openSoundControls()
+    {
+        closeOverlays();
+
+        if (soundPanel == nullptr)
+            return;
+
+        soundPanel->setBounds (getLocalBounds());
+        soundPanel->refresh();
+        soundPanel->setVisible (true);
+        soundPanel->toFront (true);
+        soundPanel->grabKeyboardFocus();
     }
 
     void MainPanel::runGentleMutate()

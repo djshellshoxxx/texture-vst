@@ -9,6 +9,7 @@
 #include "MorphKnob.h"
 #include "SecretPanel.h"
 #include "SettingsPanel.h"
+#include "SoundControlsPanel.h"
 #include "Widgets.h"
 
 #include <memory>
@@ -89,6 +90,7 @@ namespace texture
         void openHelp();
         void openDebugWindow();
         void openEditTools();
+        void openSoundControls();
         void runGentleMutate();
         void showGroupLockMenu (LockGroup group, juce::Component& target);
         void updateLockIndicators();
@@ -112,6 +114,7 @@ namespace texture
         IconButton helpButton { IconButton::Icon::help, "Help: the full manual, troubleshooting and debug tools" };
         IconButton randomiseButton { IconButton::Icon::dice, "Randomize every unlocked control. Each press starts from defaults first; locked controls are kept." };
         IconButton lockButton { IconButton::Icon::lock, "Edit locks and Gentle Mutate: protect controls from Randomize and Mutate" };
+        IconButton soundButton { IconButton::Icon::sliders, "Tone and space: independent tone filter, stereo width, reverb, chorus and drive" };
         IconButton resetButton { IconButton::Icon::reset, "Reset every control to its default value. Locks do not protect against Reset." };
         IconButton fileMenuButton { IconButton::Icon::folder, "File: open, save, export audio and options" };
         juce::TextButton presetNameButton;
@@ -180,6 +183,7 @@ namespace texture
         std::unique_ptr<SecretPanel> secretPanel;
         std::unique_ptr<DebugWindow> debugWindow;
         std::unique_ptr<EditToolsPanel> editToolsPanel;
+        std::unique_ptr<SoundControlsPanel> soundPanel;
         std::unique_ptr<juce::FileChooser> fileChooser;
 
         /** The pixel that reveals the hidden effect (include.md, "easter egg"). */

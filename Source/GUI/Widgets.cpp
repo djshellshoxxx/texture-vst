@@ -1309,6 +1309,22 @@ namespace texture
                 drawPadlock (g, bounds.reduced (radius * 0.2f), colour);
                 break;
 
+            case Icon::sliders:
+            {
+                // Three horizontal faders, each with a knob at a different position.
+                const auto faders = bounds.reduced (radius * 0.25f);
+                const std::array<float, 3> knobAt { 0.3f, 0.7f, 0.45f };
+
+                for (int i = 0; i < 3; ++i)
+                {
+                    const auto y = faders.getY() + faders.getHeight() * (0.2f + 0.3f * static_cast<float> (i));
+                    g.drawLine (faders.getX(), y, faders.getRight(), y, 1.2f);
+                    g.fillEllipse (faders.getX() + faders.getWidth() * knobAt[static_cast<size_t> (i)] - 2.0f,
+                                   y - 2.0f, 4.0f, 4.0f);
+                }
+                break;
+            }
+
             case Icon::chevronRight:
             {
                 const auto direction = iconToDraw == Icon::chevronLeft ? -1.0f : 1.0f;

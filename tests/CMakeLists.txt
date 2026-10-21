@@ -22,6 +22,8 @@ set(TEXTURE_TEST_SOURCES
     test_preset_manager.cpp
     test_parameter_locks.cpp
     test_mutation_planner.cpp
+    test_legacy_render_fixtures.cpp
+    test_tone_space.cpp
     test_fuzz.cpp
     TestHelpers.h
 
@@ -35,6 +37,7 @@ set(TEXTURE_TEST_SOURCES
     ../Source/Effects/Reverb.cpp
     ../Source/Effects/Saturator.cpp
     ../Source/Effects/SecretEffect.cpp
+    ../Source/Effects/ToneSpace.cpp
 
     ../Source/Modulation/EnvelopeADSR.cpp
     ../Source/Modulation/MorphLFO.cpp

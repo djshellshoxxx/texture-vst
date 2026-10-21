@@ -29,12 +29,27 @@ namespace texture::params
     inline constexpr const char* shimmer     = "shimmer";
     inline constexpr const char* randomMode  = "random_mode";
 
-    /** Every ID in preset/serialisation order. */
+    // F07 independent tone and space. Appended, so older presets and sessions do not
+    // carry them and read the Follow MORPH defaults.
+    inline constexpr const char* toneSpaceMode = "tone_space_mode";
+    inline constexpr const char* toneHpHz      = "tone_hp_hz";
+    inline constexpr const char* toneLpHz      = "tone_lp_hz";
+    inline constexpr const char* toneFilterOn  = "tone_filter_on";
+    inline constexpr const char* toneTiltDb    = "tone_tilt_db";
+    inline constexpr const char* spaceWidth    = "space_width";
+    inline constexpr const char* spaceReverb   = "space_reverb";
+    inline constexpr const char* spaceChorus   = "space_chorus";
+    inline constexpr const char* toneDrive     = "tone_drive";
+
+    /** Every ID in preset/serialisation order. Append only: positions are part of
+        the lock registry's contract and of the preset file layout. */
     inline constexpr const char* allIDs[] = {
         morph, attack, decay, sustain, release,
         reverbOn, gainDb, lfoRate, lfoDepth, lfoSync, lfoDivision, layerBlend,
         tune, reverse, shimmer, randomMode,
-        layer1Root, layer2Root, layer1FineCents, layer2FineCents
+        layer1Root, layer2Root, layer1FineCents, layer2FineCents,
+        toneSpaceMode, toneHpHz, toneLpHz, toneFilterOn, toneTiltDb,
+        spaceWidth, spaceReverb, spaceChorus, toneDrive
     };
 
     inline constexpr int numParameters = static_cast<int> (std::size (allIDs));
@@ -61,6 +76,19 @@ namespace texture::params
     inline constexpr float reverseMin = 0.0f,    reverseMax = 1.0f,      reverseDefault = 0.0f;
     inline constexpr float shimmerMin = 0.0f,    shimmerMax = 1.0f,      shimmerDefault = 0.0f;
 
+    // F07 ranges. Follow MORPH (mode 0) is the default and ignores these values.
+    inline constexpr int toneSpaceModeFollow = 0;
+    inline constexpr int toneSpaceModeIndependent = 1;
+    inline constexpr int toneSpaceModeDefault = toneSpaceModeFollow;
+    inline constexpr float toneHpMinHz = 20.0f,     toneHpMaxHz = 2000.0f, toneHpDefaultHz = 20.0f;
+    inline constexpr float toneLpMinHz = 1000.0f,   toneLpMaxHz = 20000.0f, toneLpDefaultHz = 20000.0f;
+    inline constexpr bool  toneFilterOnDefault = false;
+    inline constexpr float toneTiltMinDb = -12.0f,  toneTiltMaxDb = 12.0f, toneTiltDefaultDb = 0.0f;
+    inline constexpr float spaceWidthMin = 0.0f,    spaceWidthMax = 2.0f,  spaceWidthDefault = 1.0f;
+    inline constexpr float spaceReverbMin = 0.0f,   spaceReverbMax = 1.0f, spaceReverbDefault = 0.3f;
+    inline constexpr float spaceChorusMin = 0.0f,   spaceChorusMax = 1.0f, spaceChorusDefault = 0.2f;
+    inline constexpr float toneDriveMin = 0.0f,     toneDriveMax = 1.0f,   toneDriveDefault = 0.1f;
+
     /** Tempo divisions offered when LFO sync is engaged. */
     inline constexpr const char* divisionNames[] = { "1/1", "1/2", "1/4", "1/8", "1/16" };
     inline constexpr int numDivisions = static_cast<int> (std::size (divisionNames));
@@ -70,6 +98,9 @@ namespace texture::params
 
     /** Human-readable name shown in the host's automation list. */
     juce::String displayNameFor (const juce::String& parameterID);
+
+    /** True for the F07 tone and space controls. Randomize leaves them as the user set them. */
+    bool isToneSpaceParameter (const juce::String& parameterID);
 
     /** Default value for a parameter, in its own (real-world) units. */
     float defaultValueFor (const juce::String& parameterID);

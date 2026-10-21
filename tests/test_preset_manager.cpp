@@ -28,6 +28,15 @@ namespace texture::tests
             data.setParameter (params::lfoRate, 0.75f);
             data.setParameter (params::lfoDepth, 0.25f);
             data.setParameter (params::lfoSync, 1.0f);
+            data.setParameter (params::toneSpaceMode, 1.0f);
+            data.setParameter (params::toneHpHz, 143.5f);
+            data.setParameter (params::toneLpHz, 7250.0f);
+            data.setParameter (params::toneFilterOn, 1.0f);
+            data.setParameter (params::toneTiltDb, -3.5f);
+            data.setParameter (params::spaceWidth, 1.25f);
+            data.setParameter (params::spaceReverb, 0.4f);
+            data.setParameter (params::spaceChorus, 0.55f);
+            data.setParameter (params::toneDrive, 0.7f);
             data.setParameter (params::lfoDivision, 3.0f);
             data.setParameter (params::layerBlend, 0.5f);
             data.setParameter (params::tune, -7.0f);

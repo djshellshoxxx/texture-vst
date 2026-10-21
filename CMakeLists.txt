@@ -141,6 +141,9 @@ set(TEXTURE_SOURCES
     Source/Effects/Saturator.h
     Source/Effects/SecretEffect.cpp
     Source/Effects/SecretEffect.h
+    Source/Effects/Biquad.h
+    Source/Effects/ToneSpace.cpp
+    Source/Effects/ToneSpace.h
 
     Source/Modulation/EnvelopeADSR.cpp
     Source/Modulation/EnvelopeADSR.h
@@ -187,6 +190,8 @@ set(TEXTURE_SOURCES
     Source/GUI/SecretPanel.h
     Source/GUI/SettingsPanel.cpp
     Source/GUI/SettingsPanel.h
+    Source/GUI/SoundControlsPanel.cpp
+    Source/GUI/SoundControlsPanel.h
     Source/GUI/WaveformDisplay.cpp
     Source/GUI/WaveformDisplay.h
     Source/GUI/Widgets.cpp

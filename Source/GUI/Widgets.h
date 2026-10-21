@@ -349,7 +349,7 @@ namespace texture
     class IconButton : public juce::Button
     {
     public:
-        enum class Icon { gear, help, dice, reset, chevronDown, folder, save, compare, chevronLeft, chevronRight, lock };
+        enum class Icon { gear, help, dice, reset, chevronDown, folder, save, compare, chevronLeft, chevronRight, lock, sliders };
 
         IconButton (Icon iconToDraw, const juce::String& tooltipText);
 

@@ -114,6 +114,23 @@ namespace texture
                 return juce::exactlyEqual (numeric, std::floor (numeric))
                     && numeric >= 0.0 && numeric <= 2.0;
 
+            // F07 tone and space. Any value outside its range rejects the preset, as for every
+            // other parameter; readers that predate these IDs ignore them.
+            if (id == params::toneSpaceMode)
+                return juce::exactlyEqual (numeric, std::floor (numeric))
+                    && numeric >= 0.0 && numeric <= static_cast<double> (params::toneSpaceModeIndependent);
+
+            if (id == params::toneFilterOn)
+                return juce::exactlyEqual (numeric, 0.0) || juce::exactlyEqual (numeric, 1.0);
+
+            if (id == params::toneHpHz)    return inRange (params::toneHpMinHz, params::toneHpMaxHz);
+            if (id == params::toneLpHz)    return inRange (params::toneLpMinHz, params::toneLpMaxHz);
+            if (id == params::toneTiltDb)  return inRange (params::toneTiltMinDb, params::toneTiltMaxDb);
+            if (id == params::spaceWidth)  return inRange (params::spaceWidthMin, params::spaceWidthMax);
+            if (id == params::spaceReverb) return inRange (params::spaceReverbMin, params::spaceReverbMax);
+            if (id == params::spaceChorus) return inRange (params::spaceChorusMin, params::spaceChorusMax);
+            if (id == params::toneDrive)   return inRange (params::toneDriveMin, params::toneDriveMax);
+
             return false;
         }
     }

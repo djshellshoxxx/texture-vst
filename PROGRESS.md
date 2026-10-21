@@ -259,3 +259,17 @@ The source audit also fixed channel-specific MIDI note/sustain ownership, random
 Implemented F02 editing locks and F03 Gentle Mutate as one feature branch. `LockPolicy` (lock registry, bounded lock set, action table, lock undo) and `MutationPlanner` (pure triangular mutation on a captured baseline, with a dedicated mutation lane in `VersionedRandomStreams`) live under `Source/Presets/`. Locks are per-instance host state in an optional `FeatureState` schema 1 block, validated by `StateSchema`; older states load with no locks. Randomize and Mutate honour locks; reset, automation, MIDI, restore and undo do not. Gentle Mutate defaults to 15% on Grain and Motion. A separate `EditToolsPanel` overlay holds Mutate, strength, group checkboxes and the lock list; locks are also set from control menus, group headers and a padlock glyph.
 
 Evidence: the Linux Release build passes and `texture_unit_tests` reports 0 failures, including the new lock, planner and FeatureState suites. Not yet done: a manual DAW or standalone GUI pass, the 60-second fuzz run for this branch, processor-level undo and state round-trip checks (the test binary does not link the processor), preset-browse locking, and media locks.
+
+## 2026-10-21: F07 independent tone and space
+
+Implemented F07 core. Nine appended parameters (`tone_space_mode`, `tone_hp_hz`, `tone_lp_hz`, `tone_filter_on`, `tone_tilt_db`, `space_width`, `space_reverb`, `space_chorus`, `tone_drive`) default to Follow MORPH, so older presets and sessions sound as before. `ToneSpaceRouter` (pure) resolves the MORPH or independent targets and ramps between them; `Biquad` (allocation-free RBJ sections) provides the 12 dB/oct tone filter and the high shelf. `EffectsChain` runs filter, then saturator/chorus/reverb/GRIT, then width, then shelf. Controls live in a new "Tone and space" overlay with collapsible Tone and Space sections and "Start from current sound". Randomize leaves these controls alone; Gentle Mutate does not change them. Export renders the same settings.
+
+Evidence: `texture_unit_tests` passes 120,819 checks. New suites: `test_tone_space` (routing, transitions, filter response, width, parity with Follow MORPH, stability across sample rates and block sizes, state migration, preset validation) and `test_legacy_render_fixtures` (archived poly and Follow MORPH renders, tolerance 1e-5).
+
+Deviations and gaps:
+- The 20 ms mode transition ramps the control values and the filter and width mix linearly. It is not a dual-path output crossfade, which would need a second effects chain.
+- The high shelf was rewritten as an allocation-free biquad. The previous `makeHighShelf` call allocated on the audio thread whenever tilt changed. Its output matches the archived fixture within 1e-5 but is not bit-identical.
+- Presets stay at schema 2: the new controls are ordinary parameters. The schema-3 features object is not needed for F07.
+- No DAW, listening, CPU or 24-hour soak evidence yet. Tone and space are available on both tiers pending the release decision.
+- Processor-level state migration is covered through the `StateSchema::missingParameterIDs` seam, not through a live processor test.
+

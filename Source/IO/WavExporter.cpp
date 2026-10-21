@@ -229,6 +229,7 @@ namespace texture
             targets.tuneSemitones = settings.tuneSemitones;
             targets.reverseChance = settings.reverseChance;
             targets.shimmerAmount = settings.shimmerAmount;
+            effects->setToneSpace (settings.toneSpace);
             effects->setMorphTargets (targets);
 
             juce::AudioBuffer<float> layerBlock (2, numSamples);

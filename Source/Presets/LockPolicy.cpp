@@ -32,6 +32,17 @@ namespace texture
             { params::layer2Root,      LockGroup::pitchCalibration, false, false },
             { params::layer1FineCents, LockGroup::pitchCalibration, false, false },
             { params::layer2FineCents, LockGroup::pitchCalibration, false, false },
+            // F07 tone and space. Lockable as one group; Gentle Mutate leaves them alone,
+            // since most of them do nothing audible while Follow MORPH is selected.
+            { params::toneSpaceMode,   LockGroup::toneSpace,         false, false },
+            { params::toneHpHz,        LockGroup::toneSpace,         false, false },
+            { params::toneLpHz,        LockGroup::toneSpace,         false, false },
+            { params::toneFilterOn,    LockGroup::toneSpace,         false, false },
+            { params::toneTiltDb,      LockGroup::toneSpace,         false, false },
+            { params::spaceWidth,      LockGroup::toneSpace,         false, false },
+            { params::spaceReverb,     LockGroup::toneSpace,         false, false },
+            { params::spaceChorus,     LockGroup::toneSpace,         false, false },
+            { params::toneDrive,       LockGroup::toneSpace,         false, false },
         } };
 
         static_assert (LockPolicy::numFields == static_cast<std::size_t> (params::numParameters),

@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Effects/EffectsChain.h"
+#include "Effects/ToneSpace.h"
 #include "Engine/GranularEngine.h"
 #include "IO/FactoryContent.h"
 #include "IO/SampleLoader.h"
@@ -231,6 +232,13 @@ namespace texture
         /** One Mutate press: one validated change set, one undo transaction. */
         MutateResult mutateParameters();
 
+        /** The MORPH-derived effect values in force on the last block: 0 drive, 1 chorus
+            depth, 2 reverb send, 3 shelf tilt in dB. For "Start from current sound". */
+        float getFollowMorphValueForGui (int index) const noexcept;
+        /** Switches to Independent and copies the current MORPH-derived values into the
+            independent controls, so the sound does not jump. One undo step. Message thread. */
+        void startIndependentFromCurrentSound();
+
         /** Deletes preferences, mappings, license and cached presets. Destructive. */
         void hardResetAllSettings();
 
@@ -424,7 +432,24 @@ namespace texture
         std::atomic<float>* reverseParameter { nullptr };
         std::atomic<float>* shimmerParameter { nullptr };
         std::atomic<float>* randomModeParameter { nullptr };
-        std::atomic<std::uint64_t> randomSeed { VersionedRandomStreams::defaultSeed };
+        std::array<std::atomic<float>, 4> followMorphValues {};
+
+        /** F07 tone and space controls, cached like every other parameter. */
+        struct ToneSpaceParameters
+        {
+            std::atomic<float>* mode { nullptr };
+            std::atomic<float>* hp { nullptr };
+            std::atomic<float>* lp { nullptr };
+            std::atomic<float>* filterOn { nullptr };
+            std::atomic<float>* tilt { nullptr };
+            std::atomic<float>* width { nullptr };
+            std::atomic<float>* reverb { nullptr };
+            std::atomic<float>* chorus { nullptr };
+            std::atomic<float>* drive { nullptr };
+        } toneSpaceParameters;
+
+        /** Reads the F07 parameters into the DSP settings struct. Audio thread. */
+        ToneSpaceSettings readToneSpaceSettings() const noexcept;        std::atomic<std::uint64_t> randomSeed { VersionedRandomStreams::defaultSeed };
         std::atomic<bool> randomEvolutionResetRequested { false };
 
         /** Bumped by every parameter notification. Gentle Mutate compares it between
