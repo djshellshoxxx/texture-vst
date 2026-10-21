@@ -122,6 +122,31 @@ namespace texture
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ParameterChoiceBox)
     };
 
+    /** A horizontal slider bound to one APVTS float parameter, with the shared right-click menu.
+
+        `displayScale` maps the stored value to the number shown and typed: 1 for
+        ms and Hz, 100 for a 0..2 width shown as a percentage.
+    */
+    class ParameterSlider : public juce::Slider
+    {
+    public:
+        ParameterSlider (TextureAudioProcessor& processor,
+                         const juce::String& parameterID,
+                         const juce::String& suffix,
+                         double displayScale,
+                         const juce::String& tooltipText);
+        ~ParameterSlider() override;
+
+        void mouseDown (const juce::MouseEvent& event) override;
+
+    private:
+        TextureAudioProcessor& processor;
+        juce::String parameterID;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ParameterSlider)
+    };
+
     /** A knob that is not an APVTS parameter (the hidden GRIT controls).
         Same look and drag feel as ParameterKnob, hover readout, and a right-click
         menu with reset and value entry; it has no MIDI learn because MIDI learn

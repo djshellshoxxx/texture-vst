@@ -17,6 +17,7 @@ set(TEXTURE_TEST_SOURCES
     test_midi_learn.cpp
     test_mono_glide.cpp
     test_tone_space.cpp
+    test_mutation_planner.cpp
     test_offline_render_timeline.cpp
     test_granular_engine.cpp
     test_sample_loader.cpp
@@ -46,6 +47,8 @@ set(TEXTURE_TEST_SOURCES
     ../Source/IO/WavExporter.cpp
 
     ../Source/Presets/PresetManager.cpp
+    ../Source/Presets/LockPolicy.cpp
+    ../Source/Presets/MutationPlanner.cpp
 
     ../Source/License/LicenseManager.cpp
 

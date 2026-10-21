@@ -524,6 +524,55 @@ namespace texture
     }
 
     // =========================================================================
+    //  ParameterSlider
+    // =========================================================================
+
+    ParameterSlider::ParameterSlider (TextureAudioProcessor& processorToUse,
+                                      const juce::String& parameterIDToUse,
+                                      const juce::String& suffix,
+                                      double displayScale,
+                                      const juce::String& tooltipText)
+        : processor (processorToUse),
+          parameterID (parameterIDToUse)
+    {
+        setSliderStyle (juce::Slider::LinearHorizontal);
+        setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 20);
+        setNumDecimalPlacesToDisplay (0);
+
+        textFromValueFunction = [displayScale, suffix] (double value)
+        {
+            return juce::String (juce::roundToInt (value * displayScale)) + suffix;
+        };
+        valueFromTextFunction = [displayScale] (const juce::String& text)
+        {
+            return text.getDoubleValue() / displayScale;
+        };
+
+        setDoubleClickReturnValue (true, params::defaultValueFor (parameterID));
+        setTooltip (tooltipText + " Right-click for reset and MIDI learn.");
+        setTitle (params::displayNameFor (parameterID));
+
+        attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+            processor.getValueTreeState(), parameterID, *this);
+    }
+
+    ParameterSlider::~ParameterSlider()
+    {
+        attachment.reset();
+    }
+
+    void ParameterSlider::mouseDown (const juce::MouseEvent& event)
+    {
+        if (event.mods.isPopupMenu())
+        {
+            ControlContextMenu::showFor (*this, processor, parameterID, [this] { repaint(); });
+            return;
+        }
+
+        juce::Slider::mouseDown (event);
+    }
+
+    // =========================================================================
     //  PlainKnob
     // =========================================================================
 

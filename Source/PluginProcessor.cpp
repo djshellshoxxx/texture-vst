@@ -1411,15 +1411,37 @@ namespace texture
         postToast ("All controls reset to defaults.", SampleLoader::Severity::info);
     }
 
+    void TextureAudioProcessor::mutateParameters (float amount)
+    {
+        std::map<juce::String, float> current;
+        for (const auto* id : params::allIDs)
+            current[id] = getParameterValue (id, params::defaultValueFor (id));
+
+        const auto seed = juce::Random::getSystemRandom().nextInt64()
+                        ^ static_cast<std::uint64_t> (juce::Time::getHighResolutionTicks());
+        undoManager.beginNewTransaction();
+        for (const auto& change : planMutation (current, locks, amount, seed))
+            setParameterValue (change.id, change.value);
+
+        enforceTierLimits();
+        markPresetDirty();
+        postToast ("Mutated the sound slightly.", SampleLoader::Severity::info);
+    }
+
     void TextureAudioProcessor::randomiseParameters()
     {
         undoManager.beginNewTransaction();
         auto& random = juce::Random::getSystemRandom();
+        const auto setIfUnlocked = [this] (const char* id, float value)
+        {
+            if (! locks.isLocked (id))
+                setParameterValue (id, value);
+        };
 
         // Start sound-design parameters from defaults so results do not drift.
         // TUNE calibrates the source sample and must survive randomisation.
         for (const auto* id : params::allIDs)
-            if (juce::String (id) != params::tune
+            if (! locks.isLocked (id) && juce::String (id) != params::tune
                 && juce::String (id) != params::layer1Root
                 && juce::String (id) != params::layer2Root
                 && juce::String (id) != params::layer1FineCents
@@ -1433,33 +1455,33 @@ namespace texture
                 && juce::String (id) != params::spaceWidth)
                 setParameterValue (id, params::defaultValueFor (id));
 
-        setParameterValue (params::morph, random.nextFloat());
-        setParameterValue (params::attack, juce::jmap (random.nextFloat(), 5.0f, 2500.0f));
-        setParameterValue (params::decay, juce::jmap (random.nextFloat(), 50.0f, 3000.0f));
-        setParameterValue (params::sustain, juce::jmap (random.nextFloat(), 0.35f, 1.0f));
-        setParameterValue (params::release, juce::jmap (random.nextFloat(), 200.0f, 6000.0f));
-        setParameterValue (params::reverbOn, random.nextFloat() < 0.85f ? 1.0f : 0.0f);
-        setParameterValue (params::gainDb, juce::jmap (random.nextFloat(), -8.0f, 0.0f));
+        setIfUnlocked (params::morph, random.nextFloat());
+        setIfUnlocked (params::attack, juce::jmap (random.nextFloat(), 5.0f, 2500.0f));
+        setIfUnlocked (params::decay, juce::jmap (random.nextFloat(), 50.0f, 3000.0f));
+        setIfUnlocked (params::sustain, juce::jmap (random.nextFloat(), 0.35f, 1.0f));
+        setIfUnlocked (params::release, juce::jmap (random.nextFloat(), 200.0f, 6000.0f));
+        setIfUnlocked (params::reverbOn, random.nextFloat() < 0.85f ? 1.0f : 0.0f);
+        setIfUnlocked (params::gainDb, juce::jmap (random.nextFloat(), -8.0f, 0.0f));
 
         // Tune stays put: it describes the sample, not the sound. The two grain
         // effects are applied sparingly so most rolls still sound like the sample.
         if (random.nextFloat() < 0.35f)
-            setParameterValue (params::reverse, juce::jmap (random.nextFloat(), 0.1f, 0.6f));
+            setIfUnlocked (params::reverse, juce::jmap (random.nextFloat(), 0.1f, 0.6f));
 
         if (random.nextFloat() < 0.35f)
-            setParameterValue (params::shimmer, juce::jmap (random.nextFloat(), 0.1f, 0.7f));
+            setIfUnlocked (params::shimmer, juce::jmap (random.nextFloat(), 0.1f, 0.7f));
 
         if (licenseManager.isPro())
         {
-            setParameterValue (params::lfoRate, juce::jmap (random.nextFloat(), 0.05f, 1.5f));
-            setParameterValue (params::lfoDepth, random.nextFloat() < 0.5f ? 0.0f
+            setIfUnlocked (params::lfoRate, juce::jmap (random.nextFloat(), 0.05f, 1.5f));
+            setIfUnlocked (params::lfoDepth, random.nextFloat() < 0.5f ? 0.0f
                                                                           : juce::jmap (random.nextFloat(), 0.1f, 0.7f));
-            setParameterValue (params::lfoSync, random.nextFloat() < 0.3f ? 1.0f : 0.0f);
-            setParameterValue (params::lfoDivision,
+            setIfUnlocked (params::lfoSync, random.nextFloat() < 0.3f ? 1.0f : 0.0f);
+            setIfUnlocked (params::lfoDivision,
                                static_cast<float> (random.nextInt (params::numDivisions)));
 
             if (getSampleForLayer (1) != nullptr && getSampleForLayer (1)->isValid())
-                setParameterValue (params::layerBlend, juce::jmap (random.nextFloat(), 0.0f, 0.8f));
+                setIfUnlocked (params::layerBlend, juce::jmap (random.nextFloat(), 0.0f, 0.8f));
         }
 
         enforceTierLimits();

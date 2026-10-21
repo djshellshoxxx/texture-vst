@@ -162,6 +162,10 @@ set(TEXTURE_SOURCES
     Source/IO/OfflineRenderTimeline.h
     Source/IO/OfflinePatchMath.h
 
+    Source/Presets/LockPolicy.cpp
+    Source/Presets/LockPolicy.h
+    Source/Presets/MutationPlanner.cpp
+    Source/Presets/MutationPlanner.h
     Source/Presets/PresetManager.cpp
     Source/Presets/PresetManager.h
     Source/Presets/PresetBrowser.cpp

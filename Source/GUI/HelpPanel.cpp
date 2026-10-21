@@ -41,7 +41,7 @@ namespace texture
         text.add ("");
 
         text.add ("=== THE WORKFLOW ===");
-        text.add ("TEXTURE is deliberately small. There is no filter, no arpeggiator and no");
+        text.add ("TEXTURE is deliberately small. There is no arpeggiator and no");
         text.add ("modulation matrix. The intended loop is: find a sample, set MORPH, shape");
         text.add ("the envelope, play. If a sound is not working, change the sample rather");
         text.add ("than hunting for a control. Dropping a new file swaps it instantly and");
@@ -66,7 +66,7 @@ namespace texture
         text.add ("                 defaults first, so results never drift.");
         text.add ("  Reset          Every control back to its default value.");
         text.add ("  Help           This page.");
-        text.add ("  Gear           Settings: licence, folders, preferences, about.");
+        text.add ("  Gear           Settings: licence, folders, preferences, play, about.");
         text.add ("                 Preferences also includes Reduce interface motion.");
         text.add ("  FREE / PRO     Your licence tier. Click to open the licence panel.");
         text.add ("");
@@ -130,6 +130,17 @@ namespace texture
         text.add ("");
         text.add ("LAYER 2 (Pro)");
         text.add ("  A second sample slot blended with the first. Both share one MORPH.");
+        text.add ("");
+
+        text.add ("=== PLAY (Gear > Play) ===");
+        text.add ("VOICE MODE  Poly plays every note on its own voice. Mono Retrigger uses one");
+        text.add ("            voice and restarts it on each note. Mono Legato lets overlapping");
+        text.add ("            notes glide instead of retriggering. NOTE PRIORITY picks which");
+        text.add ("            held note mono modes play: last, high or low.");
+        text.add ("GLIDE       Pitch slide time, 0 to 2000 ms, used by Mono Legato.");
+        text.add ("TONE        Tone filter on/off, with high-pass (20 Hz to 2 kHz) and");
+        text.add ("            low-pass (1 to 20 kHz) on the output. Off is fully transparent.");
+        text.add ("WIDTH       Stereo width: 0% mono, 100% unchanged, 200% widest.");
         text.add ("");
 
         text.add ("=== RIGHT-CLICK ON ANY CONTROL ===");

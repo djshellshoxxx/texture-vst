@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "Presets/LockPolicy.h"
+#include "Presets/MutationPlanner.h"
 #include "Effects/EffectsChain.h"
 #include "Engine/GranularEngine.h"
 #include "IO/FactoryContent.h"
@@ -190,6 +192,15 @@ namespace texture
 
         /** Randomises every parameter into a musically sensible range. */
         void randomiseParameters();
+
+        /** Gentle Mutate (F03): nudges every unlocked continuous control by a small,
+            bounded, seeded step. One undo step. `amount` 0..1. */
+        void mutateParameters (float amount);
+
+        /** Parameter-group locks (F02). Session state; they constrain Randomise and
+            Mutate only, never host automation or state restore. */
+        LockSet& getLocks() noexcept { return locks; }
+        const LockSet& getLocks() const noexcept { return locks; }
 
         /** Deletes preferences, mappings, license and cached presets. Destructive. */
         void hardResetAllSettings();
@@ -383,6 +394,7 @@ namespace texture
         std::atomic<float>* reverseParameter { nullptr };
         std::atomic<float>* shimmerParameter { nullptr };
         std::atomic<float>* randomModeParameter { nullptr };
+        LockSet locks;
         std::atomic<float>* voiceModeParameter { nullptr };
         std::atomic<float>* notePriorityParameter { nullptr };
         std::atomic<float>* glideParameter { nullptr };
