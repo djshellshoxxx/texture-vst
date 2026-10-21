@@ -4,6 +4,8 @@
 #include "Reverb.h"
 #include "Saturator.h"
 #include "SecretEffect.h"
+#include "StereoWidth.h"
+#include "ToneFilter.h"
 
 #include "../Utility/DspHelpers.h"
 #include "../Utility/ParameterIDs.h"
@@ -32,6 +34,16 @@ namespace texture
 
         void setReverbEnabled (bool shouldBeEnabled) noexcept { reverb.setEnabled (shouldBeEnabled); }
         bool isReverbEnabled() const noexcept { return reverb.isEnabled(); }
+
+        /** Tone (HP/LP, before the saturator) and stereo width (after GRIT). Both are
+            transparent at their defaults, so legacy sounds are unchanged. */
+        void setToneFilter (bool enabled, float highPassHz, float lowPassHz) noexcept
+        {
+            tone.setHighPassHz (highPassHz);
+            tone.setLowPassHz (lowPassHz);
+            tone.setEnabled (enabled);
+        }
+        void setStereoWidth (float width) noexcept { stereoWidth.setWidth (width); }
 
         /** Output gain in decibels; smoothed over 30 ms internally. */
         void setOutputGainDb (float db) noexcept;
@@ -64,6 +76,8 @@ namespace texture
         static constexpr float highShelfQ = 0.707f;
         static constexpr int maxSupportedChannels = 2;
 
+        ToneFilter tone;
+        StereoWidth stereoWidth;
         Saturator saturator;
         Chorus chorus;
         Reverb reverb;

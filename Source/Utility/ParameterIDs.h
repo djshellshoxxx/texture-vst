@@ -28,13 +28,22 @@ namespace texture::params
     inline constexpr const char* reverse     = "reverse";
     inline constexpr const char* shimmer     = "shimmer";
     inline constexpr const char* randomMode  = "random_mode";
+    inline constexpr const char* voiceMode   = "voice_mode";
+    inline constexpr const char* notePriority = "note_priority";
+    inline constexpr const char* glideMs     = "glide_ms";
+    inline constexpr const char* toneFilterOn = "tone_filter_on";
+    inline constexpr const char* toneHpHz    = "tone_hp_hz";
+    inline constexpr const char* toneLpHz    = "tone_lp_hz";
+    inline constexpr const char* spaceWidth  = "space_width";
 
     /** Every ID in preset/serialisation order. */
     inline constexpr const char* allIDs[] = {
         morph, attack, decay, sustain, release,
         reverbOn, gainDb, lfoRate, lfoDepth, lfoSync, lfoDivision, layerBlend,
         tune, reverse, shimmer, randomMode,
-        layer1Root, layer2Root, layer1FineCents, layer2FineCents
+        layer1Root, layer2Root, layer1FineCents, layer2FineCents,
+        voiceMode, notePriority, glideMs,
+        toneFilterOn, toneHpHz, toneLpHz, spaceWidth
     };
 
     inline constexpr int numParameters = static_cast<int> (std::size (allIDs));
@@ -58,6 +67,14 @@ namespace texture::params
     inline constexpr float sourceRootMinMidi = 0.0f, sourceRootMaxMidi = 127.0f, sourceRootDefaultMidi = 60.0f;
     inline constexpr float sourceFineMinCents = -100.0f, sourceFineMaxCents = 100.0f, sourceFineDefaultCents = 0.0f;
     inline constexpr int randomModeDefault = 0; // Legacy preserves the original random stream.
+    // F11: Poly (legacy), Mono retrigger, Mono legato; priority Last/High/Low.
+    inline constexpr int voiceModeDefault = 0, notePriorityDefault = 0;
+    inline constexpr float glideMinMs = 0.0f, glideMaxMs = 2000.0f, glideDefaultMs = 0.0f;
+    // F07 (subset): HP/LP tone filter and stereo width; transparent at defaults.
+    inline constexpr bool  toneFilterOnDefault = false;
+    inline constexpr float toneHpMinHz = 20.0f,   toneHpMaxHz = 2000.0f,   toneHpDefaultHz = 20.0f;
+    inline constexpr float toneLpMinHz = 1000.0f, toneLpMaxHz = 20000.0f,  toneLpDefaultHz = 20000.0f;
+    inline constexpr float widthMin = 0.0f, widthMax = 2.0f, widthDefault = 1.0f;
     inline constexpr float reverseMin = 0.0f,    reverseMax = 1.0f,      reverseDefault = 0.0f;
     inline constexpr float shimmerMin = 0.0f,    shimmerMax = 1.0f,      shimmerDefault = 0.0f;
 

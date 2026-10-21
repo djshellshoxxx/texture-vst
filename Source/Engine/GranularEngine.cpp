@@ -28,6 +28,7 @@ namespace texture
         for (auto& voice : voices)
             voice.prepare (preparedSampleRate);
 
+        glide.prepare (preparedSampleRate);
         reset();
     }
 
@@ -43,6 +44,9 @@ namespace texture
             voice.hardStop();
 
         sustainPedalsDown.fill (false);
+        monoStack.clear();
+        monoVoiceIndex = -1;
+        monoNote = -1;
         pitchBendRatio = 1.0f;
         noteCounter = 0;
         evolutionCounter = 0;
@@ -97,17 +101,14 @@ namespace texture
         return victim;
     }
 
-    void GranularEngine::noteOn (int midiChannel, int midiNote, float velocity, bool auditionOwned)
+    int GranularEngine::startVoice (int midiChannel, int midiNote, float velocity, bool auditionOwned) noexcept
     {
-        if (midiChannel < 1 || midiChannel > 16 || midiNote < 0 || midiNote > 127)
-            return;
-
         // Re-triggering a sounding note allocates a new voice so chord repeats do not
         // cut the previous note (14_MIDI_SPEC.md).
         const auto index = findVoiceToUse (midiNote, auditionOwned);
 
         if (index < 0)
-            return;
+            return -1;
         auto& voice = voices[static_cast<size_t> (index)];
 
         voice.hardStop();
@@ -117,12 +118,105 @@ namespace texture
                          sampleStart.load (std::memory_order_relaxed), auditionOwned,
                          randomMode, randomSeed, ++evolutionCounter,
                          sourceRootMidiNote, sourceFineCents);
+        return index;
+    }
+
+    void GranularEngine::noteOn (int midiChannel, int midiNote, float velocity, bool auditionOwned)
+    {
+        if (midiChannel < 1 || midiChannel > 16 || midiNote < 0 || midiNote > 127)
+            return;
+
+        if (voiceMode == VoiceMode::poly || auditionOwned)
+        {
+            startVoice (midiChannel, midiNote, velocity, auditionOwned);
+            return;
+        }
+
+        monoStack.noteOn (midiChannel, midiNote, juce::jlimit (1, 127, juce::roundToInt (velocity * 127.0f)));
+        applyMonoSelection();
+    }
+
+    bool GranularEngine::monoVoiceIsLive() const noexcept
+    {
+        if (monoVoiceIndex < 0)
+            return false;
+        const auto& voice = voices[static_cast<size_t> (monoVoiceIndex)];
+        return voice.isActive() && voice.getNoteStamp() == monoVoiceStamp && ! voice.isReleasing();
+    }
+
+    void GranularEngine::releaseMonoVoice() noexcept
+    {
+        if (monoVoiceIndex >= 0)
+        {
+            auto& voice = voices[static_cast<size_t> (monoVoiceIndex)];
+            if (voice.isActive() && voice.getNoteStamp() == monoVoiceStamp)
+                voice.stopNote();
+        }
+        monoVoiceIndex = -1;
+        monoNote = -1;
+    }
+
+    void GranularEngine::applyMonoSelection() noexcept
+    {
+        const auto selected = monoStack.select (monoPriority);
+
+        if (! selected.has_value())
+        {
+            releaseMonoVoice();
+            return;
+        }
+
+        const auto live = monoVoiceIsLive();
+        if (live && selected->note == monoNote)
+            return;
+
+        if (live && voiceMode == VoiceMode::monoLegato)
+        {
+            // Overlap: keep envelope and grains, move the pitch (gliding if asked).
+            auto& voice = voices[static_cast<size_t> (monoVoiceIndex)];
+            voice.changeNote (selected->note);
+            glide.setTarget (static_cast<float> (selected->note), glideMs);
+            voice.setGlideOffsetSemitones (glide.value() - static_cast<float> (selected->note));
+            monoNote = selected->note;
+            return;
+        }
+
+        releaseMonoVoice();
+        const auto index = startVoice (selected->channel, selected->note,
+                                       static_cast<float> (selected->velocity) / 127.0f, false);
+        if (index < 0)
+            return;
+        monoVoiceIndex = index;
+        monoVoiceStamp = voices[static_cast<size_t> (index)].getNoteStamp();
+        monoNote = selected->note;
+        glide.setImmediate (static_cast<float> (selected->note));
+    }
+
+    void GranularEngine::setVoiceMode (VoiceMode mode, MonoNoteStack::Priority priority, float newGlideMs) noexcept
+    {
+        monoPriority = priority;
+        glideMs = juce::jlimit (0.0f, 2000.0f, newGlideMs);
+
+        if (mode == voiceMode)
+            return;
+
+        // Leaving or entering mono: let the old owner release, start from a clean stack.
+        releaseMonoVoice();
+        monoStack.clear();
+        voiceMode = mode;
     }
 
     void GranularEngine::noteOff (int midiChannel, int midiNote, bool auditionOwned)
     {
         if (midiChannel < 1 || midiChannel > 16 || midiNote < 0 || midiNote > 127)
             return;
+
+        if (voiceMode != VoiceMode::poly && ! auditionOwned)
+        {
+            monoStack.noteOff (midiChannel, midiNote);
+            applyMonoSelection();
+            return;
+        }
 
         Voice* oldestMatching = nullptr;
         auto oldestStamp = std::numeric_limits<juce::int64>::max();
@@ -159,6 +253,12 @@ namespace texture
         auto& pedalDown = sustainPedalsDown[static_cast<size_t> (midiChannel - 1)];
         pedalDown = isDown;
 
+        if (voiceMode != VoiceMode::poly)
+        {
+            monoStack.setSustain (isDown);
+            applyMonoSelection();
+        }
+
         if (isDown)
             return;
 
@@ -186,6 +286,9 @@ namespace texture
     void GranularEngine::allNotesOff()
     {
         sustainPedalsDown.fill (false);
+        monoStack.clear();
+        monoVoiceIndex = -1;
+        monoNote = -1;
 
         for (auto& voice : voices)
             voice.hardStop();
@@ -199,6 +302,9 @@ namespace texture
             return;
 
         sustainPedalsDown[static_cast<size_t> (midiChannel - 1)] = false;
+        monoStack.clear();
+        monoVoiceIndex = -1;
+        monoNote = -1;
 
         for (auto& voice : voices)
             if (voice.isActive() && voice.getMidiChannel() == midiChannel)
@@ -263,6 +369,14 @@ namespace texture
         int rendered = 0;
         float newestPosition = displayReadPosition.load (std::memory_order_relaxed);
         juce::int64 newestStamp = -1;
+
+        if (monoVoiceIsLive() && glide.isGliding())
+        {
+            voices[static_cast<size_t> (monoVoiceIndex)].setGlideOffsetSemitones (
+                glide.value() - static_cast<float> (monoNote));
+            for (int i = 0; i < numSamples; ++i)
+                glide.next();
+        }
 
         for (auto& voice : voices)
         {

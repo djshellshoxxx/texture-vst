@@ -34,6 +34,7 @@ Ships as **VST3**, **AU** (macOS), **CLAP** (optional) and a **standalone** app.
 | **MORPH** | One knob driving grain count, length, overlap, position jitter, detune, stereo spread, reverb send, chorus depth, saturation and a high-shelf lift |
 | **Envelope** | One ADSR per voice, with a long 1.2 s default release |
 | **Grain** | TUNE (±24 semitones), per-layer source root and ±100-cent fine calibration, REVERSE (chance each grain plays backwards), SHIMMER (octave-up grains blended into the cloud) |
+| **Play** | Voice mode Poly, Mono Retrigger or Mono Legato (overlapping notes glide over 0-2 s), note priority Last/High/Low, optional high-pass and low-pass tone filter, stereo width 0-200%. Gear > Play |
 | **Effects** | Saturator → chorus → reverb → high shelf → DC blocker → output gain, fixed order |
 | **Undo** | Ctrl/Cmd+Z undoes any control change, randomise, reset, preset load or A/B recall; Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y redoes |
 | **Input** | Drag and drop WAV, AIFF, FLAC, MP3, OGG, or a `.texture` preset |

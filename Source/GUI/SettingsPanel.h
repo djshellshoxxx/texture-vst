@@ -10,7 +10,7 @@ namespace texture
 
     /** The overlay that slides in from the right (09_GUI_SPEC.md).
 
-        Three tabs: the licence, preferences, and an about page. The hidden debug
+        Four tabs: the licence, preferences, play (voicing and tone) and an about page. The hidden debug
         view is not a tab here - it is a separate window opened from Help or by
         shift-clicking the gear (19_DEBUGGING.md).
     */
@@ -18,7 +18,7 @@ namespace texture
                           private juce::Timer
     {
     public:
-        enum class Tab { license, preferences, about };
+        enum class Tab { license, preferences, play, about };
 
         explicit SettingsPanel (TextureAudioProcessor& processor);
         ~SettingsPanel() override;
@@ -67,6 +67,7 @@ namespace texture
         // Tab bar
         juce::TextButton licenseTabButton { "Licence" };
         juce::TextButton preferencesTabButton { "Preferences" };
+        juce::TextButton playTabButton { "Play" };
         juce::TextButton aboutTabButton { "About" };
         juce::TextButton closeButton { "Close" };
         Tab currentTab { Tab::license };
@@ -107,6 +108,21 @@ namespace texture
 
         void refreshRandomSeedField();
         void commitRandomSeedField();
+
+        // Play tab: how notes are voiced and what the output sounds like
+        juce::Label voiceModeLabel { {}, "Voice mode" };
+        std::unique_ptr<ParameterChoiceBox> voiceModeBox;
+        juce::Label notePriorityLabel { {}, "Note priority" };
+        std::unique_ptr<ParameterChoiceBox> notePriorityBox;
+        juce::Label glideLabel { {}, "Glide" };
+        std::unique_ptr<ParameterSlider> glideSlider;
+        std::unique_ptr<ParameterToggle> toneFilterToggle;
+        juce::Label highPassLabel { {}, "High-pass" };
+        std::unique_ptr<ParameterSlider> highPassSlider;
+        juce::Label lowPassLabel { {}, "Low-pass" };
+        std::unique_ptr<ParameterSlider> lowPassSlider;
+        juce::Label stereoWidthLabel { {}, "Stereo width" };
+        std::unique_ptr<ParameterSlider> stereoWidthSlider;
 
         // About tab
         juce::Label aboutText;

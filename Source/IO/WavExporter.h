@@ -36,6 +36,10 @@ namespace texture
             float reverseChance { 0.0f };
             float shimmerAmount { 0.0f };
             int randomMode { 0 };
+            bool toneFilterOn { false };
+            float toneHpHz { 20.0f };
+            float toneLpHz { 20000.0f };
+            float stereoWidth { 1.0f };
             std::uint32_t randomAlgorithmVersion { 1 };
             std::uint64_t randomSeed { 0 };
             float gritBits { 12.0f };

@@ -24,6 +24,13 @@ namespace texture::params
         if (parameterID == reverse)     return "Reverse";
         if (parameterID == shimmer)     return "Shimmer";
         if (parameterID == randomMode)  return "Random Mode";
+        if (parameterID == voiceMode)   return "Voice Mode";
+        if (parameterID == notePriority) return "Note Priority";
+        if (parameterID == glideMs)     return "Glide";
+        if (parameterID == toneFilterOn) return "Tone Filter";
+        if (parameterID == toneHpHz)    return "High Pass";
+        if (parameterID == toneLpHz)    return "Low Pass";
+        if (parameterID == spaceWidth)  return "Stereo Width";
 
         return parameterID;
     }
@@ -48,6 +55,13 @@ namespace texture::params
         if (parameterID == reverse)     return reverseDefault;
         if (parameterID == shimmer)     return shimmerDefault;
         if (parameterID == randomMode)  return randomModeDefault;
+        if (parameterID == voiceMode)   return static_cast<float> (voiceModeDefault);
+        if (parameterID == notePriority) return static_cast<float> (notePriorityDefault);
+        if (parameterID == glideMs)     return glideDefaultMs;
+        if (parameterID == toneFilterOn) return toneFilterOnDefault ? 1.0f : 0.0f;
+        if (parameterID == toneHpHz)    return toneHpDefaultHz;
+        if (parameterID == toneLpHz)    return toneLpDefaultHz;
+        if (parameterID == spaceWidth)  return widthDefault;
 
         return 0.0f;
     }

@@ -15,18 +15,27 @@ find_one() {
     [[ -n "$result" ]] || fail "could not find $name under $root"
     printf '%s\n' "$result"
 }
+# Multi-config generators (MSVC) leave empty skeleton bundles for every
+# configuration; prefer a non-empty Release bundle, then any non-empty one.
 find_bundle() {
-    local root="$1" name="$2" result
-    result="$(find "$root" -type d -name "$name" -print -quit)"
-    [[ -n "$result" ]] || fail "could not find $name under $root"
+    local root="$1" name="$2" result="" candidate
+    while IFS= read -r candidate; do
+        if [[ -n "$(find "$candidate" -type f ! -name desktop.ini ! -name Plugin.ico -print -quit)" ]]; then
+            result="$candidate"
+            break
+        fi
+    done < <(find "$root" -type d -name "$name" -print | awk '/\/Release\// {print "0 " $0; next} {print "1 " $0}' | sort -s -k1,1 | cut -d' ' -f2-)
+    [[ -n "$result" ]] || fail "could not find a non-empty $name under $root"
     printf '%s\n' "$result"
 }
 
 versioned="Texture-v${version}"
 windows_root="$artifact_root/texture-Windows"
 macos_root="$artifact_root/texture-macOS"
+linux_root="$artifact_root/texture-Linux"
 [[ -d "$windows_root" ]] || fail "Windows build artefact is missing"
 [[ -d "$macos_root" ]] || fail "macOS build artefact is missing"
+[[ -d "$linux_root" ]] || fail "Linux build artefact is missing"
 
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
@@ -65,6 +74,24 @@ cp -a "$macos_au" "$stage/macos/Texture.component"
 (cd "$stage/windows" && zip -q -9 -y -r "$out/${versioned}-Windows-x64-VST3.zip" Texture.vst3 README.txt LICENSE.txt)
 (cd "$stage/macos" && zip -q -9 -y -r "$out/${versioned}-macOS-universal-VST3.zip" Texture.vst3 README.txt LICENSE.txt)
 (cd "$stage/macos" && zip -q -9 -y -r "$out/${versioned}-macOS-universal-AU.zip" Texture.component README.txt LICENSE.txt)
+
+# Linux: standalone ELF binary (inside Standalone/) and the VST3 bundle.
+linux_app="$(find "$linux_root" -type f -name Texture -path '*Standalone*' -print -quit)"
+[[ -n "$linux_app" ]] || fail "could not find Linux standalone under $linux_root"
+linux_vst3="$(find_bundle "$linux_root" Texture.vst3)"
+mkdir -p "$stage/linux"
+cp "$linux_app" "$stage/linux/Texture"
+chmod +x "$stage/linux/Texture"
+cp -a "$linux_vst3" "$stage/linux/Texture.vst3"
+cp LICENSE "$stage/linux/LICENSE.txt"
+cat > "$stage/linux/README.txt" <<'TXT'
+TEXTURE for 64-bit Linux (built on Ubuntu, x86_64).
+Standalone: chmod +x Texture && ./Texture
+VST3: copy Texture.vst3 to ~/.vst3/
+Needs ALSA/JACK, X11, freetype and fontconfig. This beta build is unsigned.
+TXT
+(cd "$stage/linux" && tar -czf "$out/${versioned}-Linux-x64-Standalone.tar.gz" Texture README.txt LICENSE.txt)
+(cd "$stage/linux" && tar -czf "$out/${versioned}-Linux-x64-VST3.tar.gz" Texture.vst3 README.txt LICENSE.txt)
 
 (cd "$out" && sha256sum "${versioned}"-* > SHA256SUMS.txt)
 find "$out" -maxdepth 1 -type f -printf '%f %s bytes\n' | sort

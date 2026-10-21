@@ -45,6 +45,7 @@ namespace texture::tests
             testProducesAudio();
             testGrainCountScalesWithMorph();
             testVoiceStealing();
+            testMonoModes();
             testNoteOffEntersRelease();
             testPitchBend();
             testTuneShiftsPitch();
@@ -139,6 +140,47 @@ namespace texture::tests
 
                 previous = targets.grainsPerVoice;
             }
+        }
+
+        void testMonoModes()
+        {
+            beginTest ("mono modes sound one voice, fall back to held notes and glide cleanly");
+
+            const auto sample = makeTestSample();
+            const auto targets = deriveMorphTargets (0.3f);
+
+            for (const auto mode : { GranularEngine::VoiceMode::monoRetrigger,
+                                     GranularEngine::VoiceMode::monoLegato })
+            {
+                GranularEngine engine;
+                engine.prepare (testRate, blockSize);
+                engine.setAdsrParameters (5.0f, 50.0f, 0.8f, 20.0f);
+                engine.setVoiceMode (mode, MonoNoteStack::Priority::last, 100.0f);
+
+                engine.noteOn (1, 60, 1.0f);
+                engine.noteOn (1, 64, 1.0f);
+                engine.noteOn (1, 67, 1.0f);
+                expect (renderAndMeasure (engine, sample, targets, 4) > 0.0f);
+                // Retrigger releases the previous voice while it fades; wait it out.
+                renderAndMeasure (engine, sample, targets, 400);
+                expectEquals (engine.getActiveVoiceCount(), 1, "a held chord must sound as one note");
+
+                engine.noteOff (1, 67);   // falls back to E
+                renderAndMeasure (engine, sample, targets, 400);
+                expectEquals (engine.getActiveVoiceCount(), 1, "fallback to a still-held key");
+
+                engine.noteOff (1, 64);
+                engine.noteOff (1, 60);
+                renderAndMeasure (engine, sample, targets, 600);
+                expectEquals (engine.getActiveVoiceCount(), 0, "all keys up must release the voice");
+            }
+
+            GranularEngine poly;
+            poly.prepare (testRate, blockSize);
+            poly.noteOn (1, 60, 1.0f);
+            poly.noteOn (1, 64, 1.0f);
+            renderAndMeasure (poly, sample, targets, 2);
+            expectEquals (poly.getActiveVoiceCount(), 2, "poly mode keeps every note");
         }
 
         void testVoiceStealing()

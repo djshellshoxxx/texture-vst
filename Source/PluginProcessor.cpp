@@ -206,6 +206,49 @@ namespace texture
             juce::ParameterID { params::randomMode, 1 }, params::displayNameFor (params::randomMode),
             juce::StringArray { "Legacy", "Repeat", "Evolve" }, params::randomModeDefault));
 
+        layout.add (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { params::voiceMode, 1 }, params::displayNameFor (params::voiceMode),
+            juce::StringArray { "Poly", "Mono Retrigger", "Mono Legato" }, params::voiceModeDefault));
+
+        layout.add (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { params::notePriority, 1 }, params::displayNameFor (params::notePriority),
+            juce::StringArray { "Last", "High", "Low" }, params::notePriorityDefault));
+
+        const auto hzFormatter = [] (float value, int)
+        {
+            return value >= 1000.0f ? juce::String (value / 1000.0f, 2) + " kHz"
+                                    : juce::String (juce::roundToInt (value)) + " Hz";
+        };
+
+        layout.add (std::make_unique<juce::AudioParameterBool> (
+            juce::ParameterID { params::toneFilterOn, 1 }, params::displayNameFor (params::toneFilterOn),
+            params::toneFilterOnDefault));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::toneHpHz, 1 }, params::displayNameFor (params::toneHpHz),
+            juce::NormalisableRange<float> { params::toneHpMinHz, params::toneHpMaxHz, 0.0f, 0.3f },
+            params::toneHpDefaultHz,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (hzFormatter)));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::toneLpHz, 1 }, params::displayNameFor (params::toneLpHz),
+            juce::NormalisableRange<float> { params::toneLpMinHz, params::toneLpMaxHz, 0.0f, 0.3f },
+            params::toneLpDefaultHz,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (hzFormatter)));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::spaceWidth, 1 }, params::displayNameFor (params::spaceWidth),
+            Range { params::widthMin, params::widthMax, 0.01f }, params::widthDefault,
+            juce::AudioParameterFloatAttributes()
+                .withStringFromValueFunction ([] (float value, int) { return juce::String (juce::roundToInt (value * 100.0f)) + "%"; })));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::glideMs, 1 }, params::displayNameFor (params::glideMs),
+            juce::NormalisableRange<float> { params::glideMinMs, params::glideMaxMs, 0.0f, 0.4f },
+            params::glideDefaultMs,
+            juce::AudioParameterFloatAttributes()
+                .withStringFromValueFunction ([] (float value, int) { return juce::String (juce::roundToInt (value)) + " ms"; })));
+
         return layout;
     }
 
@@ -344,6 +387,13 @@ namespace texture
         reverseParameter     = apvts.getRawParameterValue (params::reverse);
         shimmerParameter     = apvts.getRawParameterValue (params::shimmer);
         randomModeParameter  = apvts.getRawParameterValue (params::randomMode);
+        voiceModeParameter   = apvts.getRawParameterValue (params::voiceMode);
+        notePriorityParameter = apvts.getRawParameterValue (params::notePriority);
+        glideParameter       = apvts.getRawParameterValue (params::glideMs);
+        toneFilterOnParameter = apvts.getRawParameterValue (params::toneFilterOn);
+        toneHpParameter      = apvts.getRawParameterValue (params::toneHpHz);
+        toneLpParameter      = apvts.getRawParameterValue (params::toneLpHz);
+        widthParameter       = apvts.getRawParameterValue (params::spaceWidth);
     }
 
     const juce::String TextureAudioProcessor::getName() const
@@ -525,12 +575,19 @@ namespace texture
                                            * UINT64_C (0x9E3779B97F4A7C15));
             engines[i].setRandomConfig (randomMode, layerSeed);
             engines[i].setAdsrParameters (attack, decay, sustain, release);
+            engines[i].setVoiceMode (voiceModeFrom (voiceModeParameter),
+                                     priorityFrom (notePriorityParameter),
+                                     glideParameter != nullptr ? glideParameter->load() : 0.0f);
         }
 
         effects.setMorphTargets (currentTargets);
         effects.getSecretEffect().setBitDepth (secretBitDepth.load (std::memory_order_relaxed));
         effects.getSecretEffect().setDownsample (secretDownsample.load (std::memory_order_relaxed));
         effects.getSecretEffect().setMix (secretMix.load (std::memory_order_relaxed));
+        effects.setToneFilter (toneFilterOnParameter != nullptr && toneFilterOnParameter->load() > 0.5f,
+                               toneHpParameter != nullptr ? toneHpParameter->load() : params::toneHpDefaultHz,
+                               toneLpParameter != nullptr ? toneLpParameter->load() : params::toneLpDefaultHz);
+        effects.setStereoWidth (widthParameter != nullptr ? widthParameter->load() : params::widthDefault);
         effects.setReverbEnabled (reverbOnParameter == nullptr || reverbOnParameter->load() > 0.5f);
         effects.setOutputGainDb (gainParameter != nullptr ? gainParameter->load() : params::gainDefaultDb);
 
@@ -1354,48 +1411,77 @@ namespace texture
         postToast ("All controls reset to defaults.", SampleLoader::Severity::info);
     }
 
+    void TextureAudioProcessor::mutateParameters (float amount)
+    {
+        std::map<juce::String, float> current;
+        for (const auto* id : params::allIDs)
+            current[id] = getParameterValue (id, params::defaultValueFor (id));
+
+        const auto seed = static_cast<std::uint64_t> (juce::Random::getSystemRandom().nextInt64())
+                        ^ static_cast<std::uint64_t> (juce::Time::getHighResolutionTicks());
+        undoManager.beginNewTransaction();
+        for (const auto& change : planMutation (current, locks, amount, seed))
+            setParameterValue (change.id, change.value);
+
+        enforceTierLimits();
+        markPresetDirty();
+        postToast ("Mutated the sound slightly.", SampleLoader::Severity::info);
+    }
+
     void TextureAudioProcessor::randomiseParameters()
     {
         undoManager.beginNewTransaction();
         auto& random = juce::Random::getSystemRandom();
+        const auto setIfUnlocked = [this] (const char* id, float value)
+        {
+            if (! locks.isLocked (id))
+                setParameterValue (id, value);
+        };
 
         // Start sound-design parameters from defaults so results do not drift.
         // TUNE calibrates the source sample and must survive randomisation.
         for (const auto* id : params::allIDs)
-            if (juce::String (id) != params::tune
+            if (! locks.isLocked (id) && juce::String (id) != params::tune
                 && juce::String (id) != params::layer1Root
                 && juce::String (id) != params::layer2Root
                 && juce::String (id) != params::layer1FineCents
-                && juce::String (id) != params::layer2FineCents)
+                && juce::String (id) != params::layer2FineCents
+                && juce::String (id) != params::voiceMode
+                && juce::String (id) != params::notePriority
+                && juce::String (id) != params::glideMs
+                && juce::String (id) != params::toneFilterOn
+                && juce::String (id) != params::toneHpHz
+                && juce::String (id) != params::toneLpHz
+                && juce::String (id) != params::spaceWidth)
                 setParameterValue (id, params::defaultValueFor (id));
 
-        setParameterValue (params::morph, random.nextFloat());
-        setParameterValue (params::attack, juce::jmap (random.nextFloat(), 5.0f, 2500.0f));
-        setParameterValue (params::decay, juce::jmap (random.nextFloat(), 50.0f, 3000.0f));
-        setParameterValue (params::sustain, juce::jmap (random.nextFloat(), 0.35f, 1.0f));
-        setParameterValue (params::release, juce::jmap (random.nextFloat(), 200.0f, 6000.0f));
-        setParameterValue (params::reverbOn, random.nextFloat() < 0.85f ? 1.0f : 0.0f);
-        setParameterValue (params::gainDb, juce::jmap (random.nextFloat(), -8.0f, 0.0f));
+        setIfUnlocked (params::morph, random.nextFloat());
+        setIfUnlocked (params::attack, juce::jmap (random.nextFloat(), 5.0f, 2500.0f));
+        setIfUnlocked (params::decay, juce::jmap (random.nextFloat(), 50.0f, 3000.0f));
+        setIfUnlocked (params::sustain, juce::jmap (random.nextFloat(), 0.35f, 1.0f));
+        setIfUnlocked (params::release, juce::jmap (random.nextFloat(), 200.0f, 6000.0f));
+        setIfUnlocked (params::reverbOn, random.nextFloat() < 0.85f ? 1.0f : 0.0f);
+        setIfUnlocked (params::gainDb, juce::jmap (random.nextFloat(), -8.0f, 0.0f));
 
         // Tune stays put: it describes the sample, not the sound. The two grain
         // effects are applied sparingly so most rolls still sound like the sample.
         if (random.nextFloat() < 0.35f)
-            setParameterValue (params::reverse, juce::jmap (random.nextFloat(), 0.1f, 0.6f));
+            setIfUnlocked (params::reverse, juce::jmap (random.nextFloat(), 0.1f, 0.6f));
 
         if (random.nextFloat() < 0.35f)
-            setParameterValue (params::shimmer, juce::jmap (random.nextFloat(), 0.1f, 0.7f));
+            setIfUnlocked (params::shimmer, juce::jmap (random.nextFloat(), 0.1f, 0.7f));
 
         if (licenseManager.isPro())
         {
-            setParameterValue (params::lfoRate, juce::jmap (random.nextFloat(), 0.05f, 1.5f));
-            setParameterValue (params::lfoDepth, random.nextFloat() < 0.5f ? 0.0f
+            setIfUnlocked (params::lfoRate, juce::jmap (random.nextFloat(), 0.05f, 1.5f));
+            setIfUnlocked (params::lfoDepth, random.nextFloat() < 0.5f ? 0.0f
                                                                           : juce::jmap (random.nextFloat(), 0.1f, 0.7f));
-            setParameterValue (params::lfoSync, random.nextFloat() < 0.3f ? 1.0f : 0.0f);
-            setParameterValue (params::lfoDivision,
+            setIfUnlocked (params::lfoSync, random.nextFloat() < 0.3f ? 1.0f : 0.0f);
+            setIfUnlocked (params::lfoDivision,
                                static_cast<float> (random.nextInt (params::numDivisions)));
 
             if (getSampleForLayer (1) != nullptr && getSampleForLayer (1)->isValid())
-                setParameterValue (params::layerBlend, juce::jmap (random.nextFloat(), 0.0f, 0.8f));
+                setIfUnlocked (params::layerBlend, juce::jmap (random.nextFloat(), 0.0f, 0.8f));
         }
 
         enforceTierLimits();
@@ -1523,6 +1609,10 @@ namespace texture
         settings.sustain = getParameterValue (params::sustain, params::sustainDefault);
         settings.releaseMs = getParameterValue (params::release, params::releaseDefaultMs);
         settings.reverbOn = getParameterValue (params::reverbOn, 1.0f) > 0.5f;
+        settings.toneFilterOn = getParameterValue (params::toneFilterOn, 0.0f) > 0.5f;
+        settings.toneHpHz = getParameterValue (params::toneHpHz, params::toneHpDefaultHz);
+        settings.toneLpHz = getParameterValue (params::toneLpHz, params::toneLpDefaultHz);
+        settings.stereoWidth = getParameterValue (params::spaceWidth, params::widthDefault);
         settings.gainDb = getParameterValue (params::gainDb, params::gainDefaultDb);
         settings.lfoRateHz = morphLfo.getEffectiveRateHz();
         settings.lfoDepth = licenseManager.isPro()

@@ -2,7 +2,7 @@
 
 26 feature specifications plus shared contracts and delivery guidance. Created 2026-10-20 from repository review at `38d9aec4556fc3b6594fe53888ea15d36698e43e`.
 
-**Status: F01, F04 core, and F12 are implemented in the current development branch.** Their automated checks are included in the test suite; manual DAW and standalone validation remains in `../MANUAL_TEST_PLAN.md`. F04's optional layer-linking preference and note-detection worker remain deferred. The other 23 specifications remain proposals. F24 is explicitly research-gated; implementation must satisfy its prototype criteria before product integration.
+**Status: F01, F04 core, F12, F11, F02, F03 and part of F07 are implemented (see IMPLEMENTATION_STATUS.md).** Their automated checks are included in the test suite; manual DAW and standalone validation remains in `../MANUAL_TEST_PLAN.md`. F04's optional layer-linking preference and note-detection worker remain deferred. The other 23 specifications remain proposals. F24 is explicitly research-gated; implementation must satisfy its prototype criteria before product integration.
 
 ## Start here
 1. Read [Shared contracts](00_SHARED_CONTRACTS.md) for parameter precedence, backward compatibility, bounded DSP, state ownership and release gates.

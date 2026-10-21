@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Texture VERSION 0.0.1 LANGUAGES C CXX)
+project(Texture VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -124,6 +124,9 @@ set(TEXTURE_SOURCES
 
     Source/Engine/GranularEngine.cpp
     Source/Engine/GranularEngine.h
+    Source/Engine/MonoNoteStack.cpp
+    Source/Engine/MonoNoteStack.h
+    Source/Engine/GlideEnvelope.h
     Source/Engine/Grain.cpp
     Source/Engine/Grain.h
     Source/Engine/SampleBuffer.cpp
@@ -131,6 +134,9 @@ set(TEXTURE_SOURCES
     Source/Engine/Voice.cpp
     Source/Engine/Voice.h
 
+    Source/Effects/ToneFilter.cpp
+    Source/Effects/ToneFilter.h
+    Source/Effects/StereoWidth.h
     Source/Effects/Chorus.cpp
     Source/Effects/Chorus.h
     Source/Effects/EffectsChain.cpp
@@ -156,6 +162,10 @@ set(TEXTURE_SOURCES
     Source/IO/OfflineRenderTimeline.h
     Source/IO/OfflinePatchMath.h
 
+    Source/Presets/LockPolicy.cpp
+    Source/Presets/LockPolicy.h
+    Source/Presets/MutationPlanner.cpp
+    Source/Presets/MutationPlanner.h
     Source/Presets/PresetManager.cpp
     Source/Presets/PresetManager.h
     Source/Presets/PresetBrowser.cpp

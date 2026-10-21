@@ -1,6 +1,8 @@
 #pragma once
 
 #include "Voice.h"
+#include "GlideEnvelope.h"
+#include "MonoNoteStack.h"
 #include "../Utility/VersionedRandomStreams.h"
 
 #include <algorithm>
@@ -47,6 +49,13 @@ namespace texture
         void allNotesOff (int midiChannel);
         void allSoundOff();
         void allSoundOff (int midiChannel);
+
+        // --- Mono / legato / glide (F11) -------------------------------------
+        enum class VoiceMode { poly = 0, monoRetrigger = 1, monoLegato = 2 };
+
+        /** Poly keeps the legacy behaviour and ignores priority and glide. Changing
+            mode releases mono-owned notes and rebuilds nothing from stale state. */
+        void setVoiceMode (VoiceMode mode, MonoNoteStack::Priority priority, float glideMs) noexcept;
 
         // --- Per-block parameters -------------------------------------------
         void setAdsrParameters (float attackMs, float decayMs, float sustainLevel, float releaseMs);
@@ -99,6 +108,19 @@ namespace texture
 
     private:
         int findVoiceToUse (int midiNote, bool auditionOwned) noexcept;
+        int startVoice (int midiChannel, int midiNote, float velocity, bool auditionOwned) noexcept;
+        void applyMonoSelection() noexcept;
+        bool monoVoiceIsLive() const noexcept;
+        void releaseMonoVoice() noexcept;
+
+        VoiceMode voiceMode { VoiceMode::poly };
+        MonoNoteStack::Priority monoPriority { MonoNoteStack::Priority::last };
+        float glideMs { 0.0f };
+        MonoNoteStack monoStack;
+        GlideEnvelope glide;
+        int monoVoiceIndex { -1 };
+        juce::int64 monoVoiceStamp { -1 };
+        int monoNote { -1 };
 
         std::array<Voice, maxVoices> voices {};
         juce::AudioBuffer<float> scratch;

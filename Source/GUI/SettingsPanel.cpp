@@ -54,7 +54,7 @@ namespace texture
         setVisible (false);
 
         // --- Tab bar ----------------------------------------------------------
-        for (auto* button : { &licenseTabButton, &preferencesTabButton, &aboutTabButton })
+        for (auto* button : { &licenseTabButton, &preferencesTabButton, &playTabButton, &aboutTabButton })
         {
             button->setClickingTogglesState (false);
             addAndMakeVisible (button);
@@ -62,6 +62,7 @@ namespace texture
 
         licenseTabButton.onClick     = [this] { setTab (Tab::license); };
         preferencesTabButton.onClick = [this] { setTab (Tab::preferences); };
+        playTabButton.onClick        = [this] { setTab (Tab::play); };
         aboutTabButton.onClick       = [this] { setTab (Tab::about); };
 
         closeButton.setTooltip ("Close settings (Esc)");
@@ -274,6 +275,56 @@ namespace texture
         addAndMakeVisible (randomSeedStatus);
         refreshRandomSeedField();
 
+        // --- Play tab ----------------------------------------------------------
+        styleFieldLabel (voiceModeLabel);
+        addAndMakeVisible (voiceModeLabel);
+        voiceModeBox = std::make_unique<ParameterChoiceBox> (
+            processor, params::voiceMode, juce::StringArray { "Poly", "Mono Retrigger", "Mono Legato" },
+            "Poly plays each note on its own voice. Mono Retrigger plays one voice and restarts it "
+            "on every note. Mono Legato: overlapping notes glide instead of retriggering.");
+        addAndMakeVisible (*voiceModeBox);
+
+        styleFieldLabel (notePriorityLabel);
+        addAndMakeVisible (notePriorityLabel);
+        notePriorityBox = std::make_unique<ParameterChoiceBox> (
+            processor, params::notePriority, juce::StringArray { "Last", "High", "Low" },
+            "Which held note the mono modes play when several are down: the last pressed, "
+            "the highest or the lowest. No effect in Poly.");
+        addAndMakeVisible (*notePriorityBox);
+
+        styleFieldLabel (glideLabel);
+        addAndMakeVisible (glideLabel);
+        glideSlider = std::make_unique<ParameterSlider> (
+            processor, params::glideMs, " ms", 1.0,
+            "Pitch slide time when Mono Legato moves between overlapping notes. 0 ms is instant.");
+        addAndMakeVisible (*glideSlider);
+
+        toneFilterToggle = std::make_unique<ParameterToggle> (
+            processor, params::toneFilterOn, "Tone filter",
+            "Turns the high-pass and low-pass filter on the output on or off. Off is fully transparent.");
+        addAndMakeVisible (*toneFilterToggle);
+
+        styleFieldLabel (highPassLabel);
+        addAndMakeVisible (highPassLabel);
+        highPassSlider = std::make_unique<ParameterSlider> (
+            processor, params::toneHpHz, " Hz", 1.0,
+            "Removes content below this frequency. 20 Hz leaves the low end untouched.");
+        addAndMakeVisible (*highPassSlider);
+
+        styleFieldLabel (lowPassLabel);
+        addAndMakeVisible (lowPassLabel);
+        lowPassSlider = std::make_unique<ParameterSlider> (
+            processor, params::toneLpHz, " Hz", 1.0,
+            "Removes content above this frequency. 20 kHz leaves the top untouched.");
+        addAndMakeVisible (*lowPassSlider);
+
+        styleFieldLabel (stereoWidthLabel);
+        addAndMakeVisible (stereoWidthLabel);
+        stereoWidthSlider = std::make_unique<ParameterSlider> (
+            processor, params::spaceWidth, "%", 100.0,
+            "0% is mono, 100% leaves the stereo image unchanged and 200% doubles the side signal.");
+        addAndMakeVisible (*stereoWidthSlider);
+
         // --- About tab ---------------------------------------------------------
         styleBodyLabel (aboutText);
         aboutText.setText (
@@ -461,7 +512,10 @@ namespace texture
 
         const auto isLicense = tab == Tab::license;
         const auto isPreferences = tab == Tab::preferences;
+        const auto isPlay = tab == Tab::play;
         const auto isAbout = tab == Tab::about;
+
+        playTabButton.setToggleState (isPlay, juce::dontSendNotification);
 
         for (auto* component : std::initializer_list<juce::Component*> {
                  &licenseBlurb, &emailLabel, &emailField, &keyLabel, &keyField,
@@ -478,6 +532,13 @@ namespace texture
                  randomModeBox.get(), &randomSeedLabel, &randomSeedField, &copySeedButton,
                  &newSeedButton, &resetEvolutionButton, &randomSeedStatus })
             component->setVisible (isPreferences);
+
+        for (auto* component : std::initializer_list<juce::Component*> {
+                 &voiceModeLabel, voiceModeBox.get(), &notePriorityLabel, notePriorityBox.get(),
+                 &glideLabel, glideSlider.get(), toneFilterToggle.get(),
+                 &highPassLabel, highPassSlider.get(), &lowPassLabel, lowPassSlider.get(),
+                 &stereoWidthLabel, stereoWidthSlider.get() })
+            component->setVisible (isPlay);
 
         for (auto* component : std::initializer_list<juce::Component*> {
                  &aboutText, &aboutHomepageButton, &aboutGithubButton,
@@ -703,9 +764,10 @@ namespace texture
         bounds = bounds.reduced (layout::grid * 2, layout::grid);
 
         auto tabRow = bounds.removeFromTop (26);
-        const auto tabWidth = tabRow.getWidth() / 3;
+        const auto tabWidth = tabRow.getWidth() / 4;
         licenseTabButton.setBounds (tabRow.removeFromLeft (tabWidth).reduced (1, 0));
         preferencesTabButton.setBounds (tabRow.removeFromLeft (tabWidth).reduced (1, 0));
+        playTabButton.setBounds (tabRow.removeFromLeft (tabWidth).reduced (1, 0));
         aboutTabButton.setBounds (tabRow.reduced (1, 0));
 
         bounds.removeFromTop (layout::grid);
@@ -791,6 +853,38 @@ namespace texture
                 audioSettingsButton.setBounds (actionRow.removeFromLeft (actionRow.getWidth() / 2 - 2));
                 actionRow.removeFromLeft (4);
                 clearMappingsButton.setBounds (actionRow);
+                break;
+            }
+
+            case Tab::play:
+            {
+                auto voiceRow = content.removeFromTop (24);
+                voiceModeLabel.setBounds (voiceRow.removeFromLeft (92));
+                voiceModeBox->setBounds (voiceRow);
+                content.removeFromTop (4);
+
+                auto priorityRow = content.removeFromTop (24);
+                notePriorityLabel.setBounds (priorityRow.removeFromLeft (92));
+                notePriorityBox->setBounds (priorityRow);
+                content.removeFromTop (12);
+
+                glideLabel.setBounds (content.removeFromTop (14));
+                glideSlider->setBounds (content.removeFromTop (24));
+                content.removeFromTop (8);
+
+                toneFilterToggle->setBounds (content.removeFromTop (22));
+                content.removeFromTop (8);
+
+                highPassLabel.setBounds (content.removeFromTop (14));
+                highPassSlider->setBounds (content.removeFromTop (24));
+                content.removeFromTop (4);
+
+                lowPassLabel.setBounds (content.removeFromTop (14));
+                lowPassSlider->setBounds (content.removeFromTop (24));
+                content.removeFromTop (4);
+
+                stereoWidthLabel.setBounds (content.removeFromTop (14));
+                stereoWidthSlider->setBounds (content.removeFromTop (24));
                 break;
             }
 

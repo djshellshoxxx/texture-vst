@@ -59,6 +59,7 @@ namespace texture
             grain.stop();
 
         currentNote = midiNote;
+        glideOffsetSemitones = 0.0f;
         currentChannel = midiChannel;
         auditionOwned = isAuditionOwned;
         stamp = noteStamp;
@@ -179,6 +180,8 @@ namespace texture
                          currentNote, currentSourceRootMidiNote, currentTuneSemitones,
                          fineTuneForCurrentBlock, source.getSampleRate(), preparedSampleRate))
                    * pitchBendRatio;
+        if (! juce::exactlyEqual (glideOffsetSemitones, 0.0f))
+            ratio *= dsp::semitonesToRatio (glideOffsetSemitones);
         auto amplitudeScale = 1.0f;
 
         // The random draws below are only taken when their feature is on, so a
@@ -267,7 +270,8 @@ namespace texture
         const auto readPitchRatio = static_cast<float> (sourcePitch::playbackRatio (
             currentNote, currentSourceRootMidiNote, currentTuneSemitones, fineAtBlockStart,
             source.getSampleRate(), preparedSampleRate));
-        const auto readIncrement = static_cast<double> (readPitchRatio * pitchBendRatio);
+        const auto glideRatio = ! juce::exactlyEqual (glideOffsetSemitones, 0.0f) ? dsp::semitonesToRatio (glideOffsetSemitones) : 1.0f;
+        const auto readIncrement = static_cast<double> (readPitchRatio * pitchBendRatio * glideRatio);
         const auto sourceLengthAsDouble = static_cast<double> (sourceLength);
         // Spawning must stop the moment the envelope finishes. `isInReleasePhase()`
         // goes false again once the release completes, so testing it alone would
