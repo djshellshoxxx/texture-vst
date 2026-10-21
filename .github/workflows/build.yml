@@ -142,7 +142,7 @@ jobs:
           DISPATCH_VERSION: ${{ inputs.release_version }}
         run: |
           version="${DISPATCH_VERSION:-${GITHUB_REF_NAME#v}}"
-          packaging/package_platform_release.sh "$version" release-input release-assets
+          bash packaging/package_platform_release.sh "$version" release-input release-assets
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
