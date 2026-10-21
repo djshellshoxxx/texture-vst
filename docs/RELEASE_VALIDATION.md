@@ -1,6 +1,6 @@
 # TEXTURE — Release Validation Record
 
-**Status:** No GitHub Release is currently published.
+**Status:** v0.1.0 pre-release published (Windows, macOS, Linux); asset contents inspected, binaries not yet run on Windows or macOS hosts.
 **Release automation:** A `v*` tag runs the Windows, macOS and Linux build/test matrix, then packages Windows and macOS assets.
 **Updated:** 2026-10-20
 
