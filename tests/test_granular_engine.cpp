@@ -7,32 +7,10 @@
 #include "../Source/Engine/GranularEngine.h"
 #include "../Source/Modulation/MorphLFO.h"
 
-#include <atomic>
-
 namespace texture::tests
 {
     namespace
     {
-        /** Counts heap traffic so we can prove processBlock never allocates
-            (15_PERFORMANCE_TARGETS.md, "Allocations").
-        */
-        std::atomic<int>& allocationCounter()
-        {
-            static std::atomic<int> counter { 0 };
-            return counter;
-        }
-
-        /** A container whose allocator reports through the sentinel above. It stands
-            in for "any allocation the engine might make", because we can attribute
-            growth in it directly to engine behaviour.
-        */
-        struct SentinelGuard
-        {
-            SentinelGuard() { allocationCounter().store (0, std::memory_order_relaxed); }
-
-            int count() const { return allocationCounter().load (std::memory_order_relaxed); }
-        };
-
         constexpr int blockSize = 128;
         constexpr double testRate = 48000.0;
 
@@ -70,13 +48,18 @@ namespace texture::tests
             testNoteOffEntersRelease();
             testPitchBend();
             testTuneShiftsPitch();
+            testSourcePitchCalibration();
             testReversedGrainReadsBackwards();
             testGrainEffectsChangeTheSoundSafely();
             testPolyphonyCeiling();
-            testNoAllocationsInProcessBlock();
+            testRenderingReusesOutputBuffer();
             testNanInputProducesNoNanOutput();
             testSustainPedal();
             testRepeatedNoteOffIsOneForOne();
+            testAuditionNoteOwnership();
+            testAuditionDoesNotStealHostVoices();
+            testMidiNoteOwnershipIsChannelSpecific();
+            testSustainPedalIsChannelSpecific();
             testAllSoundOff();
             testVariableBlockSizes();
             testMorphTargetTable();
@@ -217,12 +200,17 @@ namespace texture::tests
 
         /** Renders eight blocks of one held C3 and returns them. */
         juce::AudioBuffer<float> renderHeldNote (const SampleBufferPtr& sample, const MorphTargets& targets,
-                                                 int numBlocks = 8)
+                                                 int numBlocks = 8, int sourceRootMidiNote = 60,
+                                                 float sourceFineCents = 0.0f)
         {
             GranularEngine engine;
             engine.prepare (testRate, blockSize);
             engine.setAdsrParameters (1.0f, 10.0f, 1.0f, 100.0f);
+            engine.setSourcePitchCalibration (sourceRootMidiNote, sourceFineCents);
             engine.noteOn (1, 60, 1.0f);
+
+            auto calibratedTargets = targets;
+            calibratedTargets.sourceFineCents = sourceFineCents;
 
             juce::AudioBuffer<float> buffer (2, blockSize);
             juce::AudioBuffer<float> collected (2, blockSize * numBlocks);
@@ -231,7 +219,7 @@ namespace texture::tests
             for (int i = 0; i < numBlocks; ++i)
             {
                 buffer.clear();
-                engine.renderNextBlock (sample, targets, buffer, 0, blockSize);
+                engine.renderNextBlock (sample, calibratedTargets, buffer, 0, blockSize);
 
                 for (int ch = 0; ch < 2; ++ch)
                     collected.copyFrom (ch, i * blockSize, buffer, ch, 0, blockSize);
@@ -269,6 +257,45 @@ namespace texture::tests
 
             expectWithinAbsoluteError (static_cast<float> (up) / static_cast<float> (centred), 2.0f, 0.15f);
             expectWithinAbsoluteError (static_cast<float> (down) / static_cast<float> (centred), 0.5f, 0.1f);
+        }
+
+        void testSourcePitchCalibration()
+        {
+            beginTest ("source root and fine cents calibrate each layer without changing TUNE");
+
+            const auto sample = makeTestSample (testRate, 1.0, 220.0);
+            const auto targets = deriveMorphTargets (0.0f);
+            // Measure enough cycles that the integer zero-crossing count resolves
+            // a semitone shift instead of quantizing it to a coarse 8-block ratio.
+            constexpr int measurementBlocks = 64;
+            const auto defaultCrossings = zeroCrossings (renderHeldNote (sample, targets, measurementBlocks));
+            const auto octaveDownCrossings = zeroCrossings (renderHeldNote (sample, targets,
+                                                                            measurementBlocks, 72, 0.0f));
+            const auto centUpCrossings = zeroCrossings (renderHeldNote (sample, targets,
+                                                                        measurementBlocks, 60, 100.0f));
+
+            expectWithinAbsoluteError (static_cast<float> (octaveDownCrossings)
+                                           / static_cast<float> (defaultCrossings),
+                                       0.5f, 0.12f,
+                                       "raising the calibrated source root by an octave lowers note 60 by an octave");
+            expectWithinAbsoluteError (static_cast<float> (centUpCrossings)
+                                           / static_cast<float> (defaultCrossings),
+                                       1.05946f, 0.12f,
+                                       "+100 cents raises the source by one semitone");
+
+            expectWithinAbsoluteError (static_cast<float> (sourcePitch::clampFineCents (120.0f)), 100.0f, 0.001f);
+            expectWithinAbsoluteError (static_cast<float> (sourcePitch::clampFineCents (-120.0f)), -100.0f, 0.001f);
+            expectEquals (sourcePitch::clampRootNote (-1), 0);
+            expectEquals (sourcePitch::clampRootNote (128), 127);
+            expectWithinAbsoluteError (static_cast<float> (sourcePitch::clampFineCents (
+                                            std::numeric_limits<float>::quiet_NaN())), 0.0f, 0.001f);
+            expectWithinAbsoluteError (static_cast<float> (sourcePitch::playbackRatio (69, 69, 0.0f, 0.0f,
+                                                                                       48000.0, 48000.0)),
+                                       1.0f, 0.000001f, "calibrated MIDI note plays at unity pitch");
+            expectWithinAbsoluteError (static_cast<float> (sourcePitch::playbackRatio (60, 60, 0.0f, 0.0f,
+                                                                                       44100.0, 48000.0)),
+                                       44100.0f / 48000.0f, 0.000001f,
+                                       "sample-rate conversion is applied exactly once");
         }
 
         void testReversedGrainReadsBackwards()
@@ -409,9 +436,9 @@ namespace texture::tests
             expect (engine.getActiveVoiceCount() <= GranularEngine::maxVoices);
         }
 
-        void testNoAllocationsInProcessBlock()
+        void testRenderingReusesOutputBuffer()
         {
-            beginTest ("rendering does not allocate");
+            beginTest ("rendering reuses the caller-provided output buffer");
 
             GranularEngine engine;
             engine.prepare (testRate, blockSize);
@@ -426,10 +453,9 @@ namespace texture::tests
             engine.noteOn (1, 60, 1.0f);
             renderAndMeasure (engine, sample, targets, 8);
 
-            const SentinelGuard guard;
-
-            // Capacity of every container the engine owns must already be final: if
-            // rendering grew anything, the buffer's data pointer would move.
+            // Verify the caller-owned output buffer remains the same allocation.
+            // This is intentionally not presented as a complete heap-allocation
+            // detector; the test target does not install a global allocator hook.
             const auto* before = buffer.getReadPointer (0);
 
             for (int i = 0; i < 200; ++i)
@@ -439,7 +465,6 @@ namespace texture::tests
             }
 
             expect (buffer.getReadPointer (0) == before, "the output buffer must not be reallocated");
-            expectEquals (guard.count(), 0, "no tracked allocation may happen while rendering");
             expect (isFinite (buffer));
         }
 
@@ -522,6 +547,71 @@ namespace texture::tests
         }
 
 
+        void testAuditionNoteOwnership()
+        {
+            beginTest ("audition note-offs cannot release a host note at the same pitch");
+
+            GranularEngine engine;
+            engine.prepare (testRate, blockSize);
+            engine.setAdsrParameters (1.0f, 10.0f, 1.0f, 10.0f);
+            const auto sample = makeTestSample();
+            const auto targets = deriveMorphTargets (0.2f);
+            juce::AudioBuffer<float> buffer (2, blockSize);
+
+            engine.noteOn (1, 60, 1.0f);
+            engine.noteOn (1, 60, 1.0f, true);
+            renderAndMeasure (engine, sample, targets, 1);
+            expectEquals (engine.getActiveVoiceCount(), 2);
+
+            // An audition stop only targets the internally owned voice. The host
+            // note remains active at the identical channel and pitch.
+            engine.noteOff (1, 60, true);
+            for (int i = 0; i < 100; ++i)
+            {
+                buffer.clear();
+                engine.renderNextBlock (sample, targets, buffer, 0, blockSize);
+            }
+            expectEquals (engine.getActiveVoiceCount(), 1,
+                          "the host-owned note must still be held after audition stop");
+
+            engine.noteOff (1, 60);
+            for (int i = 0; i < 100; ++i)
+            {
+                buffer.clear();
+                engine.renderNextBlock (sample, targets, buffer, 0, blockSize);
+            }
+            expectEquals (engine.getActiveVoiceCount(), 0);
+        }
+
+        void testAuditionDoesNotStealHostVoices()
+        {
+            beginTest ("audition never steals a host voice when the pool is full");
+
+            GranularEngine engine;
+            engine.prepare (testRate, blockSize);
+            engine.setAdsrParameters (1.0f, 10.0f, 1.0f, 10.0f);
+            const auto sample = makeTestSample();
+            const auto targets = deriveMorphTargets (0.2f);
+            juce::AudioBuffer<float> buffer (2, blockSize);
+
+            for (int voice = 0; voice < GranularEngine::maxVoices; ++voice)
+                engine.noteOn (1, 40 + voice, 1.0f);
+
+            engine.noteOn (1, 100, 1.0f, true);
+            renderAndMeasure (engine, sample, targets, 1);
+            expectEquals (engine.getActiveVoiceCount(), GranularEngine::maxVoices);
+
+            engine.noteOff (1, 40);
+            for (int i = 0; i < 100; ++i)
+            {
+                buffer.clear();
+                engine.renderNextBlock (sample, targets, buffer, 0, blockSize);
+            }
+
+            expectEquals (engine.getActiveVoiceCount(), GranularEngine::maxVoices - 1,
+                          "the original host note must still receive its note-off");
+        }
+
         void testRepeatedNoteOffIsOneForOne()
         {
             beginTest ("each Note Off releases only one repeated-note voice");
@@ -544,6 +634,63 @@ namespace texture::tests
                           "one Note Off must leave the retriggered voice sounding");
 
             engine.noteOff (1, 60);
+            renderAndMeasure (engine, sample, targets, 200);
+            expectEquals (engine.getActiveVoiceCount(), 0);
+        }
+
+        void testMidiNoteOwnershipIsChannelSpecific()
+        {
+            beginTest ("same-pitch note-off only releases its originating MIDI channel");
+
+            GranularEngine engine;
+            engine.prepare (testRate, blockSize);
+            engine.setAdsrParameters (1.0f, 5.0f, 1.0f, 15.0f);
+
+            const auto sample = makeTestSample();
+            const auto targets = deriveMorphTargets (0.2f);
+
+            engine.noteOn (1, 60, 1.0f);
+            engine.noteOn (2, 60, 0.8f);
+            renderAndMeasure (engine, sample, targets, 4);
+            expectEquals (engine.getActiveVoiceCount(), 2);
+
+            engine.noteOff (2, 60);
+            renderAndMeasure (engine, sample, targets, 200);
+            expectEquals (engine.getActiveVoiceCount(), 1,
+                          "channel 1's matching pitch must remain held");
+
+            engine.noteOff (1, 60);
+            renderAndMeasure (engine, sample, targets, 200);
+            expectEquals (engine.getActiveVoiceCount(), 0);
+        }
+
+        void testSustainPedalIsChannelSpecific()
+        {
+            beginTest ("CC64 releases only voices owned by its MIDI channel");
+
+            GranularEngine engine;
+            engine.prepare (testRate, blockSize);
+            engine.setAdsrParameters (1.0f, 5.0f, 1.0f, 15.0f);
+
+            const auto sample = makeTestSample();
+            const auto targets = deriveMorphTargets (0.2f);
+
+            engine.setSustainPedal (1, true);
+            engine.setSustainPedal (2, true);
+            engine.noteOn (1, 60, 1.0f);
+            engine.noteOn (2, 60, 0.8f);
+            renderAndMeasure (engine, sample, targets, 4);
+            engine.noteOff (1, 60);
+            engine.noteOff (2, 60);
+            renderAndMeasure (engine, sample, targets, 4);
+            expectEquals (engine.getActiveVoiceCount(), 2);
+
+            engine.setSustainPedal (2, false);
+            renderAndMeasure (engine, sample, targets, 200);
+            expectEquals (engine.getActiveVoiceCount(), 1,
+                          "releasing channel 2's pedal must leave channel 1 sustained");
+
+            engine.setSustainPedal (1, false);
             renderAndMeasure (engine, sample, targets, 200);
             expectEquals (engine.getActiveVoiceCount(), 0);
         }

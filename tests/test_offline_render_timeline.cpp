@@ -3,6 +3,7 @@
 #include "../Source/IO/OfflineRenderTimeline.h"
 #include "../Source/IO/OfflinePatchMath.h"
 #include "../Source/IO/WavExporter.h"
+#include "../Source/Utility/VersionedRandomStreams.h"
 
 #include <cmath>
 
@@ -82,6 +83,69 @@ namespace texture::tests
                 expectWithinAbsoluteError (reader->sampleRate, 48000.0, 0.001);
                 expect (reader->lengthInSamples > 0);
             }
+
+            beginTest ("Repeat mode exports the captured seed deterministically");
+            settings.randomMode = 1;
+            settings.randomSeed = UINT64_C (0x123456789ABCDEF0);
+            settings.shimmerAmount = 0.7f;
+            auto repeatedA = temp.child ("repeat-a.wav");
+            auto repeatedB = temp.child ("repeat-b.wav");
+            const auto firstExport = WavExporter::render (samples, settings, options, repeatedA);
+            const auto secondExport = WavExporter::render (samples, settings, options, repeatedB);
+            expect (firstExport.succeeded && secondExport.succeeded);
+
+            juce::AudioFormatManager repeatFormats;
+            repeatFormats.registerBasicFormats();
+            std::unique_ptr<juce::AudioFormatReader> readerA (repeatFormats.createReaderFor (repeatedA));
+            std::unique_ptr<juce::AudioFormatReader> readerB (repeatFormats.createReaderFor (repeatedB));
+            if (readerA != nullptr && readerB != nullptr)
+            {
+                const auto compareSamples = static_cast<int> (juce::jmin (readerA->lengthInSamples,
+                                                                          readerB->lengthInSamples));
+                juce::AudioBuffer<float> audioA (2, compareSamples), audioB (2, compareSamples);
+                readerA->read (&audioA, 0, compareSamples, 0, true, true);
+                readerB->read (&audioB, 0, compareSamples, 0, true, true);
+                for (int channel = 0; channel < 2; ++channel)
+                    for (int sample = 0; sample < compareSamples; ++sample)
+                        expectWithinAbsoluteError (audioA.getSample (channel, sample),
+                                                   audioB.getSample (channel, sample), 1.0e-7f);
+            }
+            else
+                expect (false, "Repeat exports should produce readable files");
+
+            beginTest ("unsupported random algorithm versions are rejected cleanly");
+            settings.randomAlgorithmVersion = 99;
+            const auto unsupportedFile = temp.child ("unsupported-random-version.wav");
+            const auto unsupportedResult = WavExporter::render (samples, settings, options, unsupportedFile);
+            expect (! unsupportedResult.succeeded);
+            expect (! unsupportedFile.existsAsFile());
+            settings.randomAlgorithmVersion = VersionedRandomStreams::algorithmVersion;
+
+            beginTest ("changing the seed changes the deterministic render");
+            settings.randomSeed += 1;
+            const auto differentSeedFile = temp.child ("repeat-different-seed.wav");
+            const auto differentSeedExport = WavExporter::render (samples, settings, options, differentSeedFile);
+            expect (differentSeedExport.succeeded);
+            std::unique_ptr<juce::AudioFormatReader> readerC (repeatFormats.createReaderFor (differentSeedFile));
+            if (readerA != nullptr && readerC != nullptr)
+            {
+                const auto compareSamples = static_cast<int> (juce::jmin (readerA->lengthInSamples,
+                                                                          readerC->lengthInSamples));
+                juce::AudioBuffer<float> audioA (2, compareSamples), audioC (2, compareSamples);
+                readerA->read (&audioA, 0, compareSamples, 0, true, true);
+                readerC->read (&audioC, 0, compareSamples, 0, true, true);
+                double errorEnergy = 0.0;
+                for (int channel = 0; channel < 2; ++channel)
+                    for (int sample = 0; sample < compareSamples; ++sample)
+                    {
+                        const auto difference = static_cast<double> (audioA.getSample (channel, sample)
+                                                                     - audioC.getSample (channel, sample));
+                        errorEnergy += difference * difference;
+                    }
+                expectGreaterThan (errorEnergy, 1.0e-5);
+            }
+            else
+                expect (false, "Different-seed render should produce a readable file");
 
             beginTest ("dual-layer export uses the same normalized blend law as live playback");
             const auto dry = OfflinePatchMath::layerGains (0.0f);

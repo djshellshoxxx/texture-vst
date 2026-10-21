@@ -2,6 +2,7 @@
 
 #include "../Utility/DspHelpers.h"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 
@@ -41,15 +42,16 @@ namespace texture
         for (auto& voice : voices)
             voice.hardStop();
 
-        sustainPedalDown = false;
+        sustainPedalsDown.fill (false);
         pitchBendRatio = 1.0f;
         noteCounter = 0;
+        evolutionCounter = 0;
         displayReadPosition.store (0.0f, std::memory_order_relaxed);
         activeVoiceCount.store (0, std::memory_order_relaxed);
         scratch.clear();
     }
 
-    int GranularEngine::findVoiceToUse (int midiNote) noexcept
+    int GranularEngine::findVoiceToUse (int midiNote, bool auditionOwned) noexcept
     {
         juce::ignoreUnused (midiNote);
 
@@ -60,13 +62,26 @@ namespace texture
 
         // 2. Otherwise steal the oldest voice with the lowest amplitude. Score is
         //    envelope x velocity, tie-broken by age (14_MIDI_SPEC.md).
-        int victim = 0;
+        const auto hasAuditionVoice = std::any_of (voices.begin(), voices.end(), [] (const Voice& voice)
+        {
+            return voice.isActive() && voice.isAuditionOwned();
+        });
+
+        int victim = -1;
         auto lowestScore = std::numeric_limits<float>::max();
         auto oldestStamp = std::numeric_limits<juce::int64>::max();
 
         for (int i = 0; i < maxVoices; ++i)
         {
             const auto& voice = voices[static_cast<size_t> (i)];
+
+            // Audition can reuse only its own voices. Host notes prefer reclaiming
+            // audition capacity before stealing a physically triggered note.
+            if (auditionOwned && ! voice.isAuditionOwned())
+                continue;
+            if (! auditionOwned && hasAuditionVoice && ! voice.isAuditionOwned())
+                continue;
+
             const auto score = voice.getStealScore();
             const auto voiceStamp = voice.getNoteStamp();
 
@@ -82,33 +97,41 @@ namespace texture
         return victim;
     }
 
-    void GranularEngine::noteOn (int midiChannel, int midiNote, float velocity)
+    void GranularEngine::noteOn (int midiChannel, int midiNote, float velocity, bool auditionOwned)
     {
-        if (midiNote < 0 || midiNote > 127)
+        if (midiChannel < 1 || midiChannel > 16 || midiNote < 0 || midiNote > 127)
             return;
 
         // Re-triggering a sounding note allocates a new voice so chord repeats do not
         // cut the previous note (14_MIDI_SPEC.md).
-        const auto index = findVoiceToUse (midiNote);
+        const auto index = findVoiceToUse (midiNote, auditionOwned);
+
+        if (index < 0)
+            return;
         auto& voice = voices[static_cast<size_t> (index)];
 
         voice.hardStop();
         voice.setAdsrParameters (attackMs, decayMs, sustainLevel, releaseMs);
         voice.setPitchBendRatio (pitchBendRatio);
         voice.startNote (midiNote, velocity, midiChannel, ++noteCounter,
-                         sampleStart.load (std::memory_order_relaxed));
+                         sampleStart.load (std::memory_order_relaxed), auditionOwned,
+                         randomMode, randomSeed, ++evolutionCounter,
+                         sourceRootMidiNote, sourceFineCents);
     }
 
-    void GranularEngine::noteOff (int midiChannel, int midiNote)
+    void GranularEngine::noteOff (int midiChannel, int midiNote, bool auditionOwned)
     {
-        juce::ignoreUnused (midiChannel);   // input is omni; repeated notes still pair one-for-one.
+        if (midiChannel < 1 || midiChannel > 16 || midiNote < 0 || midiNote > 127)
+            return;
 
         Voice* oldestMatching = nullptr;
         auto oldestStamp = std::numeric_limits<juce::int64>::max();
 
         for (auto& voice : voices)
         {
-            if (! voice.isActive() || voice.getMidiNote() != midiNote
+            if (! voice.isActive() || voice.getMidiChannel() != midiChannel
+                || voice.getMidiNote() != midiNote
+                || voice.isAuditionOwned() != auditionOwned
                 || voice.isReleasing() || voice.isHeldBySustain())
                 continue;
 
@@ -122,22 +145,26 @@ namespace texture
         if (oldestMatching == nullptr)
             return;
 
-        if (sustainPedalDown)
+        if (sustainPedalsDown[static_cast<size_t> (midiChannel - 1)] && ! auditionOwned)
             oldestMatching->setHeldBySustain (true);
         else
             oldestMatching->stopNote();
     }
 
-    void GranularEngine::setSustainPedal (bool isDown)
+    void GranularEngine::setSustainPedal (int midiChannel, bool isDown)
     {
-        sustainPedalDown = isDown;
+        if (midiChannel < 1 || midiChannel > 16)
+            return;
+
+        auto& pedalDown = sustainPedalsDown[static_cast<size_t> (midiChannel - 1)];
+        pedalDown = isDown;
 
         if (isDown)
             return;
 
         for (auto& voice : voices)
         {
-            if (voice.isHeldBySustain())
+            if (voice.isHeldBySustain() && voice.getMidiChannel() == midiChannel)
             {
                 voice.setHeldBySustain (false);
                 voice.stopNote();
@@ -158,7 +185,7 @@ namespace texture
 
     void GranularEngine::allNotesOff()
     {
-        sustainPedalDown = false;
+        sustainPedalsDown.fill (false);
 
         for (auto& voice : voices)
             voice.hardStop();
@@ -166,9 +193,31 @@ namespace texture
         activeVoiceCount.store (0, std::memory_order_relaxed);
     }
 
+    void GranularEngine::allNotesOff (int midiChannel)
+    {
+        if (midiChannel < 1 || midiChannel > 16)
+            return;
+
+        sustainPedalsDown[static_cast<size_t> (midiChannel - 1)] = false;
+
+        for (auto& voice : voices)
+            if (voice.isActive() && voice.getMidiChannel() == midiChannel)
+                voice.hardStop();
+
+        int active = 0;
+        for (const auto& voice : voices)
+            active += voice.isActive() ? 1 : 0;
+        activeVoiceCount.store (active, std::memory_order_relaxed);
+    }
+
     void GranularEngine::allSoundOff()
     {
         allNotesOff();
+    }
+
+    void GranularEngine::allSoundOff (int midiChannel)
+    {
+        allNotesOff (midiChannel);
     }
 
     void GranularEngine::setAdsrParameters (float newAttackMs, float newDecayMs,
@@ -181,6 +230,12 @@ namespace texture
 
         for (auto& voice : voices)
             voice.setAdsrParameters (attackMs, decayMs, sustainLevel, releaseMs);
+    }
+
+    void GranularEngine::setSourcePitchCalibration (int rootMidiNote, float fineCents) noexcept
+    {
+        sourceRootMidiNote = sourcePitch::clampRootNote (rootMidiNote);
+        sourceFineCents = sourcePitch::clampFineCents (fineCents);
     }
 
     int GranularEngine::renderNextBlock (const SampleBuffer* source,

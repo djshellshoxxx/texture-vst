@@ -2,6 +2,7 @@
 
 #include "WaveformDisplay.h"
 
+#include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <functional>
@@ -59,6 +60,10 @@ namespace texture
 
         std::unique_ptr<WaveformDisplay> waveform;
         std::unique_ptr<juce::FileChooser> fileChooser;
+        juce::ComboBox sourceRootBox;
+        juce::Slider sourceFineSlider;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> sourceRootAttachment;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> sourceFineAttachment;
 
         juce::String sampleName;
         juce::String sampleDetails;

@@ -17,7 +17,9 @@ namespace texture::tests
         {
             testFormatCoverage();
             testRejectsNonAudioFile();
+            testRejectsTruncatedAudioData();
             testRejectsFolder();
+            testBoundsConversionMemory();
             testTruncatesLongFiles();
             testDownmixesMultiChannel();
             testResampling();
@@ -95,6 +97,107 @@ namespace texture::tests
             const auto missing = loader.loadSynchronously (temp.child ("absent.wav"));
             expect (! missing.succeeded);
             expect (missing.message.containsIgnoreCase ("not found"));
+        }
+
+        void testRejectsTruncatedAudioData()
+        {
+            beginTest ("rejects a WAV whose declared audio data is missing");
+
+            TemporaryDirectory temp;
+            SampleLoader loader;
+            loader.prepare (48000.0);
+
+            const auto file = temp.child ("truncated-data.wav");
+            expect (writeTestAudioFile (file, 44100.0, 0.25, 2));
+
+            juce::MemoryBlock bytes;
+            expect (file.loadFileAsData (bytes));
+
+            auto* data = static_cast<juce::uint8*> (bytes.getData());
+            const auto readLittleEndian = [data] (int offset)
+            {
+                return static_cast<juce::uint32> (data[offset])
+                     | (static_cast<juce::uint32> (data[offset + 1]) << 8)
+                     | (static_cast<juce::uint32> (data[offset + 2]) << 16)
+                     | (static_cast<juce::uint32> (data[offset + 3]) << 24);
+            };
+            int dataChunk = -1;
+
+            for (size_t offset = 12; offset + 8 <= bytes.getSize();)
+            {
+                const auto chunkSize = readLittleEndian (static_cast<int> (offset + 4));
+
+                if (data[offset] == 'd' && data[offset + 1] == 'a'
+                    && data[offset + 2] == 't' && data[offset + 3] == 'a')
+                {
+                    dataChunk = static_cast<int> (offset);
+                    break;
+                }
+
+                const auto next = offset + 8u + static_cast<size_t> (chunkSize) + (chunkSize & 1u);
+
+                if (next <= offset || next > bytes.getSize())
+                    break;
+
+                offset = next;
+            }
+
+            expect (dataChunk >= 0, "expected a standard WAV data chunk");
+
+            if (dataChunk < 0)
+                return;
+
+            const auto writeLittleEndian = [data] (int offset, juce::uint32 value)
+            {
+                data[offset]     = static_cast<juce::uint8> (value & 0xffu);
+                data[offset + 1] = static_cast<juce::uint8> ((value >> 8) & 0xffu);
+                data[offset + 2] = static_cast<juce::uint8> ((value >> 16) & 0xffu);
+                data[offset + 3] = static_cast<juce::uint8> ((value >> 24) & 0xffu);
+            };
+
+            constexpr juce::uint32 missingBytes = 4096;
+            writeLittleEndian (dataChunk + 4, readLittleEndian (dataChunk + 4) + missingBytes);
+            writeLittleEndian (4, readLittleEndian (4) + missingBytes);
+
+            expect (file.deleteFile(), "remove the original WAV before writing the damaged header");
+            auto output = file.createOutputStream();
+            expect (output != nullptr);
+
+            if (output == nullptr)
+                return;
+
+            expect (output->write (bytes.getData(), bytes.getSize()));
+            output.reset();
+            expect (static_cast<juce::int64> (readLittleEndian (4)) + 8 > file.getSize(),
+                    "fixture RIFF size must extend past the physical file");
+
+            const auto result = loader.loadSynchronously (file);
+            expect (! result.succeeded, "a short read must not be accepted as a valid sample");
+            expect (result.buffer == nullptr);
+            expect (result.message.containsIgnoreCase ("truncated")
+                    || result.message.containsIgnoreCase ("corrupt"),
+                    "expected a decode error, got: " + result.message);
+        }
+
+        void testBoundsConversionMemory()
+        {
+            beginTest ("rejects conversion that exceeds the temporary memory budget");
+
+            TemporaryDirectory temp;
+            SampleLoader loader;
+            loader.prepare (768000.0);
+
+            // The input file is small, but the 30 second stereo output at this host
+            // rate would exceed the explicit temporary-buffer ceiling.
+            const auto file = temp.child ("high-rate-conversion.wav");
+            expect (writeTestAudioFile (file, 48000.0, SampleBuffer::maxLengthSeconds, 2));
+            expect (file.getSize() < SampleLoader::maxFileSizeBytes);
+
+            const auto result = loader.loadSynchronously (file);
+            expect (! result.succeeded);
+            expect (result.buffer == nullptr);
+            expect (result.message.containsIgnoreCase ("128 MB"),
+                    "expected the conversion-memory limit message, got: " + result.message);
         }
 
         void testRejectsFolder()

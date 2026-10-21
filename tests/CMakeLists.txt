@@ -10,6 +10,7 @@ juce_add_console_app(Texture_Tests
 set(TEXTURE_TEST_SOURCES
     test_main.cpp
     test_motion_preferences.cpp
+    test_versioned_random_streams.cpp
     test_state_schema.cpp
     test_control_value_parser.cpp
     test_control_value_clipboard.cpp

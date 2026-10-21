@@ -2,24 +2,21 @@
 
 Crash-recovery file. Update after every milestone. **Read this first if resuming.**
 
-- **Project root:** `C:/Users/new/Desktop/ssssssss/Texture`
-- **Spec source:** `C:/Users/new/Desktop/ssssssss/*.md` (00–22, `include.md`, `theme.md`)
-- **JUCE:** local shallow clone at `C:/Users/new/Desktop/JUCE_8_0_8` (tag 8.0.8),
-  wired via `-DTEXTURE_JUCE_PATH=`; `cmake/JuceFetch.cmake` falls back to FetchContent.
-- **Toolchain:** MSVC 2022 BuildTools 14.44, Windows SDK 10.0.26100, CMake 4.4.3, Ninja 1.13
-- **Machine constraint:** 3.9 GB RAM total, ~0.6 GB free, 4 cores.
-  **Always build with `--parallel 2` or fewer.** If the build dies with an
-  out-of-memory or heap error, wait and retry with `--parallel 1`.
+- **Project root:** the current repository checkout.
+- **Specs:** checked-in root design documents and `docs/`.
+- **JUCE:** fetched at the pinned revision by `cmake/JuceFetch.cmake`.
+- **Builds:** use the platform CMake presets below. GitHub Actions builds Windows,
+  universal macOS, and Linux on native runners.
 
 ## Reproduce the build
 
 ```bash
-cd C:/Users/new/Desktop/ssssssss/Texture
-cmake -S . -B build/release -G "Visual Studio 17 2022" -A x64 \
-      -DTEXTURE_JUCE_PATH="C:/Users/new/Desktop/JUCE_8_0_8"
-cmake --build build/release --config Release --parallel 2
-ctest --test-dir build/release -C Release --output-on-failure
+cmake --preset linux-release
+cmake --build --preset linux-release --parallel 2
+ctest --test-dir build/linux-release -C Release --output-on-failure
 ```
+
+On Windows use `windows-release`; on macOS use `macos-release`.
 
 ## Milestones
 
@@ -42,7 +39,7 @@ ctest --test-dir build/release -C Release --output-on-failure
 | 14 | CI: three-platform matrix in `.github/workflows/build.yml` | DONE — all four jobs green |
 | 16 | GUI gap pass (`docs/GUI_GAP_SPEC.md`, B1-B6, M1-M14) | DONE - builds clean, ctest 100%, layout checked in standalone |
 | 17 | CDL baseline reconciliation: product spec, state hardening, controls, MIDI Learn, reduced motion | DONE - merged to master in PR #1 (`3e78b7e9`) |
-| 18 | v0.0.1 beta: merge post-merge branch, gcc build fixes, fuzz fix, Undo/Tune/Reverse/Shimmer, release packages | DONE |
+| 18 | v0.0.1 beta: merge post-merge branch, gcc build fixes, fuzz fix, Undo/Tune/Reverse/Shimmer, local release package validation | DONE |
 | 15 | Fuzzer (`17_TESTING.md`) as its own `texture_fuzz` CTest entry | DONE |
 
 ## Deviations from `22_FILE_MANIFEST.md` (all deliberate, all documented in README)
@@ -240,18 +237,19 @@ Randomize fixes, focused test evidence, and current CI/release discrepancies.
   an Inf sample entering the saturator left `tanh` as `1/tanh(drive)`, a spike of up
   to 100x full scale that rang through the reverb; the saturator now scrubs
   non-finite input. Added parameter Undo/Redo (usability), TUNE (value), REVERSE
-  (fun) and SHIMMER (effect), each with unit tests and fuzz coverage. GitHub Actions
-  never gets a runner on this repo (every job ends in seconds with no steps, runner
-  id 0 - an account billing/minutes block), so the release binaries were built
+  (fun) and SHIMMER (effect), each with unit tests and fuzz coverage. At that time,
+  GitHub Actions had no available runners (jobs ended with runner id 0 and no steps),
+  so the release binaries were built
   locally: Linux natively, Windows by cross-compiling with MinGW-w64.
-- 2026-10-07 (later): v0.0.1 beta packaged and released. pluginval strictness 5 passes on
-  the Linux VST3. Windows binaries cross-built with clang-cl/libc++ pass the unit tests
-  and fuzzer under Wine; the Windows GUI cannot be checked under Wine (JUCE VBlankThread
-  vs Wine's WaitForVBlank stub) and needs a real Windows run. NSIS installer and Linux
-  installer verified. Assets: installer, portable, VST3 and CLAP for Windows x64 and
-  Linux x64, plus SHA256SUMS. See docs/RELEASE_VALIDATION.md.
+- 2026-10-07 (later): v0.0.1 beta packages were validated locally. pluginval strictness 5
+  passed on the Linux VST3. Windows binaries cross-built with clang-cl/libc++ passed the
+  unit tests and fuzzer under Wine; the Windows GUI still needed a real Windows run.
+  These packages were not published as an official GitHub Release; see
+  `docs/RELEASE_VALIDATION.md` for current release evidence.
 
 
-## 2026-10-20: Development specification package
+## 2026-10-20: Development specification package and implementation candidate
 
-Created [26 feature specifications](docs/development/README.md) covering the full recommended feature roadmap and the explicitly requested workflow/performance controls. Added Afterimage Loom and Resonant Drift effect designs, shared parameter/state/real-time contracts, dependency and module plans, acceptance tests, source notes and a machine-readable manifest. All are proposed; spectral hybridization is research-gated. No application source or build configuration was changed. Continue with the foundation batch in docs/development/DELIVERY_PLAN.md; implement one complete feature/dependency milestone per PR.
+Created [26 feature specifications](docs/development/README.md) covering the feature roadmap and workflow/performance controls, including Afterimage Loom and Resonant Drift effect designs. Implemented F01 Audition and Hold, F04 per-layer source pitch calibration, and F12 deterministic seeded variation. F04's optional layer-link preference and automatic note detector remain deferred; the other 23 specifications remain proposals.
+
+The source audit also fixed channel-specific MIDI note/sustain ownership, random-mode preset validation, truncated RIFF/WAV acceptance, source-pitch measurement coverage, and compile issues in random-stream defaults, state serialization, and export tests. The Linux Release configuration completed for VST3 and Standalone. CTest passed all three entries (109,332 unit assertions, the 60-second fuzz run, and waveform math). Native Windows and universal macOS release builds remain pending GitHub Actions/tag validation.

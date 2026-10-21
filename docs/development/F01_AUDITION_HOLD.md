@@ -1,6 +1,6 @@
 # F01: Audition button and Hold
 
-Status: Proposed, not implemented. Revision 1, 2026-10-20.
+Status: Implemented in the current development branch. Automated ownership, MIDI, sustain, and state-cancellation checks are included; manual keyboard and host validation remains pending. Revision 1, 2026-10-20.
 Effort: Easy–medium. Dependencies: none.
 Binding foundation: [Shared contracts](00_SHARED_CONTRACTS.md).
 

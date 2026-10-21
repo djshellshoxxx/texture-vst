@@ -14,6 +14,22 @@
 
 namespace texture
 {
+    class RandomSeedChangeAction final : public juce::UndoableAction
+    {
+    public:
+        RandomSeedChangeAction (TextureAudioProcessor& owner, std::uint64_t previous, std::uint64_t next)
+            : processor (owner), before (previous), after (next) {}
+
+        bool perform() override { processor.applyRandomSeedFromUndo (after); return true; }
+        bool undo() override { processor.applyRandomSeedFromUndo (before); return true; }
+        int getSizeInUnits() override { return static_cast<int> (sizeof (*this)); }
+
+    private:
+        TextureAudioProcessor& processor;
+        std::uint64_t before;
+        std::uint64_t after;
+    };
+
     namespace
     {
         /** Morph is ramped over this long so a sweep never zips (06_MORPH_KNOB_BEHAVIOUR.md). */
@@ -156,6 +172,24 @@ namespace texture
                     return (semitones > 0 ? "+" : "") + juce::String (semitones) + " st";
                 })));
 
+        for (const auto* rootId : { params::layer1Root, params::layer2Root })
+            layout.add (std::make_unique<juce::AudioParameterInt> (
+                juce::ParameterID { rootId, 1 }, params::displayNameFor (rootId),
+                static_cast<int> (params::sourceRootMinMidi), static_cast<int> (params::sourceRootMaxMidi),
+                static_cast<int> (params::sourceRootDefaultMidi)));
+
+        const auto centsFormatter = [] (float value, int)
+        {
+            return (value > 0.0f ? "+" : "") + juce::String (value, 1) + " cents";
+        };
+
+        for (const auto* centsId : { params::layer1FineCents, params::layer2FineCents })
+            layout.add (std::make_unique<juce::AudioParameterFloat> (
+                juce::ParameterID { centsId, 1 }, params::displayNameFor (centsId),
+                Range { params::sourceFineMinCents, params::sourceFineMaxCents, 0.1f },
+                params::sourceFineDefaultCents,
+                juce::AudioParameterFloatAttributes().withStringFromValueFunction (centsFormatter)));
+
         layout.add (std::make_unique<juce::AudioParameterFloat> (
             juce::ParameterID { params::reverse, 1 }, params::displayNameFor (params::reverse),
             Range { params::reverseMin, params::reverseMax, 0.0001f }, params::reverseDefault,
@@ -167,6 +201,10 @@ namespace texture
             Range { params::shimmerMin, params::shimmerMax, 0.0001f }, params::shimmerDefault,
             juce::AudioParameterFloatAttributes()
                 .withStringFromValueFunction ([] (float value, int) { return juce::String (juce::roundToInt (value * 100.0f)) + "%"; })));
+
+        layout.add (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { params::randomMode, 1 }, params::displayNameFor (params::randomMode),
+            juce::StringArray { "Legacy", "Repeat", "Evolve" }, params::randomModeDefault));
 
         return layout;
     }
@@ -299,8 +337,13 @@ namespace texture
         lfoDivisionParameter = apvts.getRawParameterValue (params::lfoDivision);
         layerBlendParameter  = apvts.getRawParameterValue (params::layerBlend);
         tuneParameter        = apvts.getRawParameterValue (params::tune);
+        sourceRootParameters = { apvts.getRawParameterValue (params::layer1Root),
+                                 apvts.getRawParameterValue (params::layer2Root) };
+        sourceFineParameters = { apvts.getRawParameterValue (params::layer1FineCents),
+                                 apvts.getRawParameterValue (params::layer2FineCents) };
         reverseParameter     = apvts.getRawParameterValue (params::reverse);
         shimmerParameter     = apvts.getRawParameterValue (params::shimmer);
+        randomModeParameter  = apvts.getRawParameterValue (params::randomMode);
     }
 
     const juce::String TextureAudioProcessor::getName() const
@@ -358,6 +401,8 @@ namespace texture
 
     void TextureAudioProcessor::releaseResources()
     {
+        stopAudition();
+
         for (auto& engine : engines)
             engine.releaseResources();
 
@@ -450,13 +495,37 @@ namespace texture
         currentTargets.reverseChance = reverseParameter != nullptr ? reverseParameter->load() : params::reverseDefault;
         currentTargets.shimmerAmount = shimmerParameter != nullptr ? shimmerParameter->load() : params::shimmerDefault;
 
+        for (int layer = 0; layer < numLayers; ++layer)
+        {
+            const auto index = static_cast<size_t> (layer);
+            const auto root = sourceRootParameters[index] != nullptr
+                                  ? juce::roundToInt (sourceRootParameters[index]->load())
+                                  : static_cast<int> (params::sourceRootDefaultMidi);
+            const auto fine = sourceFineParameters[index] != nullptr
+                                  ? sourceFineParameters[index]->load()
+                                  : params::sourceFineDefaultCents;
+            engines[index].setSourcePitchCalibration (root, fine);
+        }
+
         const auto attack  = attackParameter  != nullptr ? attackParameter->load()  : params::attackDefaultMs;
         const auto decay   = decayParameter   != nullptr ? decayParameter->load()   : params::decayDefaultMs;
         const auto sustain = sustainParameter != nullptr ? sustainParameter->load() : params::sustainDefault;
         const auto release = releaseParameter != nullptr ? releaseParameter->load() : params::releaseDefaultMs;
 
-        for (auto& engine : engines)
-            engine.setAdsrParameters (attack, decay, sustain, release);
+        const auto randomMode = randomModeParameter != nullptr
+                                    ? juce::roundToInt (randomModeParameter->load())
+                                    : params::randomModeDefault;
+        const auto seed = randomSeed.load (std::memory_order_relaxed);
+        if (randomEvolutionResetRequested.exchange (false, std::memory_order_acq_rel))
+            for (auto& engine : engines)
+                engine.resetEvolution();
+        for (size_t i = 0; i < engines.size(); ++i)
+        {
+            const auto layerSeed = seed ^ (static_cast<std::uint64_t> (i + 1)
+                                           * UINT64_C (0x9E3779B97F4A7C15));
+            engines[i].setRandomConfig (randomMode, layerSeed);
+            engines[i].setAdsrParameters (attack, decay, sustain, release);
+        }
 
         effects.setMorphTargets (currentTargets);
         effects.getSecretEffect().setBitDepth (secretBitDepth.load (std::memory_order_relaxed));
@@ -493,7 +562,13 @@ namespace texture
 
             layerMix.clear (0, numSamples);
 
-            if (engines[static_cast<size_t> (i)].renderNextBlock (source, currentTargets, layerMix, 0, numSamples) == 0)
+            auto layerTargets = currentTargets;
+            const auto index = static_cast<size_t> (i);
+            layerTargets.sourceFineCents = sourceFineParameters[index] != nullptr
+                                               ? sourceFineParameters[index]->load()
+                                               : params::sourceFineDefaultCents;
+
+            if (engines[index].renderNextBlock (source, layerTargets, layerMix, 0, numSamples) == 0)
                 continue;
 
             for (int ch = 0; ch < 2; ++ch)
@@ -519,6 +594,7 @@ namespace texture
             return;   // a host changed the block size without calling prepareToPlay
 
         updatePerBlockParameters (numSamples);
+        applyAuditionCommand();
 
         stereoBus.clear (0, numSamples);
 
@@ -605,6 +681,71 @@ namespace texture
         blocksProcessed.fetch_add (1, std::memory_order_acq_rel);
     }
 
+    void TextureAudioProcessor::applyAuditionCommand() noexcept
+    {
+        const auto command = auditionCommand.load (std::memory_order_acquire);
+
+        if (command == audioAuditionCommand)
+            return;
+
+        // Release the prior owned set first. This is deliberately independent of
+        // the host MIDI channel and cannot release a physical key of the same pitch.
+        for (int note = 0; note <= 127; ++note)
+        {
+            if (! audioAuditionNotes[static_cast<size_t> (note)])
+                continue;
+
+            for (auto& engine : engines)
+                engine.noteOff (1, note, true);
+
+            audioAuditionNotes[static_cast<size_t> (note)] = false;
+        }
+
+        audioAuditionCommand = command;
+        const auto enabled = (command & (1u << 16)) != 0;
+
+        if (! enabled)
+            return;
+
+        const auto root = static_cast<int> (command & 0x7fu);
+        const auto velocity = static_cast<float> ((command >> 7) & 0x7fu) / 127.0f;
+        const auto chord = static_cast<int> ((command >> 14) & 0x3u);
+        constexpr std::array<std::array<int, 4>, 4> offsets {{
+            {{ 0, -1, -1, -1 }},
+            {{ 0, 4, 7, -1 }},
+            {{ 0, 3, 7, -1 }},
+            {{ 0, 7, -1, -1 }}
+        }};
+
+        for (const auto offset : offsets[static_cast<size_t> (chord)])
+        {
+            if (offset < 0 || root + offset > 127)
+                continue;
+
+            const auto note = root + offset;
+
+            for (auto& engine : engines)
+                engine.noteOn (1, note, velocity, true);
+
+            audioAuditionNotes[static_cast<size_t> (note)] = true;
+        }
+    }
+
+    void TextureAudioProcessor::setAuditionNoteSet (int rootNote, int velocity, int chord, bool enabled) noexcept
+    {
+        const auto root = static_cast<std::uint32_t> (juce::jlimit (0, 127, rootNote));
+        const auto clampedVelocity = static_cast<std::uint32_t> (juce::jlimit (1, 127, velocity));
+        const auto clampedChord = static_cast<std::uint32_t> (juce::jlimit (0, 3, chord));
+        const auto command = root | (clampedVelocity << 7) | (clampedChord << 14)
+                            | (enabled ? (1u << 16) : 0u);
+        auditionCommand.store (command, std::memory_order_release);
+    }
+
+    bool TextureAudioProcessor::isAuditionRequested() const noexcept
+    {
+        return (auditionCommand.load (std::memory_order_acquire) & (1u << 16)) != 0;
+    }
+
     void TextureAudioProcessor::handleMidiEvent (const juce::MidiMessage& message)
     {
         if (message.isNoteOn())
@@ -628,17 +769,19 @@ namespace texture
         else if (message.isSustainPedalOn() || message.isSustainPedalOff())
         {
             for (auto& engine : engines)
-                engine.setSustainPedal (message.isSustainPedalOn());
+                engine.setSustainPedal (message.getChannel(), message.isSustainPedalOn());
         }
         else if (message.isAllNotesOff())
         {
+            stopAudition();
             for (auto& engine : engines)
-                engine.allNotesOff();
+                engine.allNotesOff (message.getChannel());
         }
         else if (message.isAllSoundOff())
         {
+            stopAudition();
             for (auto& engine : engines)
-                engine.allSoundOff();
+                engine.allSoundOff (message.getChannel());
 
             effects.clearTails();
         }
@@ -1019,6 +1162,31 @@ namespace texture
         return fallback;
     }
 
+    void TextureAudioProcessor::setRandomSeed (std::uint64_t seed)
+    {
+        const auto previous = randomSeed.load (std::memory_order_relaxed);
+        if (seed == previous)
+            return;
+
+        undoManager.beginNewTransaction ("Change random seed");
+        undoManager.perform (new RandomSeedChangeAction (*this, previous, seed));
+    }
+
+    void TextureAudioProcessor::applyRandomSeedFromUndo (std::uint64_t seed)
+    {
+        randomSeed.store (seed, std::memory_order_relaxed);
+        markPresetDirty();
+        notifyPluginStateChanged();
+    }
+
+    void TextureAudioProcessor::generateNewRandomSeed()
+    {
+        auto& random = juce::Random::getSystemRandom();
+        const auto high = static_cast<std::uint64_t> (static_cast<std::uint32_t> (random.nextInt()));
+        const auto low = static_cast<std::uint64_t> (static_cast<std::uint32_t> (random.nextInt()));
+        setRandomSeed ((high << 32) | low);
+    }
+
     void TextureAudioProcessor::setParameterValue (const juce::String& id, float value)
     {
         if (auto* parameter = apvts.getParameter (id))
@@ -1080,6 +1248,8 @@ namespace texture
                        SampleLoader::Severity::warning);
             return false;
         }
+
+        stopAudition();
 
         suppressPresetDirtyTracking.store (true, std::memory_order_release);
 
@@ -1192,7 +1362,11 @@ namespace texture
         // Start sound-design parameters from defaults so results do not drift.
         // TUNE calibrates the source sample and must survive randomisation.
         for (const auto* id : params::allIDs)
-            if (juce::String (id) != params::tune)
+            if (juce::String (id) != params::tune
+                && juce::String (id) != params::layer1Root
+                && juce::String (id) != params::layer2Root
+                && juce::String (id) != params::layer1FineCents
+                && juce::String (id) != params::layer2FineCents)
                 setParameterValue (id, params::defaultValueFor (id));
 
         setParameterValue (params::morph, random.nextFloat());
@@ -1359,8 +1533,18 @@ namespace texture
                                   : 0.0f;
         settings.sampleStart = { getSampleStart (0), getSampleStart (1) };
         settings.tuneSemitones = getParameterValue (params::tune, params::tuneDefaultSemitones);
+        settings.sourceRootMidiNotes = {
+            juce::roundToInt (getParameterValue (params::layer1Root, params::sourceRootDefaultMidi)),
+            juce::roundToInt (getParameterValue (params::layer2Root, params::sourceRootDefaultMidi)) };
+        settings.sourceFineCents = {
+            getParameterValue (params::layer1FineCents, params::sourceFineDefaultCents),
+            getParameterValue (params::layer2FineCents, params::sourceFineDefaultCents) };
         settings.reverseChance = getParameterValue (params::reverse, params::reverseDefault);
         settings.shimmerAmount = getParameterValue (params::shimmer, params::shimmerDefault);
+        settings.randomMode = juce::roundToInt (getParameterValue (params::randomMode,
+                                                                     static_cast<float> (params::randomModeDefault)));
+        settings.randomSeed = randomSeed.load (std::memory_order_relaxed);
+        settings.randomAlgorithmVersion = VersionedRandomStreams::algorithmVersion;
 
         const auto secret = getSecretSettings();
         settings.gritBits = secret.bitDepth;
@@ -1397,6 +1581,10 @@ namespace texture
     {
         juce::ValueTree root (StateSchema::rootTag);
         root.setProperty (StateSchema::versionAttribute, pluginVersionString(), nullptr);
+        const auto seedHex = VersionedRandomStreams::seedToHex (
+            randomSeed.load (std::memory_order_relaxed));
+        root.setProperty ("randomSeedV1", juce::String (seedHex.c_str()), nullptr);
+        root.setProperty ("randomAlgorithmVersion", static_cast<int> (VersionedRandomStreams::algorithmVersion), nullptr);
 
         juce::ValueTree parameters (StateSchema::parametersTag);
         parameters.appendChild (apvts.copyState(), nullptr);
@@ -1475,9 +1663,18 @@ namespace texture
             return;
         }
 
+        stopAudition();
+
         const auto parameters = root.getChildWithName (StateSchema::parametersTag);
         suppressPresetDirtyTracking.store (true, std::memory_order_release);
         apvts.replaceState (parameters.getChild (0).createCopy());
+        randomSeed.store (VersionedRandomStreams::defaultSeed, std::memory_order_relaxed);
+        if (root.hasProperty ("randomSeedV1"))
+        {
+            std::uint64_t restoredSeed = 0;
+            if (VersionedRandomStreams::parseSeedHex (root.getProperty ("randomSeedV1").toString().toStdString(), restoredSeed))
+                randomSeed.store (restoredSeed, std::memory_order_relaxed);
+        }
         // A restored session starts a fresh history: undo must never step back into
         // whatever this instance was doing before the host loaded the project.
         undoManager.clearUndoHistory();

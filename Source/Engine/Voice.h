@@ -1,8 +1,10 @@
 #pragma once
 
 #include "Grain.h"
+#include "SourcePitchModel.h"
 #include "../Modulation/EnvelopeADSR.h"
 #include "../Utility/ParameterIDs.h"
+#include "../Utility/VersionedRandomStreams.h"
 
 #include <array>
 
@@ -33,7 +35,12 @@ namespace texture
         /** `startNormalised` is where the read head begins, as a fraction of the
             sample; it is resolved against the source length on the first render. */
         void startNote (int midiNote, float velocity, int midiChannel, juce::int64 noteStamp,
-                        float startNormalised = 0.0f);
+                        float startNormalised = 0.0f, bool auditionOwned = false,
+                        int randomMode = params::randomModeDefault,
+                        std::uint64_t randomSeed = 0,
+                        std::uint64_t randomNoteEvent = 0,
+                        int sourceRootMidiNote = sourcePitch::defaultRootMidiNote,
+                        float sourceFineCents = 0.0f);
 
         /** Begins the release stage. The voice keeps rendering until the tail ends. */
         void stopNote();
@@ -47,6 +54,7 @@ namespace texture
         int getMidiNote() const noexcept { return currentNote; }
         int getMidiChannel() const noexcept { return currentChannel; }
         juce::int64 getNoteStamp() const noexcept { return stamp; }
+        bool isAuditionOwned() const noexcept { return auditionOwned; }
 
         /** Envelope level multiplied by velocity: the voice-stealing score. */
         float getStealScore() const noexcept { return lastEnvelopeLevel * velocityGain; }
@@ -84,20 +92,23 @@ namespace texture
                          float taper) noexcept;
 
         int findFreeGrainSlot() noexcept;
+        float nextRandom (VersionedRandomStreams::Lane lane) noexcept;
 
         std::array<Grain, maxGrains> grains {};
         EnvelopeADSR envelope;
 
         bool active { false };
         bool sustainHeld { false };
+        bool auditionOwned { false };
         int currentNote { -1 };
         int currentChannel { 1 };
+        int currentSourceRootMidiNote { sourcePitch::defaultRootMidiNote };
         juce::int64 stamp { 0 };
 
         float velocityGain { 1.0f };
-        float basePitchRatio { 1.0f };
         float pitchBendRatio { 1.0f };
-        float tuneRatio { 1.0f };
+        float currentTuneSemitones { 0.0f };
+        float fineTuneForCurrentBlock { 0.0f };
         float lastEnvelopeLevel { 0.0f };
         float normalisedReadPosition { 0.0f };
 
@@ -108,6 +119,11 @@ namespace texture
         double preparedSampleRate { 44100.0 };
 
         juce::Random voiceRandom;
+        int randomMode { params::randomModeDefault };
+        std::uint64_t randomSeed { 0 };
+        std::uint64_t randomEvent { 0 };
+        std::array<std::uint64_t, 7> randomDrawCounts {};
+        juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> fineTuneCents;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Voice)
     };

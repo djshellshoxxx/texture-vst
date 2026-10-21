@@ -91,6 +91,12 @@ namespace texture
             if (id == params::layerBlend)  return inRange (params::layerBlendMin, params::layerBlendMax);
             if (id == params::reverse)     return inRange (params::reverseMin, params::reverseMax);
             if (id == params::shimmer)     return inRange (params::shimmerMin, params::shimmerMax);
+            if (id == params::layer1FineCents || id == params::layer2FineCents)
+                return inRange (params::sourceFineMinCents, params::sourceFineMaxCents);
+
+            if (id == params::layer1Root || id == params::layer2Root)
+                return juce::exactlyEqual (numeric, std::floor (numeric))
+                    && inRange (params::sourceRootMinMidi, params::sourceRootMaxMidi);
 
             if (id == params::tune)
                 return juce::exactlyEqual (numeric, std::floor (numeric))
@@ -103,6 +109,10 @@ namespace texture
                 return juce::exactlyEqual (numeric, std::floor (numeric))
                     && numeric >= 0.0
                     && numeric < static_cast<double> (params::numDivisions);
+
+            if (id == params::randomMode)
+                return juce::exactlyEqual (numeric, std::floor (numeric))
+                    && numeric >= 0.0 && numeric <= 2.0;
 
             return false;
         }

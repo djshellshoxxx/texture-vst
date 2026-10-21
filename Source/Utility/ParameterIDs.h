@@ -21,14 +21,20 @@ namespace texture::params
     inline constexpr const char* lfoDivision = "lfo_division";
     inline constexpr const char* layerBlend  = "layer_blend";
     inline constexpr const char* tune        = "tune";
+    inline constexpr const char* layer1Root = "layer_1_root";
+    inline constexpr const char* layer2Root = "layer_2_root";
+    inline constexpr const char* layer1FineCents = "layer_1_fine_cents";
+    inline constexpr const char* layer2FineCents = "layer_2_fine_cents";
     inline constexpr const char* reverse     = "reverse";
     inline constexpr const char* shimmer     = "shimmer";
+    inline constexpr const char* randomMode  = "random_mode";
 
     /** Every ID in preset/serialisation order. */
     inline constexpr const char* allIDs[] = {
         morph, attack, decay, sustain, release,
         reverbOn, gainDb, lfoRate, lfoDepth, lfoSync, lfoDivision, layerBlend,
-        tune, reverse, shimmer
+        tune, reverse, shimmer, randomMode,
+        layer1Root, layer2Root, layer1FineCents, layer2FineCents
     };
 
     inline constexpr int numParameters = static_cast<int> (std::size (allIDs));
@@ -49,6 +55,9 @@ namespace texture::params
     // v0.0.1 additions. All default to "off" so older presets and sessions,
     // which do not carry them, sound exactly as they did.
     inline constexpr float tuneMinSemitones = -24.0f, tuneMaxSemitones = 24.0f, tuneDefaultSemitones = 0.0f;
+    inline constexpr float sourceRootMinMidi = 0.0f, sourceRootMaxMidi = 127.0f, sourceRootDefaultMidi = 60.0f;
+    inline constexpr float sourceFineMinCents = -100.0f, sourceFineMaxCents = 100.0f, sourceFineDefaultCents = 0.0f;
+    inline constexpr int randomModeDefault = 0; // Legacy preserves the original random stream.
     inline constexpr float reverseMin = 0.0f,    reverseMax = 1.0f,      reverseDefault = 0.0f;
     inline constexpr float shimmerMin = 0.0f,    shimmerMax = 1.0f,      shimmerDefault = 0.0f;
 
@@ -87,6 +96,7 @@ namespace texture
         // Not driven by MORPH: copied in from their own parameters each block so
         // they travel to every grain through the same path as the MORPH values.
         float tuneSemitones;      // -24 .. +24, retunes samples not recorded at C3
+        float sourceFineCents { 0.0f }; // smoothed, per-layer calibration
         float reverseChance;      // 0 .. 1, probability a grain plays backwards
         float shimmerAmount;      // 0 .. 1, octave-up grains blended into the cloud
     };
@@ -109,6 +119,7 @@ namespace texture
         t.saturatorDrive    = 0.1f + m * 0.25f;
         t.highShelfTiltDb   = m * 2.0f;
         t.tuneSemitones     = 0.0f;
+        t.sourceFineCents   = 0.0f;
         t.reverseChance     = 0.0f;
         t.shimmerAmount     = 0.0f;
         return t;

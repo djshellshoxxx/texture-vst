@@ -4,20 +4,132 @@
 
 #include <algorithm>
 #include <cmath>
+#include <exception>
+#include <limits>
 
 namespace texture
 {
     namespace
     {
+        enum class ReadStatus
+        {
+            success,
+            insufficientMemory,
+            decodeFailed
+        };
+
+        constexpr juce::int64 bytesPerFloat = static_cast<juce::int64> (sizeof (float));
+
+        /** JUCE WAV readers zero-pad reads beyond EOF, so verify RIFF chunk bounds first. */
+        bool hasCompleteWaveChunks (const juce::File& file)
+        {
+            juce::FileInputStream stream (file);
+
+            if (! stream.openedOk())
+                return false;
+
+            juce::uint8 header[12] {};
+            if (stream.read (header, 12) != 12)
+                return true; // Let the format manager report short non-WAV files.
+
+            const auto isRiff = header[0] == 'R' && header[1] == 'I'
+                             && header[2] == 'F' && header[3] == 'F';
+            const auto isWave = header[8] == 'W' && header[9] == 'A'
+                             && header[10] == 'V' && header[11] == 'E';
+
+            if (! isRiff || ! isWave)
+                return true;
+
+            const auto readLittleEndian32 = [] (const juce::uint8* bytes)
+            {
+                return static_cast<std::uint64_t> (bytes[0])
+                     | (static_cast<std::uint64_t> (bytes[1]) << 8)
+                     | (static_cast<std::uint64_t> (bytes[2]) << 16)
+                     | (static_cast<std::uint64_t> (bytes[3]) << 24);
+            };
+
+            const auto fileLength = static_cast<std::uint64_t> (stream.getTotalLength());
+            const auto riffEnd = readLittleEndian32 (header + 4) + 8u;
+
+            if (riffEnd < 12u || riffEnd > fileLength)
+                return false;
+
+            std::uint64_t position = 12u;
+            bool hasFormatChunk = false;
+            bool hasDataChunk = false;
+
+            while (position < riffEnd)
+            {
+                if (riffEnd - position < 8u)
+                    return false;
+
+                juce::uint8 chunkHeader[8] {};
+                if (! stream.setPosition (static_cast<juce::int64> (position))
+                    || stream.read (chunkHeader, 8) != 8)
+                    return false;
+
+                const auto chunkLength = readLittleEndian32 (chunkHeader + 4);
+                const auto chunkDataEnd = position + 8u + chunkLength;
+
+                if (chunkDataEnd < position || chunkDataEnd > riffEnd)
+                    return false;
+
+                hasFormatChunk |= chunkHeader[0] == 'f' && chunkHeader[1] == 'm'
+                               && chunkHeader[2] == 't' && chunkHeader[3] == ' ';
+                hasDataChunk |= chunkHeader[0] == 'd' && chunkHeader[1] == 'a'
+                             && chunkHeader[2] == 't' && chunkHeader[3] == 'a';
+
+                const auto nextChunk = chunkDataEnd + (chunkLength & 1u);
+                if (nextChunk > riffEnd)
+                    return false;
+                position = nextChunk;
+            }
+
+            return position == riffEnd && hasFormatChunk && hasDataChunk;
+        }
+
+        bool checkedBufferBytes (int channels, juce::int64 frames, juce::int64& bytes) noexcept
+        {
+            if (channels <= 0 || frames < 0
+                || frames > std::numeric_limits<juce::int64>::max() / channels / bytesPerFloat)
+                return false;
+
+            bytes = static_cast<juce::int64> (channels) * frames * bytesPerFloat;
+            return true;
+        }
+
+        bool conversionFitsMemoryLimit (int sourceChannels,
+                                       juce::int64 sourceFrames,
+                                       juce::int64 outputFrames) noexcept
+        {
+            const auto readChannels = juce::jlimit (1, 2, sourceChannels);
+            juce::int64 rawBytes = 0;
+            juce::int64 stereoBytes = 0;
+            juce::int64 outputBytes = 0;
+
+            if (! checkedBufferBytes (readChannels, sourceFrames, rawBytes)
+                || ! checkedBufferBytes (2, sourceFrames, stereoBytes)
+                || ! checkedBufferBytes (2, outputFrames, outputBytes))
+                return false;
+
+            // The raw decode and stereo fold coexist briefly. The folded sample and
+            // its resampled copy coexist during rate conversion. A same-rate copy is
+            // covered by the second sum as well.
+            const auto decodeAndFoldBytes = rawBytes + stereoBytes;
+            const auto foldAndResampleBytes = stereoBytes + outputBytes;
+            return decodeAndFoldBytes <= SampleLoader::maxConversionWorkingBytes
+                && foldAndResampleBytes <= SampleLoader::maxConversionWorkingBytes;
+        }
+
         /** Reads at most `maxFrames` frames from a reader into a float buffer. */
-        bool readIntoBuffer (juce::AudioFormatReader& reader,
-                             juce::AudioBuffer<float>& destination,
-                             juce::int64 maxFrames)
+        ReadStatus readIntoBuffer (juce::AudioFormatReader& reader,
+                                   juce::AudioBuffer<float>& destination,
+                                   juce::int64 maxFrames)
         {
             const auto framesToRead = static_cast<int> (juce::jmin (reader.lengthInSamples, maxFrames));
 
             if (framesToRead <= 0)
-                return false;
+                return ReadStatus::decodeFailed;
 
             // TEXTURE is stereo internally. Never allocate all channels from an
             // untrusted multichannel file only to discard channel 3+ immediately.
@@ -29,11 +141,20 @@ namespace texture
             }
             catch (const std::bad_alloc&)
             {
-                return false;
+                return ReadStatus::insufficientMemory;
             }
 
-            reader.read (&destination, 0, framesToRead, 0, true, true);
-            return true;
+            try
+            {
+                if (! reader.read (&destination, 0, framesToRead, 0, true, true))
+                    return ReadStatus::decodeFailed;
+            }
+            catch (const std::exception&)
+            {
+                return ReadStatus::decodeFailed;
+            }
+
+            return ReadStatus::success;
         }
 
         /** Folds any channel count down to stereo: L = ch0, R = ch1, rest discarded. */
@@ -232,6 +353,13 @@ namespace texture
             return result;
         }
 
+        if (! hasCompleteWaveChunks (file))
+        {
+            result.message = "Could not decode file. It may be truncated or corrupt.";
+            result.severity = Severity::warning;
+            return result;
+        }
+
         std::unique_ptr<juce::AudioFormatReader> reader;
 
         try
@@ -272,32 +400,74 @@ namespace texture
 
         const auto maxFrames = static_cast<juce::int64> (SampleBuffer::maxLengthSeconds * sourceRate);
         const auto wasTruncated = reader->lengthInSamples > maxFrames;
+        const auto framesToRead = juce::jmin (reader->lengthInSamples, maxFrames);
 
-        juce::AudioBuffer<float> raw;
+        const auto rate = targetSampleRateAtomic.load (std::memory_order_acquire);
 
-        if (! readIntoBuffer (*reader, raw, maxFrames))
+        if (! std::isfinite (rate) || rate < 1000.0 || rate > 768000.0)
         {
-            result.message = "Not enough memory to load this file.";
-            result.severity = Severity::error;
+            result.message = "Could not decode file. The host sample rate is invalid.";
+            result.severity = Severity::warning;
             return result;
         }
 
-        auto stereo = foldToStereo (raw);
-        raw.setSize (0, 0);
+        const auto outputFramesAsDouble = static_cast<double> (framesToRead) * rate / sourceRate;
 
-        const auto rate = targetSampleRateAtomic.load (std::memory_order_acquire);
-        auto resampled = resampleStereo (stereo, sourceRate, rate);
-        stereo.setSize (0, 0);
+        if (! std::isfinite (outputFramesAsDouble) || outputFramesAsDouble < 1.0
+            || outputFramesAsDouble > static_cast<double> (std::numeric_limits<int>::max()))
+        {
+            result.message = "Could not decode file. The converted sample would be too large.";
+            result.severity = Severity::warning;
+            return result;
+        }
 
-        dsp::sanitiseBuffer (resampled);
+        const auto outputFrames = static_cast<juce::int64> (std::llround (outputFramesAsDouble));
 
-        result.buffer = std::make_shared<const SampleBuffer> (std::move (resampled),
-                                                              rate,
-                                                              file,
-                                                              sourceChannels,
-                                                              sourceRate,
-                                                              wasTruncated);
-        result.succeeded = true;
+        if (! conversionFitsMemoryLimit (sourceChannels, framesToRead, outputFrames))
+        {
+            result.message = "Sample is too large to convert within the 128 MB memory limit.";
+            result.severity = Severity::warning;
+            return result;
+        }
+
+        try
+        {
+            juce::AudioBuffer<float> raw;
+            const auto readStatus = readIntoBuffer (*reader, raw, maxFrames);
+
+            if (readStatus != ReadStatus::success)
+            {
+                result.message = readStatus == ReadStatus::insufficientMemory
+                    ? juce::String ("Not enough memory to load this file.")
+                    : juce::String ("Could not decode file. It may be truncated or corrupt.");
+                result.severity = readStatus == ReadStatus::insufficientMemory ? Severity::error
+                                                                                : Severity::warning;
+                return result;
+            }
+
+            auto stereo = foldToStereo (raw);
+            raw.setSize (0, 0);
+
+            auto resampled = resampleStereo (stereo, sourceRate, rate);
+            stereo.setSize (0, 0);
+
+            dsp::sanitiseBuffer (resampled);
+
+            result.buffer = std::make_shared<const SampleBuffer> (std::move (resampled),
+                                                                  rate,
+                                                                  file,
+                                                                  sourceChannels,
+                                                                  sourceRate,
+                                                                  wasTruncated);
+            result.succeeded = true;
+        }
+        catch (const std::bad_alloc&)
+        {
+            result.buffer.reset();
+            result.message = "Not enough memory to convert this sample.";
+            result.severity = Severity::error;
+            return result;
+        }
 
         // Informational messages: the file still loaded.
         if (wasTruncated)

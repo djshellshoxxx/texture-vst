@@ -22,6 +22,7 @@ namespace texture
     {
         preparedSampleRate = sampleRate > 0.0 ? sampleRate : 44100.0;
         envelope.prepare (preparedSampleRate);
+        fineTuneCents.reset (preparedSampleRate, 0.02);
         reset();
     }
 
@@ -34,31 +35,47 @@ namespace texture
 
         active = false;
         sustainHeld = false;
+        auditionOwned = false;
         currentNote = -1;
         currentChannel = 1;
+        currentSourceRootMidiNote = sourcePitch::defaultRootMidiNote;
         stamp = 0;
         velocityGain = 1.0f;
-        basePitchRatio = 1.0f;
+        currentTuneSemitones = 0.0f;
+        fineTuneForCurrentBlock = 0.0f;
         lastEnvelopeLevel = 0.0f;
         normalisedReadPosition = 0.0f;
         readPosition = 0.0;
         samplesUntilNextGrain = 0.0;
     }
 
-    void Voice::startNote (int midiNote, float velocity, int midiChannel, juce::int64 noteStamp, float startNormalised)
+    void Voice::startNote (int midiNote, float velocity, int midiChannel, juce::int64 noteStamp,
+                           float startNormalised, bool isAuditionOwned,
+                           int newRandomMode, std::uint64_t newRandomSeed,
+                           std::uint64_t randomNoteEvent,
+                           int sourceRootMidiNote, float sourceFineCents)
     {
         for (auto& grain : grains)
             grain.stop();
 
         currentNote = midiNote;
         currentChannel = midiChannel;
+        auditionOwned = isAuditionOwned;
         stamp = noteStamp;
         sustainHeld = false;
+        randomMode = juce::jlimit (0, 2, newRandomMode);
+        randomSeed = newRandomSeed ^ (static_cast<std::uint64_t> (midiNote) * UINT64_C (0xD6E8FEB86659FD93));
+        randomEvent = randomMode == 2 ? randomNoteEvent : 0;
+        randomDrawCounts.fill (0);
 
         velocityGain = juce::jmap (juce::jlimit (0.0f, 1.0f, velocity),
                                    velocityFloor, velocityCeiling);
 
-        basePitchRatio = dsp::semitonesToRatio (static_cast<float> (midiNote - rootMidiNote));
+        currentSourceRootMidiNote = sourcePitch::clampRootNote (sourceRootMidiNote);
+        currentTuneSemitones = 0.0f;
+        const auto initialFineCents = sourcePitch::clampFineCents (sourceFineCents);
+        fineTuneCents.setCurrentAndTargetValue (initialFineCents);
+        fineTuneForCurrentBlock = initialFineCents;
 
         readPosition = 0.0;
         pendingStart = juce::jlimit (0.0f, 1.0f, startNormalised);
@@ -108,6 +125,27 @@ namespace texture
         return -1;
     }
 
+    float Voice::nextRandom (VersionedRandomStreams::Lane lane) noexcept
+    {
+        if (randomMode == params::randomModeDefault)
+            return voiceRandom.nextFloat();
+
+        std::size_t laneIndex = 0;
+        switch (lane)
+        {
+            case VersionedRandomStreams::Lane::grainPosition: laneIndex = 0; break;
+            case VersionedRandomStreams::Lane::shimmer:       laneIndex = 1; break;
+            case VersionedRandomStreams::Lane::reverse:       laneIndex = 2; break;
+            case VersionedRandomStreams::Lane::detune:        laneIndex = 3; break;
+            case VersionedRandomStreams::Lane::pan:           laneIndex = 4; break;
+            case VersionedRandomStreams::Lane::modulation:    laneIndex = 5; break;
+            case VersionedRandomStreams::Lane::effects:        laneIndex = 6; break;
+        }
+
+        const auto draw = randomDrawCounts[laneIndex]++;
+        return VersionedRandomStreams::unitFloat (randomSeed, lane, randomEvent, draw);
+    }
+
     void Voice::spawnGrain (const SampleBuffer& source,
                             const MorphTargets& targets,
                             int grainDurationSamples,
@@ -130,18 +168,24 @@ namespace texture
         {
             const auto jitterRange = static_cast<double> (targets.positionJitter)
                                    * static_cast<double> (sourceLength);
-            start += (voiceRandom.nextDouble() * 2.0 - 1.0) * jitterRange;
+            const auto jitterValue = randomMode == params::randomModeDefault
+                ? voiceRandom.nextDouble()
+                : static_cast<double> (nextRandom (VersionedRandomStreams::Lane::grainPosition));
+            start += (jitterValue * 2.0 - 1.0) * jitterRange;
         }
 
         // 2. Pitch: voice pitch plus a per-grain detune of +/- MORPH * 30 cents.
-        auto ratio = basePitchRatio * pitchBendRatio * tuneRatio;
+        auto ratio = static_cast<float> (sourcePitch::playbackRatio (
+                         currentNote, currentSourceRootMidiNote, currentTuneSemitones,
+                         fineTuneForCurrentBlock, source.getSampleRate(), preparedSampleRate))
+                   * pitchBendRatio;
         auto amplitudeScale = 1.0f;
 
         // The random draws below are only taken when their feature is on, so a
         // patch with both at zero renders bit-identically to earlier versions.
         // SHIMMER: some grains jump an octave up, quieter, for a bright halo.
         if (targets.shimmerAmount > 0.0f
-            && voiceRandom.nextFloat() < dsp::clamp (targets.shimmerAmount, 0.0f, 1.0f) * 0.5f)
+            && nextRandom (VersionedRandomStreams::Lane::shimmer) < dsp::clamp (targets.shimmerAmount, 0.0f, 1.0f) * 0.5f)
         {
             ratio *= 2.0f;
             amplitudeScale = 0.7f;
@@ -149,17 +193,17 @@ namespace texture
 
         // REVERSE: some grains read backwards.
         const auto reversed = targets.reverseChance > 0.0f
-                              && voiceRandom.nextFloat() < dsp::clamp (targets.reverseChance, 0.0f, 1.0f);
+                              && nextRandom (VersionedRandomStreams::Lane::reverse) < dsp::clamp (targets.reverseChance, 0.0f, 1.0f);
 
         if (targets.detuneCents > 0.0f)
         {
-            const auto cents = (voiceRandom.nextFloat() * 2.0f - 1.0f) * targets.detuneCents;
+            const auto cents = (nextRandom (VersionedRandomStreams::Lane::detune) * 2.0f - 1.0f) * targets.detuneCents;
             ratio *= dsp::centsToRatio (cents);
         }
 
         // 3. Pan: centred at MORPH=0, widening to +/- 0.8 at MORPH=1.
         const auto pan = targets.panSpread > 0.0f
-            ? (voiceRandom.nextFloat() * 2.0f - 1.0f) * targets.panSpread
+            ? (nextRandom (VersionedRandomStreams::Lane::pan) * 2.0f - 1.0f) * targets.panSpread
             : 0.0f;
 
         // Overlapping grains sum, so scale back by the incoherent-summation factor
@@ -210,12 +254,20 @@ namespace texture
 
         // TUNE: whole semitones, so a sample recorded away from C3 can be put back
         // in key. Clamped here as well because the fuzzer feeds raw targets.
-        tuneRatio = dsp::semitonesToRatio (std::isfinite (targets.tuneSemitones)
-                                               ? dsp::clamp (targets.tuneSemitones,
-                                                             params::tuneMinSemitones,
-                                                             params::tuneMaxSemitones)
-                                               : 0.0f);
-        const auto readIncrement = static_cast<double> (basePitchRatio * pitchBendRatio * tuneRatio);
+        currentTuneSemitones = std::isfinite (targets.tuneSemitones)
+                                   ? dsp::clamp (targets.tuneSemitones,
+                                                 params::tuneMinSemitones,
+                                                 params::tuneMaxSemitones)
+                                   : 0.0f;
+        fineTuneCents.setTargetValue (sourcePitch::clampFineCents (targets.sourceFineCents));
+        const auto fineAtBlockStart = fineTuneCents.getNextValue();
+        fineTuneForCurrentBlock = fineAtBlockStart;
+        if (numSamples > 1)
+            fineTuneCents.skip (numSamples - 1);
+        const auto readPitchRatio = static_cast<float> (sourcePitch::playbackRatio (
+            currentNote, currentSourceRootMidiNote, currentTuneSemitones, fineAtBlockStart,
+            source.getSampleRate(), preparedSampleRate));
+        const auto readIncrement = static_cast<double> (readPitchRatio * pitchBendRatio);
         const auto sourceLengthAsDouble = static_cast<double> (sourceLength);
         // Spawning must stop the moment the envelope finishes. `isInReleasePhase()`
         // goes false again once the release completes, so testing it alone would

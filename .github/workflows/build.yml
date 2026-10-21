@@ -6,6 +6,7 @@ name: build
 on:
   push:
     branches: ["**"]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -113,3 +114,31 @@ jobs:
 
       - name: Build
         run: cmake --build --preset release-clap
+
+  release:
+    name: Package and publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, clap]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Windows and macOS build artefacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: texture-*
+          path: release-input
+          merge-multiple: false
+
+      - name: Package standalone apps and plug-in bundles
+        run: packaging/package_platform_release.sh "${GITHUB_REF_NAME#v}" release-input release-assets
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: TEXTURE ${{ github.ref_name }}
+          prerelease: true
+          generate_release_notes: true
+          files: release-assets/*

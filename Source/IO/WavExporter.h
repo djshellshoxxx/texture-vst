@@ -3,6 +3,7 @@
 #include "../Engine/SampleBuffer.h"
 
 #include <array>
+#include <cstdint>
 
 namespace texture
 {
@@ -30,8 +31,13 @@ namespace texture
             float layerBlend { 0.0f };
             std::array<float, 2> sampleStart { 0.0f, 0.0f };
             float tuneSemitones { 0.0f };
+            std::array<int, 2> sourceRootMidiNotes { 60, 60 };
+            std::array<float, 2> sourceFineCents { 0.0f, 0.0f };
             float reverseChance { 0.0f };
             float shimmerAmount { 0.0f };
+            int randomMode { 0 };
+            std::uint32_t randomAlgorithmVersion { 1 };
+            std::uint64_t randomSeed { 0 };
             float gritBits { 12.0f };
             float gritDownsample { 4.0f };
             float gritMix { 0.0f };

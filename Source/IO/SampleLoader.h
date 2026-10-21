@@ -23,6 +23,11 @@ namespace texture
         /** Hard ceiling from 10_CONSTRAINTS.md. */
         static constexpr juce::int64 maxFileSizeBytes = 100 * 1024 * 1024;
 
+        /** Maximum simultaneous decoded float-buffer memory used while converting
+            one sample. Compressed files can expand far beyond their on-disk size.
+        */
+        static constexpr juce::int64 maxConversionWorkingBytes = 128 * 1024 * 1024;
+
         enum class Severity { info, warning, error };
 
         struct LoadResult

@@ -17,8 +17,13 @@ namespace texture::params
         if (parameterID == lfoDivision) return "LFO Division";
         if (parameterID == layerBlend)  return "Layer Blend";
         if (parameterID == tune)        return "Tune";
+        if (parameterID == layer1Root)  return "Layer 1 Source Note";
+        if (parameterID == layer2Root)  return "Layer 2 Source Note";
+        if (parameterID == layer1FineCents) return "Layer 1 Fine Tune";
+        if (parameterID == layer2FineCents) return "Layer 2 Fine Tune";
         if (parameterID == reverse)     return "Reverse";
         if (parameterID == shimmer)     return "Shimmer";
+        if (parameterID == randomMode)  return "Random Mode";
 
         return parameterID;
     }
@@ -38,8 +43,11 @@ namespace texture::params
         if (parameterID == lfoDivision) return static_cast<float> (lfoDivisionDefault);
         if (parameterID == layerBlend)  return layerBlendDefault;
         if (parameterID == tune)        return tuneDefaultSemitones;
+        if (parameterID == layer1Root || parameterID == layer2Root) return sourceRootDefaultMidi;
+        if (parameterID == layer1FineCents || parameterID == layer2FineCents) return sourceFineDefaultCents;
         if (parameterID == reverse)     return reverseDefault;
         if (parameterID == shimmer)     return shimmerDefault;
+        if (parameterID == randomMode)  return randomModeDefault;
 
         return 0.0f;
     }

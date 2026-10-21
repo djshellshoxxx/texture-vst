@@ -17,9 +17,11 @@
 #include "Utility/Logging.h"
 #include "Utility/MidiLearn.h"
 #include "Utility/ParameterIDs.h"
+#include "Utility/VersionedRandomStreams.h"
 
 #include <array>
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -31,6 +33,8 @@ namespace texture
         marshals between threads. All the interesting behaviour lives in the engine,
         the effects chain and the GUI (20_BEST_PRACTICES.md, "Testability").
     */
+    class RandomSeedChangeAction;
+
     class TextureAudioProcessor final : public juce::AudioProcessor,
                                         private juce::AsyncUpdater,
                                         private juce::Timer,
@@ -105,6 +109,13 @@ namespace texture
 
         bool isPro() const noexcept { return licenseManager.isPro(); }
 
+        /** Patch-level seed for Repeat/Evolve random lanes. The seed is state metadata,
+            not a normalized host parameter. Message-thread writes only. */
+        std::uint64_t getRandomSeed() const noexcept { return randomSeed.load (std::memory_order_relaxed); }
+        void setRandomSeed (std::uint64_t seed);
+        void generateNewRandomSeed();
+        void resetRandomEvolution() noexcept { randomEvolutionResetRequested.store (true, std::memory_order_release); }
+
         /** Parameter undo/redo (Ctrl+Z, Ctrl+Shift+Z / Ctrl+Y). Every mouse gesture in
             the editor, preset load, reset, randomise and A/B recall starts a new step.
             Sample, GRIT and MIDI-mapping changes are not parameters and are not
@@ -138,6 +149,12 @@ namespace texture
         juce::File getSampleFileForLayer (int layerIndex) const;
 
         void clearLayer (int layerIndex);
+
+        /** Starts or replaces the internally owned audition note set. The request is
+            published atomically and applied at the next audio-block boundary. */
+        void setAuditionNoteSet (int rootNote, int velocity, int chord, bool enabled) noexcept;
+        void stopAudition() noexcept { setAuditionNoteSet (60, 96, 0, false); }
+        bool isAuditionRequested() const noexcept;
 
         /** Where notes start reading in a layer's sample, 0..1 (waveform click).
             Kept out of the APVTS like GRIT, persisted with the session. */
@@ -239,6 +256,9 @@ namespace texture
         void enforceTierLimits();
 
     private:
+        friend class RandomSeedChangeAction;
+        void applyRandomSeedFromUndo (std::uint64_t seed);
+
         /** One sample slot.
 
             `live` is a raw pointer on purpose. `05_SAMPLE_LOADER.md` asks for the
@@ -284,6 +304,7 @@ namespace texture
         void timerCallback() override;
         void parameterChanged (const juce::String& parameterID, float newValue) override;
         void handleMidiEvent (const juce::MidiMessage& message);
+        void applyAuditionCommand() noexcept;
         void applyMidiLearnedController (int ccNumber, int value);
         void updatePerBlockParameters (int numSamples);
         void renderLayers (juce::AudioBuffer<float>& buffer, int startSample, int numSamples);
@@ -357,8 +378,13 @@ namespace texture
         std::atomic<float>* lfoDivisionParameter { nullptr };
         std::atomic<float>* layerBlendParameter { nullptr };
         std::atomic<float>* tuneParameter { nullptr };
+        std::array<std::atomic<float>*, 2> sourceRootParameters {};
+        std::array<std::atomic<float>*, 2> sourceFineParameters {};
         std::atomic<float>* reverseParameter { nullptr };
         std::atomic<float>* shimmerParameter { nullptr };
+        std::atomic<float>* randomModeParameter { nullptr };
+        std::atomic<std::uint64_t> randomSeed { VersionedRandomStreams::defaultSeed };
+        std::atomic<bool> randomEvolutionResetRequested { false };
 
         // --- Host state -------------------------------------------------------
         double currentSampleRate { 44100.0 };
@@ -405,6 +431,12 @@ namespace texture
 
         std::atomic<bool> midiLearnBindingPending { false };
         std::atomic<bool> nonFiniteDetected { false };
+
+        // Audition is transient message-to-audio state. One packed atomic ensures the
+        // audio thread observes a complete root/velocity/chord/enabled configuration.
+        std::atomic<std::uint32_t> auditionCommand { 0 };
+        std::array<bool, 128> audioAuditionNotes {};
+        std::uint32_t audioAuditionCommand { 0 };
 
         /** CC values captured on the audio thread and applied on the message thread,
             so no parameter is ever written from processBlock.

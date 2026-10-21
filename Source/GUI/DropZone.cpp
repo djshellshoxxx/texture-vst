@@ -3,6 +3,8 @@
 #include "../PluginProcessor.h"
 #include "LookAndFeel.h"
 
+#include "../Utility/ParameterIDs.h"
+
 namespace texture
 {
     namespace
@@ -18,6 +20,14 @@ namespace texture
         {
             return juce::String::fromUTF8 ("  \xc2\xb7  ");
         }
+
+        juce::String sourceNoteName (int midiNote)
+        {
+            static const char* names[] { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+            const auto note = juce::jlimit (0, 127, midiNote);
+            return juce::String (names[note % 12]) + juce::String (note / 12 - 2)
+                 + " (" + juce::String (note) + ")";
+        }
     }
 
     DropZone::DropZone (TextureAudioProcessor& processorToUse, int layerIndexToUse)
@@ -26,6 +36,26 @@ namespace texture
     {
         waveform = std::make_unique<WaveformDisplay>();
         addAndMakeVisible (*waveform);
+
+        sourceRootBox.setTooltip ("Source root note. MIDI 60 is labelled C3 in TEXTURE.");
+        for (int note = 0; note <= 127; ++note)
+            sourceRootBox.addItem (sourceNoteName (note), note + 1);
+        sourceRootBox.setSelectedId (61, juce::dontSendNotification);
+        addAndMakeVisible (sourceRootBox);
+
+        sourceFineSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+        sourceFineSlider.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 48, 18);
+        sourceFineSlider.setNumDecimalPlacesToDisplay (1);
+        sourceFineSlider.setTextValueSuffix ("c");
+        sourceFineSlider.setTooltip ("Fine source tuning in cents. Active notes glide to the new calibration over 20 ms.");
+        addAndMakeVisible (sourceFineSlider);
+
+        const auto rootId = layerIndex == 0 ? params::layer1Root : params::layer2Root;
+        const auto fineId = layerIndex == 0 ? params::layer1FineCents : params::layer2FineCents;
+        sourceRootAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
+            processor.getValueTreeState(), rootId, sourceRootBox);
+        sourceFineAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+            processor.getValueTreeState(), fineId, sourceFineSlider);
 
         setTooltip ("Drop an audio file or a .texture preset here, or click to browse. Once loaded, "
                     "click the waveform to set where notes start (Alt-click clears it). "
@@ -59,6 +89,9 @@ namespace texture
             waveform->setSample (nullptr);
         }
 
+        sourceRootBox.setEnabled (buffer != nullptr && buffer->isValid());
+        sourceFineSlider.setEnabled (buffer != nullptr && buffer->isValid());
+
         repaint();
     }
 
@@ -75,8 +108,12 @@ namespace texture
     void DropZone::resized()
     {
         auto bounds = getLocalBounds().reduced (layout::grid);
-        bounds.removeFromBottom (26);   // room for the filename caption
+        bounds.removeFromBottom (50);   // filename and source-pitch calibration controls
         waveform->setBounds (bounds);
+        auto calibrationRow = getLocalBounds().removeFromBottom (22).reduced (layout::grid, 1);
+        sourceRootBox.setBounds (calibrationRow.removeFromLeft (96));
+        calibrationRow.removeFromLeft (4);
+        sourceFineSlider.setBounds (calibrationRow);
     }
 
     void DropZone::paint (juce::Graphics& g)
@@ -127,7 +164,7 @@ namespace texture
         g.setColour (isDragOver ? colours::accentPrimary : colours::panelEdge);
         g.drawRoundedRectangle (bounds, layout::panelCornerRadius, isDragOver ? 2.0f : 1.0f);
 
-        auto caption = getLocalBounds().removeFromBottom (26).reduced (layout::grid, 2);
+        auto caption = getLocalBounds().removeFromBottom (50).reduced (layout::grid, 2);
 
         g.setColour (colours::textPrimary);
         g.setFont (TextureLookAndFeel::interfaceFont (10.0f, true));
@@ -135,7 +172,7 @@ namespace texture
 
         g.setColour (colours::textMuted);
         g.setFont (TextureLookAndFeel::monoFont (9.0f));
-        g.drawText (sampleDetails, caption, juce::Justification::centredLeft, true);
+        g.drawText (sampleDetails, caption.removeFromTop (10), juce::Justification::centredLeft, true);
 
         if (isDragOver)
         {
@@ -198,6 +235,7 @@ namespace texture
         menu.addSeparator();
         menu.addItem (3, "Show sample in file browser", hasSample);
         menu.addItem (4, "Open factory samples folder");
+        menu.addItem (6, "Reset source pitch calibration", hasSample);
 
         juce::Component::SafePointer<DropZone> safeThis (this);
 
@@ -233,6 +271,14 @@ namespace texture
                     safeThis->processor.setSampleStart (safeThis->layerIndex, 0.0f);
                     safeThis->waveform->setStartMarker (0.0f);
                     break;
+
+                case 6:
+                {
+                    safeThis->processor.getUndoManager().beginNewTransaction ("Reset source pitch calibration");
+                    safeThis->sourceRootBox.setSelectedId (61);
+                    safeThis->sourceFineSlider.setValue (0.0);
+                    break;
+                }
 
                 default:
                     break;
