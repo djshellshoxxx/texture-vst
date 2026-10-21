@@ -156,6 +156,18 @@ namespace texture
             if (id == params::grainDetuneCents) return inRange (params::grainDetuneMinCents, params::grainDetuneMaxCents);
             if (id == params::grainPanSpread)  return inRange (params::grainPanSpreadMin, params::grainPanSpreadMax);
 
+            // F14 modulation shapes.
+            if (id == params::lfoShape)
+                return juce::exactlyEqual (numeric, std::floor (numeric))
+                    && numeric >= 0.0 && numeric < static_cast<double> (params::lfoShapeCount);
+
+            if (id == params::lfoRetrigger)
+                return juce::exactlyEqual (numeric, std::floor (numeric))
+                    && numeric >= 0.0 && numeric < static_cast<double> (params::lfoRetriggerCount);
+
+            if (id == params::lfoPhase)    return inRange (params::lfoPhaseMin, params::lfoPhaseMax);
+            if (id == params::lfoSlewMs)   return inRange (params::lfoSlewMsMin, params::lfoSlewMsMax);
+
             return false;
         }
     }
@@ -427,7 +439,9 @@ namespace texture
             return Status::fileMissing;
         }
 
-        if (file.getSize() > maxPresetFileSizeBytes)
+        // The byte limit depends on the schema, which is known only after parsing; this is the
+        // ceiling that applies to every schema.
+        if (file.getSize() > maxSchema3FileSizeBytes)
         {
             errorMessage = "Could not read preset: " + file.getFileNameWithoutExtension();
             return Status::tooLarge;
@@ -463,10 +477,16 @@ namespace texture
             return Status::invalidData;
         }
 
-        if (schema > currentSchemaVersion)
+        if (schema > maxSchemaVersion)
         {
             errorMessage = "This preset was made with a newer version of TEXTURE.";
             return Status::schemaTooNew;
+        }
+
+        if (schema < 3 && file.getSize() > maxPresetFileSizeBytes)
+        {
+            errorMessage = "Could not read preset: " + file.getFileNameWithoutExtension();
+            return Status::tooLarge;
         }
 
         // Only mutate `data` once everything has parsed cleanly.
@@ -537,6 +557,69 @@ namespace texture
             for (const auto& tag : *tagArray)
                 parsedData.tags.add (tag.toString());
 
+        // Schema 3 features. Each entry is validated against the curve rules, so a corrupt
+        // curve rejects the whole preset rather than falling back silently.
+        if (schema >= 3)
+        {
+            const auto features = parsed.getProperty ("features", juce::var());
+
+            if (! features.isVoid())
+            {
+                auto* featureObject = features.getDynamicObject();
+
+                if (featureObject == nullptr)
+                {
+                    errorMessage = "Preset feature data is malformed.";
+                    return Status::invalidData;
+                }
+
+                const auto curveVar = featureObject->getProperty ("lfo_curve");
+
+                if (! curveVar.isVoid())
+                {
+                    const auto* pointArray = curveVar.getArray();
+                    std::vector<CurvePoint> points;
+
+                    if (pointArray == nullptr)
+                    {
+                        errorMessage = "Preset modulation curve is malformed.";
+                        return Status::invalidData;
+                    }
+
+                    for (const auto& pointVar : *pointArray)
+                    {
+                        const auto* pair = pointVar.getArray();
+
+                        if (pair == nullptr || pair->size() != 2)
+                        {
+                            errorMessage = "Preset modulation curve is malformed.";
+                            return Status::invalidData;
+                        }
+
+                        double x = 0.0;
+                        double y = 0.0;
+
+                        if (! readNumericParameter (pair->getReference (0), x)
+                            || ! readNumericParameter (pair->getReference (1), y))
+                        {
+                            errorMessage = "Preset modulation curve is malformed.";
+                            return Status::invalidData;
+                        }
+
+                        points.push_back ({ static_cast<float> (x), static_cast<float> (y) });
+                    }
+
+                    if (! ModulationCurve::fromPoints (points, parsedData.lfoCurve))
+                    {
+                        errorMessage = "Preset modulation curve is invalid.";
+                        return Status::invalidData;
+                    }
+
+                    parsedData.hasLfoCurve = true;
+                }
+            }
+        }
+
         const auto parameterVar = parsed.getProperty ("parameters", juce::var());
 
         if (! parameterVar.isVoid())
@@ -576,8 +659,13 @@ namespace texture
                                                const PresetData& data,
                                                juce::String& errorMessage) const
     {
+        // Schema 3 only when a feature needs it; a default curve is not written.
+        const auto needsFeatures = data.hasLfoCurve && data.lfoCurve.isValid()
+                                   && ! (data.lfoCurve == ModulationCurve());
+        const auto schema = needsFeatures ? maxSchemaVersion : currentSchemaVersion;
+
         juce::DynamicObject::Ptr root (new juce::DynamicObject());
-        root->setProperty ("schema_version", currentSchemaVersion);
+        root->setProperty ("schema_version", schema);
         root->setProperty ("preset_name", data.name);
         root->setProperty ("category", data.category);
         root->setProperty ("author", data.author);
@@ -652,11 +740,29 @@ namespace texture
             parameterObject->setProperty (name, value);
         }
 
+        if (needsFeatures)
+        {
+            juce::DynamicObject::Ptr features (new juce::DynamicObject());
+            juce::Array<juce::var> points;
+
+            for (int i = 0; i < data.lfoCurve.getNumPoints(); ++i)
+            {
+                juce::Array<juce::var> pair;
+                pair.add (static_cast<double> (data.lfoCurve.getPoint (i).x));
+                pair.add (static_cast<double> (data.lfoCurve.getPoint (i).y));
+                points.add (juce::var (pair));
+            }
+
+            features->setProperty ("lfo_curve", points);
+            root->setProperty ("features", juce::var (features.get()));
+        }
+
         root->setProperty ("parameters", juce::var (parameterObject.get()));
 
         const auto text = juce::JSON::toString (juce::var (root.get()), false);
+        const auto sizeLimit = schema >= 3 ? maxSchema3FileSizeBytes : maxPresetFileSizeBytes;
 
-        if (text.getNumBytesAsUTF8() > static_cast<size_t> (maxPresetFileSizeBytes))
+        if (text.getNumBytesAsUTF8() > static_cast<size_t> (sizeLimit))
         {
             errorMessage = "Preset is too large to save.";
             return Status::writeFailed;

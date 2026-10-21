@@ -3,6 +3,7 @@
 #include <juce_data_structures/juce_data_structures.h>
 #include "ParameterIDs.h"
 #include "VersionedRandomStreams.h"
+#include "../Modulation/ModulationCurve.h"
 #include "../Presets/LockPolicy.h"
 
 #include <cmath>
@@ -23,6 +24,8 @@ namespace texture
         inline static const juce::Identifier versionAttribute { "pluginVersion" };
         inline static const juce::Identifier featureStateTag { "FeatureState" };
         inline static const juce::Identifier lockTag { "Lock" };
+        inline static const juce::Identifier lfoCurveTag { "LfoCurve" };
+        inline static const juce::Identifier curvePointTag { "Point" };
 
         /** Optional host-state block for per-instance editing locks (F02). Missing means
             no locks. Newer readers reject unknown versions; this constant is the only
@@ -91,6 +94,62 @@ namespace texture
             applyDefaultsForMissingParameters (parameterState,
                                                [&missing] (const char* id) { missing.add (id); });
             return missing;
+        }
+
+        /** Serialises a curve as a tag with one Point child per point. */
+        static juce::ValueTree curveToTree (const ModulationCurve& curve)
+        {
+            juce::ValueTree tree (lfoCurveTag);
+
+            for (int i = 0; i < curve.getNumPoints(); ++i)
+            {
+                juce::ValueTree point (curvePointTag);
+                point.setProperty ("x", static_cast<double> (curve.getPoint (i).x), nullptr);
+                point.setProperty ("y", static_cast<double> (curve.getPoint (i).y), nullptr);
+                tree.appendChild (point, nullptr);
+            }
+
+            return tree;
+        }
+
+        /** Parses a curve tree. Rejects non-numeric coordinates and any point list the curve
+            rules refuse, so a corrupt curve never reaches the audio thread. */
+        static bool curveFromTree (const juce::ValueTree& tree, ModulationCurve& out)
+        {
+            std::vector<CurvePoint> points;
+
+            for (const auto& child : tree)
+            {
+                if (child.getType() != curvePointTag)
+                    return false;
+
+                const auto readCoordinate = [&child] (const juce::Identifier& name, float& result)
+                {
+                    const auto value = child.getProperty (name);
+
+                    if (! (value.isInt() || value.isInt64() || value.isDouble() || value.isBool()))
+                        return false;
+
+                    const auto numeric = static_cast<double> (value);
+                    if (! std::isfinite (numeric))
+                        return false;
+
+                    result = static_cast<float> (numeric);
+                    return true;
+                };
+
+                CurvePoint point;
+
+                if (! readCoordinate ("x", point.x) || ! readCoordinate ("y", point.y))
+                    return false;
+
+                points.push_back (point);
+
+                if (static_cast<int> (points.size()) > ModulationCurve::maxPoints)
+                    return false;
+            }
+
+            return ModulationCurve::fromPoints (points, out);
         }
 
         static Result validate (const juce::ValueTree& root)
@@ -240,6 +299,16 @@ namespace texture
                                 return { Status::invalidCompareData,
                                          "Plugin state contains non-numeric A/B parameter data." };
                         }
+
+                        // Each A/B slot may carry its own modulation curve (F14).
+                        for (const auto& slotChild : slot)
+                        {
+                            ModulationCurve slotCurve;
+
+                            if (slotChild.getType() != lfoCurveTag || ! curveFromTree (slotChild, slotCurve))
+                                return { Status::invalidCompareData,
+                                         "Plugin state contains an invalid A/B modulation curve." };
+                        }
                     }
 
                     continue;
@@ -258,9 +327,23 @@ namespace texture
                                  "Plugin state uses an unsupported feature state version." };
 
                     std::vector<std::string> lockIds;
+                    bool seenCurve = false;
 
                     for (const auto& lock : child)
                     {
+                        // F14 modulation curve. Written only when it differs from the default.
+                        if (lock.getType() == lfoCurveTag)
+                        {
+                            ModulationCurve curve;
+
+                            if (seenCurve || ! curveFromTree (lock, curve))
+                                return { Status::invalidFeatureData,
+                                         "Plugin state contains an invalid modulation curve." };
+
+                            seenCurve = true;
+                            continue;
+                        }
+
                         if (lock.getType() != lockTag)
                             return { Status::invalidFeatureData,
                                      "Plugin state contains malformed lock records." };

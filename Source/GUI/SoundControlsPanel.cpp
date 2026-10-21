@@ -4,6 +4,7 @@
 #include "Colors.h"
 #include "GrainControlsPanel.h"
 #include "LookAndFeel.h"
+#include "ModulationPanel.h"
 
 namespace texture
 {
@@ -84,9 +85,11 @@ namespace texture
               glideKnob (owner, params::glideMs, "Glide", "Pitch slide time between notes in mono modes. Off at zero."),
               glideModeBox (owner, params::glideMode, juce::StringArray { "Always", "Overlap only" },
                             "Always: glide on every mono note. Overlap only: glide only when a key lands on a held one."),
-              grainPanel (owner, [this] { if (onLayoutChanged) onLayoutChanged(); })
+              grainPanel (owner, [this] { if (onLayoutChanged) onLayoutChanged(); }),
+              modulationPanel (owner, [this] { if (onLayoutChanged) onLayoutChanged(); })
         {
             addAndMakeVisible (grainPanel);
+            addAndMakeVisible (modulationPanel);
 
             for (auto* header : { &toneHeader, &spaceHeader, &performanceHeader })
             {
@@ -202,6 +205,7 @@ namespace texture
         void refresh()
         {
             grainPanel.refresh();
+            modulationPanel.refresh();
 
             const auto* raw = processor.getValueTreeState().getRawParameterValue (params::toneSpaceMode);
             const auto independent = raw != nullptr && raw->load() > 0.5f;
@@ -227,6 +231,7 @@ namespace texture
             if (spaceHeader.getToggleState())
                 height += knobHeight;
             height += gap + grainPanel.preferredHeight();      // F13 grains, collapsed by default
+            height += gap + modulationPanel.preferredHeight(); // F14 motion shapes, collapsed by default
             height += gap + rowHeight;                         // performance header
             if (performanceHeader.getToggleState())
                 height += rowHeight + gap / 2 + knobHeight;    // mode and priority, glide row
@@ -273,6 +278,9 @@ namespace texture
 
             area.removeFromTop (gap);
             grainPanel.setBounds (area.removeFromTop (grainPanel.preferredHeight()));
+
+            area.removeFromTop (gap);
+            modulationPanel.setBounds (area.removeFromTop (modulationPanel.preferredHeight()));
 
             area.removeFromTop (gap);
             const auto performanceOpen = performanceHeader.getToggleState();
@@ -481,12 +489,12 @@ namespace texture
         ParameterChoiceBox glideModeBox;
 
         GrainControlsPanel grainPanel;
+        ModulationPanel modulationPanel;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Body)
     };
 
     SoundControlsPanel::SoundControlsPanel (TextureAudioProcessor& owner)
-        : processor (owner)
     {
         setWantsKeyboardFocus (true);
 

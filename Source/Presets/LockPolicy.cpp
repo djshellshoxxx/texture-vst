@@ -61,6 +61,12 @@ namespace texture
             { params::grainDetuneFollow,   LockGroup::grain,           false, false },
             { params::grainPanSpread,      LockGroup::grain,           true,  false },
             { params::grainPanFollow,      LockGroup::grain,           false, false },
+            // F14 modulation shapes. Waveform and retrigger are choices and are not mutated.
+            // Phase and slew are continuous and may move under Gentle Mutate. Pro only, like the LFO.
+            { params::lfoShape,            LockGroup::motion,          false, true  },
+            { params::lfoRetrigger,        LockGroup::motion,          false, true  },
+            { params::lfoPhase,            LockGroup::motion,          true,  true  },
+            { params::lfoSlewMs,           LockGroup::motion,          true,  true  },
         } };
 
         static_assert (LockPolicy::numFields == static_cast<std::size_t> (params::numParameters),

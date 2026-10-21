@@ -378,6 +378,28 @@ namespace texture
             juce::ParameterID { params::grainPanFollow, 1 }, params::displayNameFor (params::grainPanFollow),
             params::grainFollowDefault));
 
+        // --- F14 modulation shapes. Appended: older states read the original sine LFO.
+        layout.add (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { params::lfoShape, 1 }, params::displayNameFor (params::lfoShape),
+            juce::StringArray { "Sine", "Triangle", "Step random", "Smooth random", "Curve" }, params::lfoShapeDefault));
+
+        layout.add (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { params::lfoRetrigger, 1 }, params::displayNameFor (params::lfoRetrigger),
+            juce::StringArray { "Legacy", "Free", "First note", "Host" }, params::lfoRetriggerDefault));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::lfoPhase, 1 }, params::displayNameFor (params::lfoPhase),
+            Range { params::lfoPhaseMin, params::lfoPhaseMax, 0.0001f }, params::lfoPhaseDefault,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentFormatter)));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::lfoSlewMs, 1 }, params::displayNameFor (params::lfoSlewMs),
+            Range { params::lfoSlewMsMin, params::lfoSlewMsMax, 0.0001f }, params::lfoSlewMsDefault,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction ([] (float value, int)
+            {
+                return juce::String (juce::roundToInt (value)) + " ms";
+            })));
+
         return layout;
     }
 
@@ -539,6 +561,11 @@ namespace texture
             grainParameters.values[i] = apvts.getRawParameterValue (grainValueParameterID (static_cast<GrainField> (i)));
             grainParameters.follow[i] = apvts.getRawParameterValue (grainFollowParameterID (static_cast<GrainField> (i)));
         }
+
+        modulationParameters.shape     = apvts.getRawParameterValue (params::lfoShape);
+        modulationParameters.retrigger = apvts.getRawParameterValue (params::lfoRetrigger);
+        modulationParameters.phase     = apvts.getRawParameterValue (params::lfoPhase);
+        modulationParameters.slewMs    = apvts.getRawParameterValue (params::lfoSlewMs);
     }
 
     GrainControlSettings TextureAudioProcessor::getGrainControlSettings() const
@@ -569,6 +596,58 @@ namespace texture
         const auto morph = getParameterValue (params::morph, params::morphDefault);
         return GrainTargetResolver::resolve (deriveMorphTargets (morph), getGrainControlSettings())
             .effective[index];
+    }
+
+    // =========================================================================
+    //  Modulation shapes (F14)
+    // =========================================================================
+
+    /** Undo for the modulation curve. Like the other feature undo steps, it applies a whole
+        state, so redo and undo always put back exactly the curve that was heard. */
+    class TextureAudioProcessor::ModulationCurveAction final : public juce::UndoableAction
+    {
+    public:
+        ModulationCurveAction (TextureAudioProcessor& host, ModulationCurve beforeCurve, ModulationCurve afterCurve)
+            : owner (host), before (beforeCurve), after (afterCurve)
+        {
+        }
+
+        bool perform() override { return owner.applyModulationCurve (after); }
+        bool undo() override { return owner.applyModulationCurve (before); }
+        int getSizeInUnits() override { return static_cast<int> (sizeof (*this)); }
+
+    private:
+        TextureAudioProcessor& owner;
+        ModulationCurve before;
+        ModulationCurve after;
+    };
+
+    bool TextureAudioProcessor::applyModulationCurve (const ModulationCurve& curve)
+    {
+        if (! curve.isValid())
+            return false;
+
+        lfoCurve = curve;
+        lfoCurveMailbox.publish (curve);
+        return true;
+    }
+
+    bool TextureAudioProcessor::setModulationCurve (const ModulationCurve& curve, const juce::String& undoName)
+    {
+        if (! curve.isValid())
+        {
+            postToast ("That curve is not valid, so nothing changed.", SampleLoader::Severity::warning);
+            return false;
+        }
+
+        if (curve == lfoCurve)
+            return true;
+
+        const auto previous = lfoCurve;
+        undoManager.beginNewTransaction (undoName);
+        undoManager.perform (new ModulationCurveAction (*this, previous, curve));
+        markPresetDirty();
+        return true;
     }
 
     void TextureAudioProcessor::setGrainFollow (GrainField field, bool shouldFollow)
@@ -780,7 +859,7 @@ namespace texture
         morphLfo.setDepth (licenseManager.isPro() ? requestedDepth : 0.0f);
 
         double hostBpm = 0.0;
-        double hostPpq = -1.0;
+        std::optional<double> hostPpq;
         bool hostIsPlaying = false;
 
         if (auto* hostPlayHead = getPlayHead())
@@ -788,10 +867,33 @@ namespace texture
             if (const auto position = hostPlayHead->getPosition())
             {
                 hostBpm = position->getBpm().orFallback (0.0);
-                hostPpq = position->getPpqPosition().orFallback (-1.0);
+
+                if (const auto ppq = position->getPpqPosition())
+                    hostPpq = *ppq;
+
                 hostIsPlaying = position->getIsPlaying();
             }
         }
+
+        if (hostBpm > 0.0 && std::isfinite (hostBpm))
+            lastHostBpm.store (hostBpm, std::memory_order_relaxed);
+
+        // F14 modulation shapes. Read once per block, like every other LFO setting.
+        const auto readModulation = [] (const std::atomic<float>* value, float fallback)
+        {
+            return value != nullptr ? value->load (std::memory_order_relaxed) : fallback;
+        };
+
+        morphLfo.setShape (lfoShapeFromIndex (juce::roundToInt (
+            readModulation (modulationParameters.shape, static_cast<float> (params::lfoShapeDefault)))));
+        morphLfo.setRetrigger (lfoRetriggerFromIndex (juce::roundToInt (
+            readModulation (modulationParameters.retrigger, static_cast<float> (params::lfoRetriggerDefault)))));
+        morphLfo.setPhaseOffset (readModulation (modulationParameters.phase, params::lfoPhaseDefault));
+        morphLfo.setSlewMs (readModulation (modulationParameters.slewMs, params::lfoSlewMsDefault));
+        morphLfo.setSeed (randomSeed.load (std::memory_order_relaxed));
+
+        if (lfoCurveMailbox.tryRead (lfoCurveAudio))
+            morphLfo.setCurve (lfoCurveAudio);
 
         morphLfo.updateFromPlayHead (hostBpm, hostIsPlaying, hostPpq);
         morphLfo.advanceBlock (numSamples);
@@ -1076,11 +1178,17 @@ namespace texture
             lastMidiNote.store (message.getNoteNumber(), std::memory_order_relaxed);
             lastMidiVelocity.store (message.getVelocity(), std::memory_order_relaxed);
 
+            // The first key of a chord restarts the LFO in First note mode; the rest do not.
+            if (heldNotes.noteOn (message.getChannel(), message.getNoteNumber()))
+                morphLfo.noteStarted();
+
             for (auto& engine : engines)
                 engine.noteOn (message.getChannel(), message.getNoteNumber(), message.getFloatVelocity());
         }
         else if (message.isNoteOff())
         {
+            heldNotes.noteOff (message.getChannel(), message.getNoteNumber());
+
             for (auto& engine : engines)
                 engine.noteOff (message.getChannel(), message.getNoteNumber());
         }
@@ -1097,12 +1205,16 @@ namespace texture
         else if (message.isAllNotesOff())
         {
             stopAudition();
+            heldNotes.clearChannel (message.getChannel());
+
             for (auto& engine : engines)
                 engine.allNotesOff (message.getChannel());
         }
         else if (message.isAllSoundOff())
         {
             stopAudition();
+            heldNotes.clearChannel (message.getChannel());
+
             for (auto& engine : engines)
                 engine.allSoundOff (message.getChannel());
 
@@ -1428,6 +1540,7 @@ namespace texture
         }
 
         snapshot.seed = randomSeed.load (std::memory_order_relaxed);
+        snapshot.lfoCurve = lfoCurve;
         return snapshot;
     }
 
@@ -1444,6 +1557,8 @@ namespace texture
 
         for (size_t i = 0; i < snapshot.parameters.size(); ++i)
             setParameterValue (params::allIDs[i], snapshot.parameters[i]);
+
+        applyModulationCurve (snapshot.lfoCurve);
 
         enforceTierLimits();
         randomSeed.store (snapshot.seed, std::memory_order_relaxed);
@@ -1902,6 +2017,9 @@ namespace texture
         for (const auto* id : params::allIDs)
             data.setParameter (id, getParameterValue (id, params::defaultValueFor (id)));
 
+        data.hasLfoCurve = true;
+        data.lfoCurve = lfoCurve;
+
         return data;
     }
 
@@ -1939,6 +2057,13 @@ namespace texture
 
         for (const auto* id : params::allIDs)
             setParameterValue (id, data.getParameter (id, params::defaultValueFor (id)));
+
+        // A preset without a curve loads the default one, the same rule as its parameters.
+        // The change is part of this preset's undo step.
+        const auto presetCurve = data.hasLfoCurve ? data.lfoCurve : ModulationCurve();
+
+        if (! (presetCurve == lfoCurve))
+            undoManager.perform (new ModulationCurveAction (*this, lfoCurve, presetCurve));
 
         currentPresetName = data.name;
         currentPresetCategory = data.category;
@@ -2392,6 +2517,7 @@ namespace texture
     {
         const auto index = juce::jlimit (0, numCompareSlots - 1, slotIndex);
         compareSlots[static_cast<size_t> (index)] = captureParameterTree();
+        compareCurves[static_cast<size_t> (index)] = lfoCurve;
     }
 
     void TextureAudioProcessor::recallCompareSlot (int slotIndex)
@@ -2401,10 +2527,22 @@ namespace texture
 
         // Keep the slot we are leaving up to date so A/B is a true toggle.
         if (index != activeCompareSlot)
+        {
             compareSlots[static_cast<size_t> (activeCompareSlot)] = captureParameterTree();
+            compareCurves[static_cast<size_t> (activeCompareSlot)] = lfoCurve;
+        }
 
         activeCompareSlot = index;
         applyParameterTree (compareSlots[static_cast<size_t> (index)]);
+
+        // The curve is part of the slot, and undo must put back the one that was heard.
+        const auto recalled = compareCurves[static_cast<size_t> (index)];
+
+        if (! (recalled == lfoCurve))
+        {
+            const auto previous = lfoCurve;
+            undoManager.perform (new ModulationCurveAction (*this, previous, recalled));
+        }
 
         markPresetDirty();
         notifyPluginStateChanged();
@@ -2416,9 +2554,13 @@ namespace texture
         const auto to = juce::jlimit (0, numCompareSlots - 1, toIndex);
 
         if (from == activeCompareSlot)
+        {
             compareSlots[static_cast<size_t> (from)] = captureParameterTree();
+            compareCurves[static_cast<size_t> (from)] = lfoCurve;
+        }
 
         compareSlots[static_cast<size_t> (to)] = compareSlots[static_cast<size_t> (from)].createCopy();
+        compareCurves[static_cast<size_t> (to)] = compareCurves[static_cast<size_t> (from)];
         notifyPluginStateChanged();
     }
 
@@ -2460,6 +2602,12 @@ namespace texture
         settings.toneSpace = readToneSpaceSettings();
         settings.mono = readPerformanceSettings();
         settings.grain = readGrainSettings();
+        settings.lfoShape = juce::roundToInt (getParameterValue (params::lfoShape, static_cast<float> (params::lfoShapeDefault)));
+        settings.lfoRetrigger = juce::roundToInt (getParameterValue (params::lfoRetrigger, static_cast<float> (params::lfoRetriggerDefault)));
+        settings.lfoPhase = getParameterValue (params::lfoPhase, params::lfoPhaseDefault);
+        settings.lfoSlewMs = getParameterValue (params::lfoSlewMs, params::lfoSlewMsDefault);
+        settings.lfoCurve = lfoCurve;
+        settings.hostBpm = lastHostBpm.load (std::memory_order_relaxed);
 
         const auto secret = getSecretSettings();
         settings.gritBits = secret.bitDepth;
@@ -2525,6 +2673,11 @@ namespace texture
             feature.appendChild (lock, nullptr);
         }
 
+        // F14: the curve is written only when it differs from the default, so patches that
+        // do not use it stay readable by builds that predate it.
+        if (! (lfoCurve == ModulationCurve()))
+            feature.appendChild (StateSchema::curveToTree (lfoCurve), nullptr);
+
         root.appendChild (feature, nullptr);
 
         juce::ValueTree preset (StateSchema::presetTag);
@@ -2534,6 +2687,7 @@ namespace texture
 
         // The active slot may have been edited since the last A/B switch.
         compareSlots[static_cast<size_t> (activeCompareSlot)] = captureParameterTree();
+        compareCurves[static_cast<size_t> (activeCompareSlot)] = lfoCurve;
 
         juce::ValueTree compare (StateSchema::compareTag);
         compare.setProperty ("active", activeCompareSlot, nullptr);
@@ -2553,6 +2707,11 @@ namespace texture
                                       : juce::var (getParameterValue (id, params::defaultValueFor (id))),
                                   nullptr);
             }
+
+            const auto& curve = compareCurves[static_cast<size_t> (slotIndex)];
+
+            if (! (curve == ModulationCurve()))
+                slot.appendChild (StateSchema::curveToTree (curve), nullptr);
 
             compare.appendChild (slot, nullptr);
         }
@@ -2638,6 +2797,16 @@ namespace texture
                 logWarn ("locks", "Ignored unknown lock ID in host state: " + juce::String (ignored));
         }
 
+        // F14: a state without the curve reads the default, never the previous patch's curve.
+        ModulationCurve restoredCurve;
+
+        if (const auto feature = root.getChildWithName (StateSchema::featureStateTag); feature.isValid())
+            if (const auto curveTree = feature.getChildWithName (StateSchema::lfoCurveTag); curveTree.isValid())
+                StateSchema::curveFromTree (curveTree, restoredCurve);
+
+        applyModulationCurve (restoredCurve);
+        compareCurves.fill (ModulationCurve());
+
         const auto preset = root.getChildWithName (StateSchema::presetTag);
 
         currentPresetFile = juce::File();
@@ -2675,6 +2844,11 @@ namespace texture
                                           nullptr);
                 }
 
+                ModulationCurve slotCurve;
+                if (const auto curveTree = child.getChildWithName (StateSchema::lfoCurveTag); curveTree.isValid())
+                    StateSchema::curveFromTree (curveTree, slotCurve);
+                compareCurves[static_cast<size_t> (slotIndex)] = slotCurve;
+
                 compareSlots[static_cast<size_t> (slotIndex)] = std::move (snapshot);
             }
         }
@@ -2685,6 +2859,9 @@ namespace texture
 
             for (auto& slot : compareSlots)
                 slot = snapshot.createCopy();
+
+            // Slots from before F14 hold the neutral curve, which is what the patch had.
+            compareCurves.fill (restoredCurve);
         }
 
         SecretSettings secret;

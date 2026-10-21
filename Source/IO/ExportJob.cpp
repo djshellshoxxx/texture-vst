@@ -6,6 +6,7 @@
 #include "../Effects/EffectsChain.h"
 #include "../Engine/GrainTargetResolver.h"
 #include "../Engine/GranularEngine.h"
+#include "../Modulation/HeldNoteCounter.h"
 #include "../Modulation/MorphLFO.h"
 #include "../Utility/DspHelpers.h"
 #include "../Utility/VersionedRandomStreams.h"
@@ -99,6 +100,22 @@ namespace texture
         lfo.prepare (sampleRate);
         lfo.setRateHz (settings.lfoRateHz);
         lfo.setDepth (settings.lfoDepth);
+        lfo.setShape (lfoShapeFromIndex (settings.lfoShape));
+        lfo.setRetrigger (lfoRetriggerFromIndex (settings.lfoRetrigger));
+        lfo.setPhaseOffset (settings.lfoPhase);
+        lfo.setSlewMs (settings.lfoSlewMs);
+        lfo.setSeed (settings.randomSeed);
+        lfo.setCurve (settings.lfoCurve);
+
+        // There is no host: a Host retrigger runs as a transport that is playing, at the
+        // tempo the live patch last saw. The live effective rate covers the other modes.
+        const auto exportRetrigger = lfoRetriggerFromIndex (settings.lfoRetrigger);
+
+        if (exportRetrigger == LfoRetrigger::host)
+            lfo.updateFromPlayHead (settings.hostBpm, true, std::nullopt);
+
+        // Held keys for First note retrigger. Export events are all on channel 1.
+        HeldNoteCounter heldNotes;
 
         // F13: the same resolver the live processor uses, so manual grain values sound the same.
         GrainTargetResolver grainResolver;
@@ -163,6 +180,17 @@ namespace texture
 
                 if (event.sample == position)
                 {
+                    if (event.on)
+                    {
+                        // Applied at this sample, so the restart is exact in the offline render.
+                        if (heldNotes.noteOn (1, event.note))
+                            lfo.noteStarted();
+                    }
+                    else
+                    {
+                        heldNotes.noteOff (1, event.note);
+                    }
+
                     for (auto& engine : engines)
                     {
                         if (event.on)

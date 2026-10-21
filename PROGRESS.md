@@ -360,3 +360,21 @@ Deviations and gaps:
 - Presets stay at schema 2: the controls are ordinary parameters, as with F07.
 - No DAW, listening, CPU, keyboard or accessibility pass yet. Commercial tier assignment is unchanged; these controls are on both tiers pending the release decision.
 
+## 2026-10-21: F14 modulation shapes
+
+Implemented F14 core. Four appended parameters: `lfo_shape` (Sine default, Triangle, Step random, Smooth random, Curve), `lfo_retrigger` (Legacy default, Free, First note, Host), `lfo_phase` (0 to 1) and `lfo_slew_ms` (0 to 100 ms). The curve is bounded feature data: 2 to 32 points, x strictly increasing from 0 to 1, values in range. `ModulationCurve` and `curveEdit` are pure. `ModulationOscillator` (`evaluateWaveform`) is pure and holds no state between calls. Random shapes draw from the modulation lane of the patch seed, one draw per cycle. `CurveMailbox` is a seqlock, so the audio thread reads curves without locks. `HeldNoteCounter` counts physically held keys for First note. The MORPH LFO keeps the legacy arithmetic for Sine, Legacy and zero phase.
+
+Persistence: the curve lives in host state under FeatureState (written only when it is not the default) and in each A/B slot. Schema 3 presets carry it in a `features` object, written only when the curve is not the default. Schema 2 files load the default curve. Undo, redo, A/B recall, preset load and variation snapshots include the curve. Offline export takes every setting through `RenderSettings`. The lock registry gets four motion entries: the choices are not mutable, while phase and slew are. The overlay gets a collapsed "Motion shapes (Pro)" section with a curve editor.
+
+Evidence: `texture_unit_tests` passes 126,629 checks. `test_modulation_shapes` covers the curve rules, the mailbox, the sine legacy identity, triangle continuity, step and smooth random continuity, the slew and wrap crossfades, pinned golden random values, the period at each rate and division, host pre-roll, stopped and missing-position holds, First note only on the first key, block-partition invariance, the held-note counter, lock and preset ranges, state validation, schema 3 round trips, and rejected corrupt files. The legacy render fixtures are unchanged. The export test shows the shape reaches the file. In the standalone under Xvfb, the Motion section expands and lays out correctly.
+
+Deviations and gaps:
+- First note restarts at the next block in the live plugin, because MIDI is handled mid-block and the morph targets are fixed per block. The offline render restarts exactly at the event. The two differ by up to one block.
+- Host retrigger ignores the Sync switch and always uses the tempo division. In export, Host runs as a transport that is playing, at the last live tempo.
+- Randomize resets the shape controls to their defaults and does not randomize them. Gentle Mutate does not change the curve.
+- The curve is not a parameter and has no lock entry. Randomize and Mutate leave it alone.
+- The bundle preset limit stays at 8 KiB. A curve is far below that, so this has no effect in practice.
+- Curve drags, keyboard editing and undo of a drag were not driven in the standalone. Only the layout was checked.
+- The processor glue (retrigger wiring, curve mailbox publication, A/B recall undo) is reviewed, not automated, because the test binary does not link the processor.
+- No DAW, listening or CPU evidence. The shapes are on the Pro tier as the LFO is.
+

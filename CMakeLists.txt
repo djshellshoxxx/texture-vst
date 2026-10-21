@@ -154,6 +154,14 @@ set(TEXTURE_SOURCES
     Source/Modulation/EnvelopeADSR.h
     Source/Modulation/MorphLFO.cpp
     Source/Modulation/MorphLFO.h
+    Source/Modulation/ModulationCurve.cpp
+    Source/Modulation/ModulationCurve.h
+    Source/Modulation/CurveMailbox.h
+    Source/Modulation/ModulationOscillator.cpp
+    Source/Modulation/ModulationOscillator.h
+    Source/Modulation/HeldNoteCounter.h
+    Source/Modulation/CurveEdit.h
+    Source/Modulation/CurveMailbox.h
 
     Source/IO/FactoryContent.cpp
     Source/IO/FactoryContent.h
@@ -227,6 +235,10 @@ set(TEXTURE_SOURCES
     Source/GUI/SoundControlsPanel.h
     Source/GUI/GrainControlsPanel.cpp
     Source/GUI/GrainControlsPanel.h
+    Source/GUI/CurveEditor.cpp
+    Source/GUI/CurveEditor.h
+    Source/GUI/ModulationPanel.cpp
+    Source/GUI/ModulationPanel.h
     Source/GUI/WaveformDisplay.cpp
     Source/GUI/WaveformDisplay.h
     Source/GUI/Widgets.cpp

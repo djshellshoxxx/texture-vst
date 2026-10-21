@@ -47,7 +47,7 @@ namespace texture
         static constexpr std::size_t maxIdLength = 64;
 
         /** Registry of lockable fields, in the same order as params::allIDs. */
-        static constexpr std::size_t numFields = 43;
+        static constexpr std::size_t numFields = 47;
 
         struct FieldInfo
         {

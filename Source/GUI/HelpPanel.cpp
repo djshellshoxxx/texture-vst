@@ -142,6 +142,18 @@ namespace texture
         text.add ("  JITTER   How far each grain's start wanders. DETUNE 0 to 100 cents.");
         text.add ("  SPREAD   Stereo spread of each grain.");
         text.add ("  When size and density are both manual, the overlap follows from them.");
+        text.add ("");
+        text.add ("MOTION SHAPES (Pro, sliders button, Motion shapes section)");
+        text.add ("  Shape    Sine (the original), Triangle, Step random (one random value per");
+        text.add ("           cycle), Smooth random (random values joined smoothly), or Curve.");
+        text.add ("  Slew     How fast random and curve steps change at a cycle boundary, 0-100 ms.");
+        text.add ("  Phase    Where in the cycle the LFO starts. A quarter turn starts at the crest.");
+        text.add ("  Retrigger  Legacy: as before. Free: never stops, even when the transport does.");
+        text.add ("           First note: restarts when the first key of a chord goes down.");
+        text.add ("           Host: follows the host's musical position, including before the start.");
+        text.add ("  Curve    Drag points in the box. Double-click to add, right-click to remove.");
+        text.add ("           Arrow keys move a selected point. Each edit is one undo step.");
+        text.add ("  Random shapes repeat for the same patch seed, so a saved seed gives the same motion.");
         text.add ("  Each voice holds 8 grains. If the settings ask for more, extra grains are");
         text.add ("  skipped and the Grains section says the pool is full.");
         text.add ("");

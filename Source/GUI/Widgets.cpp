@@ -512,7 +512,7 @@ namespace texture
 
         if (processor.isFieldLocked (parameterID))
         {
-            const auto side = juce::jmin (knobArea.getWidth(), knobArea.getHeight()) * 0.34f;
+            const auto side = static_cast<float> (juce::jmin (knobArea.getWidth(), knobArea.getHeight())) * 0.34f;
             drawPadlock (g, juce::Rectangle<float> (static_cast<float> (knobArea.getRight()) - side,
                                                     static_cast<float> (knobArea.getY()), side, side),
                          colours::accentPrimary);

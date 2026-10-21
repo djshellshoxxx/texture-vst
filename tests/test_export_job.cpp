@@ -167,6 +167,23 @@ namespace texture::tests
                 expect (readBytes (a) != readBytes (m), "manual grain values must change the rendered audio");
             }
 
+            beginTest ("the MORPH LFO shape reaches the offline renderer, and Sine is the default");
+            {
+                TemporaryDirectory temp;
+                const auto plan = shortPlan();
+                const auto sine = makeSnapshot();
+                auto triangle = makeSnapshot();
+                triangle.settings.lfoShape = 1;
+
+                std::atomic<juce::int64> frames { 0 };
+                const auto a = temp.child ("sine.wav");
+                const auto b = temp.child ("triangle.wav");
+
+                expect (ExportJob::run (sine, plan, 48000.0, 24, a, neverCancelled(), frames).succeeded);
+                expect (ExportJob::run (triangle, plan, 48000.0, 24, b, neverCancelled(), frames).succeeded);
+                expect (readBytes (a) != readBytes (b), "a different LFO shape must change the render");
+            }
+
             beginTest ("a destination that cannot be created fails without leaving a file");
             {
                 TemporaryDirectory temp;

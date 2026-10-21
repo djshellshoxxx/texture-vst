@@ -26,6 +26,7 @@ set(TEXTURE_TEST_SOURCES
     test_tone_space.cpp
     test_mono_legato.cpp
     test_grain_controls.cpp
+    test_modulation_shapes.cpp
     test_variation_history.cpp
     test_media_manifest.cpp
     test_bundle_archive.cpp
@@ -51,6 +52,8 @@ set(TEXTURE_TEST_SOURCES
 
     ../Source/Modulation/EnvelopeADSR.cpp
     ../Source/Modulation/MorphLFO.cpp
+    ../Source/Modulation/ModulationCurve.cpp
+    ../Source/Modulation/ModulationOscillator.cpp
 
     ../Source/IO/AtomicFileWriter.cpp
     ../Source/IO/BundleArchive.cpp

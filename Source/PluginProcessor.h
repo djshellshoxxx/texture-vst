@@ -9,6 +9,9 @@
 #include "Effects/ToneSpace.h"
 #include "Engine/GrainTargetResolver.h"
 #include "Engine/MonoNoteStack.h"
+#include "Modulation/CurveMailbox.h"
+#include "Modulation/HeldNoteCounter.h"
+#include "Modulation/ModulationCurve.h"
 #include "Engine/GranularEngine.h"
 #include "IO/FactoryContent.h"
 #include "IO/ExportController.h"
@@ -325,6 +328,14 @@ namespace texture
         /** True when the last block asked for more grains than a voice can hold. */
         bool isGrainOversubscribed() const noexcept { return grainOversubscribedFlag.load (std::memory_order_relaxed); }
 
+        // --- Modulation shapes (F14) -----------------------------------------
+        /** The user curve for the MORPH LFO's Curve shape. Message thread. */
+        ModulationCurve getModulationCurve() const { return lfoCurve; }
+
+        /** Replaces the curve as one undo step. A curve the rules refuse changes nothing and
+            returns false. A dragged edit should call this once, on release. */
+        bool setModulationCurve (const ModulationCurve& curve, const juce::String& undoName);
+
         /** Turns Follow on or off for one grain field as one undo step. Turning it off copies
             the effective value into the manual control first, so the sound does not jump. */
         void setGrainFollow (GrainField field, bool shouldFollow);
@@ -494,8 +505,10 @@ namespace texture
         bool applySoundSnapshot (const SoundSnapshot& snapshot);
 
         class SoundSnapshotAction;
+        class ModulationCurveAction;
         struct VariationPreviewHost;
         friend class SoundSnapshotAction;
+        friend class ModulationCurveAction;
         friend struct VariationPreviewHost;
 
         VariationList variations;
@@ -616,6 +629,31 @@ namespace texture
         /** Reads the F13 parameters. Audio thread. */
         GrainControlSettings readGrainSettings() const noexcept;
 
+        /** F14 modulation parameters, cached like every other parameter. */
+        struct ModulationParameters
+        {
+            std::atomic<float>* shape { nullptr };
+            std::atomic<float>* retrigger { nullptr };
+            std::atomic<float>* phase { nullptr };
+            std::atomic<float>* slewMs { nullptr };
+        } modulationParameters;
+
+        /** The curve as the message thread last set it, which undo restores, and the
+            mailbox that carries it to the audio thread. The audio thread's own copy is
+            touched by nothing else. */
+        ModulationCurve lfoCurve;
+        CurveMailbox lfoCurveMailbox;
+        ModulationCurve lfoCurveAudio;
+
+        /** Keys held across all channels, for First note retrigger. Audio thread only. */
+        HeldNoteCounter heldNotes;
+
+        /** Host tempo for the offline renderer's Host retrigger. Written each block. */
+        std::atomic<double> lastHostBpm { 120.0 };
+
+        /** Applies a curve without an undo step: undo, redo and A/B recall use it. */
+        bool applyModulationCurve (const ModulationCurve& curve);
+
         /** Reads the F11 parameters into a validated mono configuration. Audio thread. */
         MonoConfig readPerformanceSettings() const noexcept;
 
@@ -668,6 +706,7 @@ namespace texture
 
         // --- A/B --------------------------------------------------------------
         std::array<juce::ValueTree, numCompareSlots> compareSlots;
+        std::array<ModulationCurve, numCompareSlots> compareCurves;
         int activeCompareSlot { 0 };
 
         // --- Metering ---------------------------------------------------------

@@ -40,8 +40,6 @@ namespace texture
 
         void timerCallback() override;
 
-        TextureAudioProcessor& processor;
-
         juce::Label titleLabel;
         juce::TextButton closeButton { "Close" };
 

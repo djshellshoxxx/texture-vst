@@ -60,6 +60,12 @@ namespace texture::params
     inline constexpr const char* grainPanSpread    = "grain_pan_spread";
     inline constexpr const char* grainPanFollow    = "grain_pan_follow";
 
+    // F14 modulation shapes. Appended. lfo_rate, depth, sync and division are unchanged.
+    inline constexpr const char* lfoShape      = "lfo_shape";
+    inline constexpr const char* lfoRetrigger  = "lfo_retrigger";
+    inline constexpr const char* lfoPhase      = "lfo_phase";
+    inline constexpr const char* lfoSlewMs     = "lfo_slew_ms";
+
     /** Every ID in preset/serialisation order. Append only: positions are part of
         the lock registry's contract and of the preset file layout. */
     inline constexpr const char* allIDs[] = {
@@ -72,7 +78,8 @@ namespace texture::params
         voiceMode, notePriority, glideMs, glideMode,
         grainSizeMs, grainSizeFollow, grainDensityHz, grainDensityFollow,
         grainJitter, grainJitterFollow, grainDetuneCents, grainDetuneFollow,
-        grainPanSpread, grainPanFollow
+        grainPanSpread, grainPanFollow,
+        lfoShape, lfoRetrigger, lfoPhase, lfoSlewMs
     };
 
     inline constexpr int numParameters = static_cast<int> (std::size (allIDs));
@@ -129,6 +136,15 @@ namespace texture::params
     inline constexpr float grainPanSpreadMin = 0.0f,    grainPanSpreadMax = 1.0f, grainPanSpreadDefault = 0.5f;
     inline constexpr bool  grainFollowDefault = true;
 
+    // F14 ranges. Sine with Legacy retrigger and zero phase is the default, which reproduces
+    // the original MORPH LFO exactly.
+    inline constexpr int lfoShapeCount = 5;            // Sine, Triangle, Step random, Smooth random, Curve
+    inline constexpr int lfoShapeDefault = 0;
+    inline constexpr int lfoRetriggerCount = 4;        // Legacy, Free, First note, Host
+    inline constexpr int lfoRetriggerDefault = 0;
+    inline constexpr float lfoPhaseMin = 0.0f,         lfoPhaseMax = 1.0f,   lfoPhaseDefault = 0.0f;
+    inline constexpr float lfoSlewMsMin = 0.0f,        lfoSlewMsMax = 100.0f, lfoSlewMsDefault = 10.0f;
+
     /** Tempo divisions offered when LFO sync is engaged. */
     inline constexpr const char* divisionNames[] = { "1/1", "1/2", "1/4", "1/8", "1/16" };
     inline constexpr int numDivisions = static_cast<int> (std::size (divisionNames));
@@ -138,6 +154,9 @@ namespace texture::params
 
     /** True for the F13 grain value and Follow controls. */
     bool isGrainParameter (const juce::String& parameterID);
+
+    /** True for the F14 modulation shape controls. */
+    bool isModulationShapeParameter (const juce::String& parameterID);
 
     /** Human-readable name shown in the host's automation list. */
     juce::String displayNameFor (const juce::String& parameterID);

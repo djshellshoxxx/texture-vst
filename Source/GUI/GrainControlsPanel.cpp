@@ -44,9 +44,9 @@ namespace texture
 
     struct GrainControlsPanel::Column
     {
-        Column (TextureAudioProcessor& processor, GrainField gridField)
+        Column (TextureAudioProcessor& owner, GrainField gridField)
             : field (gridField),
-              knob (processor, grainValueParameterID (gridField), fieldText[static_cast<std::size_t> (gridField)].label,
+              knob (owner, grainValueParameterID (gridField), fieldText[static_cast<std::size_t> (gridField)].label,
                     juce::String (fieldText[static_cast<std::size_t> (gridField)].tooltip)
                         + " Used when Follow MORPH is off.")
         {

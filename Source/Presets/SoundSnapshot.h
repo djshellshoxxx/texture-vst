@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../Engine/SampleBuffer.h"
+#include "../Modulation/ModulationCurve.h"
 #include "../Utility/ParameterIDs.h"
 
 #include <juce_core/juce_core.h>
@@ -25,6 +26,7 @@ namespace texture
         std::array<juce::String, 2> originalNames {};
         std::array<float, 2> sampleStarts { 0.0f, 0.0f };
         std::uint64_t seed { 0 };
+        ModulationCurve lfoCurve;   // F14: part of the sound, so variations keep it
     };
 
     /** Bytes of sample audio held by a set of references, each buffer counted once. */

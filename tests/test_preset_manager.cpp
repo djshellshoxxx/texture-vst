@@ -49,6 +49,10 @@ namespace texture::tests
             data.setParameter (params::grainDetuneFollow, 0.0f);
             data.setParameter (params::grainPanSpread, 0.8f);
             data.setParameter (params::grainPanFollow, 0.0f);
+            data.setParameter (params::lfoShape, 3.0f);
+            data.setParameter (params::lfoRetrigger, 2.0f);
+            data.setParameter (params::lfoPhase, 0.25f);
+            data.setParameter (params::lfoSlewMs, 35.0f);
             data.setParameter (params::glideMs, 240.0f);
             data.setParameter (params::glideMode, 0.0f);
             data.setParameter (params::lfoDivision, 3.0f);

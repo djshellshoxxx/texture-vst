@@ -2,6 +2,8 @@
 
 #include <juce_data_structures/juce_data_structures.h>
 
+#include "../Modulation/ModulationCurve.h"
+
 #include <vector>
 #include <array>
 
@@ -15,11 +17,19 @@ namespace texture
     class PresetManager
     {
     public:
-        /** Schema this build writes and is able to read (12_PRESET_SYSTEM.md). */
+        /** Schema this build writes for an ordinary preset (12_PRESET_SYSTEM.md). */
         static constexpr int currentSchemaVersion = 2;
 
-        /** Hard ceiling from 10_CONSTRAINTS.md. */
+        /** Newest schema this build reads. Schema 3 adds a bounded features object (F14). It
+            is written only when a feature needs it, so older readers keep working on the rest. */
+        static constexpr int maxSchemaVersion = 3;
+
+        /** Hard ceiling from 10_CONSTRAINTS.md for schemas 1 and 2. */
         static constexpr juce::int64 maxPresetFileSizeBytes = 8 * 1024;
+
+        /** Ceiling for schema 3 (shared contracts): the features object is bounded, so this
+            is a backstop, not a budget. */
+        static constexpr juce::int64 maxSchema3FileSizeBytes = 256 * 1024;
 
         static constexpr const char* fileExtension = ".texture";
 
@@ -48,6 +58,11 @@ namespace texture
 
             /** Parameter ID to value, in real-world units. */
             juce::NamedValueSet parameters;
+
+            /** F14 modulation curve. Only schema 3 files carry one; older presets leave
+                `hasLfoCurve` false and load the default curve. */
+            bool hasLfoCurve { false };
+            ModulationCurve lfoCurve;
 
             float getParameter (const juce::String& id, float fallback) const;
             void setParameter (const juce::String& id, float value);

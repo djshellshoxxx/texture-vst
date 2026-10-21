@@ -47,6 +47,10 @@ namespace texture::params
         if (parameterID == grainDetuneFollow) return "Grain Detune Follow MORPH";
         if (parameterID == grainPanSpread) return "Grain Pan Spread";
         if (parameterID == grainPanFollow) return "Grain Pan Follow MORPH";
+        if (parameterID == lfoShape)     return "LFO Shape";
+        if (parameterID == lfoRetrigger) return "LFO Retrigger";
+        if (parameterID == lfoPhase)     return "LFO Phase";
+        if (parameterID == lfoSlewMs)    return "LFO Slew";
 
         return parameterID;
     }
@@ -75,6 +79,15 @@ namespace texture::params
         for (const auto* id : { grainSizeMs, grainSizeFollow, grainDensityHz, grainDensityFollow,
                                 grainJitter, grainJitterFollow, grainDetuneCents, grainDetuneFollow,
                                 grainPanSpread, grainPanFollow })
+            if (parameterID == id)
+                return true;
+
+        return false;
+    }
+
+    bool isModulationShapeParameter (const juce::String& parameterID)
+    {
+        for (const auto* id : { lfoShape, lfoRetrigger, lfoPhase, lfoSlewMs })
             if (parameterID == id)
                 return true;
 
@@ -124,6 +137,10 @@ namespace texture::params
         if (parameterID == grainDetuneFollow) return grainFollowDefault ? 1.0f : 0.0f;
         if (parameterID == grainPanSpread) return grainPanSpreadDefault;
         if (parameterID == grainPanFollow) return grainFollowDefault ? 1.0f : 0.0f;
+        if (parameterID == lfoShape)     return static_cast<float> (lfoShapeDefault);
+        if (parameterID == lfoRetrigger) return static_cast<float> (lfoRetriggerDefault);
+        if (parameterID == lfoPhase)     return lfoPhaseDefault;
+        if (parameterID == lfoSlewMs)    return lfoSlewMsDefault;
 
         return 0.0f;
     }
