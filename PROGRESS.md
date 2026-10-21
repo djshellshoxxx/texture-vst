@@ -317,3 +317,16 @@ Gaps:
 - Bundle preset limit is still the schema-2 8 KiB; the 256 KiB schema-3 ceiling is not implemented.
 - Normal user presets carry no content hash, so relinking them is by chosen file or filename only.
 - No Windows, macOS or DAW verification of bundle round trips, and no help-panel text yet.
+
+## 2026-10-21: F06 configurable background WAV export
+
+Implemented F06 core. The export window offers Legacy two hits (the original schedule, unchanged), Single note, Chord (F01 shapes, now shared through `Engine/AuditionChords.h`) and Repeated phrase, with note, velocity, hold, tail, repeats and gap controls. `ExportPlanner` (pure) computes exact sample boundaries and rejects, rather than clamps, out-of-range values and renders over 120 s. `PatchSnapshot` is copied on the message thread. `ExportJob` renders with private engines and effects, checks cancellation before every 512-sample block, writes through `AtomicFileWriter`, reads the header back, and publishes only a complete file. `ExportController` (owned by the processor) runs one job at a time, exposes an atomic progress counter, keeps the result until collected, and cancels and joins on destruction, so closing the window or removing the plugin does not leave a partial file. Clipping is counted and reported; no limiter is added. The legacy `WavExporter::render` now delegates to the same job.
+
+Evidence: `test_export_planner` covers legacy boundaries (exact integers), the 60 s legacy cap, single-note and phrase timing, exact hit positions, rate scaling, retrigger ordering, the 120 s rejection, and every range check. `test_export_job` covers planned length and peaks, byte-identical fixed-seed renders, failure to create a destination, cancellation before and during a render with no partial file and an existing destination kept, clip counting, controller single-job behaviour, cancel-then-restart, destruction during a render, and refused requests. Legacy output is byte-identical to the pre-F06 build (9ee9f55) for a stereo 48 kHz/24-bit render and a mono 44.1 kHz/16-bit render. The golden comparison was run against that build and is not committed, because a stored hash would depend on the toolchain.
+
+Gaps:
+- The dialog, progress polling and processor wiring are not automated (the test binary does not link the processor or GUI).
+- The Help panel still describes only the legacy export.
+- Live versus offline DSP comparison on identical timelines is not done.
+- Rendering on a worker is not measured against the 250 ms cancel budget on slow storage; the per-block check is the only bound.
+- No DAW or platform verification; no 24-hour or callback-budget measurement.

@@ -188,6 +188,7 @@ namespace texture
         std::unique_ptr<SoundControlsPanel> soundPanel;
         std::unique_ptr<juce::FileChooser> fileChooser;
         PortableMediaDialogs portableMedia { *this, processor };
+        juce::Component::SafePointer<juce::DialogWindow> exportDialogWindow;
 
         /** The pixel that reveals the hidden effect (include.md, "easter egg"). */
         juce::Rectangle<int> secretHotspot;

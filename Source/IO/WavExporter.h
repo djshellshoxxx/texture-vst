@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cstdint>
+#include <vector>
 
 namespace texture
 {
@@ -62,10 +63,15 @@ namespace texture
         struct Result
         {
             bool succeeded { false };
+            bool cancelled { false };
             juce::File file;
             double lengthSeconds { 0.0 };
             juce::int64 fileSizeBytes { 0 };
             juce::String message;
+            /** Samples at or beyond full scale. Reported, never silently limited (F06). */
+            int clippedSamples { 0 };
+            /** Peak magnitude per time bin, for the rendered-audio tile (F15). */
+            std::vector<float> peaks;
         };
 
         /** Renders and writes the file. Call from the message thread or a background

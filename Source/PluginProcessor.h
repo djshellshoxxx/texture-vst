@@ -10,6 +10,7 @@
 #include "Engine/MonoNoteStack.h"
 #include "Engine/GranularEngine.h"
 #include "IO/FactoryContent.h"
+#include "IO/ExportController.h"
 #include "IO/MediaStore.h"
 #include "IO/PortableMediaWorker.h"
 #include "IO/SampleLoader.h"
@@ -216,6 +217,10 @@ namespace texture
             Loads asynchronously; the preset is marked dirty because its path changes. */
         void relinkLayer (int layerIndex, const juce::File& file);
 
+        /** The patch as the offline renderer will hear it, copied on the message thread (F06). */
+        std::shared_ptr<const PatchSnapshot> captureExportSnapshot() const;
+
+        ExportController& getExportController() noexcept { return exportController; }
         PortableMediaWorker& getPortableMediaWorker() noexcept { return portableMediaWorker; }
         MediaStore& getMediaStore() noexcept { return mediaStore; }
         juce::File getPortableStagingDirectory() const;
@@ -468,6 +473,7 @@ namespace texture
         // while the preset manager they read from is still alive.
         PortableMediaWorker portableMediaWorker;
         MediaStore mediaStore { MediaStore::defaultDirectory() };
+        ExportController exportController;
         MidiLearn midiLearn;
         SampleLoader sampleLoader;
         std::array<std::atomic<bool>, numLayers> sampleLoadMarksDirty {};

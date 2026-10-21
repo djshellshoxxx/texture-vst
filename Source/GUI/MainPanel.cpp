@@ -1,4 +1,5 @@
 #include "MainPanel.h"
+#include "ExportDialog.h"
 
 #include "../PluginProcessor.h"
 
@@ -75,6 +76,10 @@ namespace texture
         removeMouseListener (&undoGestureListener);
         processor.removeListener (this);
         debugWindow.reset();
+
+        // A render keeps running in the processor; only the window goes.
+        if (exportDialogWindow != nullptr)
+            delete exportDialogWindow.getComponent();
     }
 
     // =========================================================================
@@ -1329,116 +1334,29 @@ namespace texture
             return;
         }
 
-        const auto sample = processor.getSampleForLayer (0);
-
-        if (sample == nullptr || ! sample->isValid())
+        if (processor.getSampleForLayer (0) == nullptr && processor.getSampleForLayer (1) == nullptr)
         {
             processor.postToast ("Load a sample before exporting.", SampleLoader::Severity::warning);
             return;
         }
 
-        auto* window = new juce::AlertWindow ("Export audio",
-                                              "Renders a C3 hit, then a second C3 hit with a four "
-                                              "second tail, into one stereo WAV file.",
-                                              juce::MessageBoxIconType::NoIcon);
-
-        juce::StringArray rates;
-
-        for (const auto rate : WavExporter::getSupportedSampleRates())
-            rates.add (juce::String (rate / 1000.0, 1) + " kHz");
-
-        juce::StringArray depths;
-
-        for (const auto depth : WavExporter::getSupportedBitDepths())
-            depths.add (juce::String (depth) + "-bit");
-
-        window->addComboBox ("rate", rates, "Sample rate");
-        window->addComboBox ("depth", depths, "Bit depth");
-        window->addButton ("Choose file...", 1, juce::KeyPress (juce::KeyPress::returnKey));
-        window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
-
-        if (auto* rateBox = window->getComboBoxComponent ("rate"))
-            rateBox->setSelectedItemIndex (1, juce::dontSendNotification);   // 48 kHz
-
-        if (auto* depthBox = window->getComboBoxComponent ("depth"))
-            depthBox->setSelectedItemIndex (1, juce::dontSendNotification);  // 24-bit
-
-        juce::Component::SafePointer<MainPanel> safeThis (this);
-
-        window->enterModalState (true, juce::ModalCallbackFunction::create ([safeThis, window] (int result)
+        // Non-modal: the render keeps running in the processor if this window is closed.
+        if (exportDialogWindow != nullptr)
         {
-            std::unique_ptr<juce::AlertWindow> owned (window);
+            exportDialogWindow->toFront (true);
+            return;
+        }
 
-            if (safeThis == nullptr || result != 1)
-                return;
+        juce::DialogWindow::LaunchOptions options;
+        options.content.setOwned (new ExportDialog (processor));
+        options.dialogTitle = "Export audio";
+        options.dialogBackgroundColour = findColour (juce::ResizableWindow::backgroundColourId);
+        options.escapeKeyTriggersCloseButton = true;
+        options.useNativeTitleBar = true;
+        options.resizable = false;
+        options.componentToCentreAround = this;
 
-            WavExporter::Options options;
-
-            if (auto* rateBox = window->getComboBoxComponent ("rate"))
-                options.sampleRate = WavExporter::getSupportedSampleRates()[
-                    juce::jmax (0, rateBox->getSelectedItemIndex())];
-
-            if (auto* depthBox = window->getComboBoxComponent ("depth"))
-                options.bitDepth = WavExporter::getSupportedBitDepths()[
-                    juce::jmax (0, depthBox->getSelectedItemIndex())];
-
-            const auto suggestedName = juce::File::createLegalFileName (
-                safeThis->processor.getCurrentPresetName()) + ".wav";
-
-            safeThis->fileChooser = std::make_unique<juce::FileChooser> (
-                "Export WAV",
-                juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile (suggestedName),
-                "*.wav");
-
-            safeThis->fileChooser->launchAsync (juce::FileBrowserComponent::saveMode
-                                                    | juce::FileBrowserComponent::canSelectFiles
-                                                    | juce::FileBrowserComponent::warnAboutOverwriting,
-                                                [safeThis, options] (const juce::FileChooser& chooser)
-            {
-                if (safeThis == nullptr)
-                    return;
-
-                const auto destination = chooser.getResult();
-
-                if (destination == juce::File())
-                    return;
-
-                const std::array<SampleBufferPtr, 2> samples {
-                    safeThis->processor.getSampleForLayer (0),
-                    safeThis->processor.getSampleForLayer (1)
-                };
-
-                const auto renderResult = WavExporter::render (samples,
-                                                               safeThis->processor.captureRenderSettings(),
-                                                               options,
-                                                               destination);
-
-                if (! renderResult.succeeded)
-                {
-                    safeThis->processor.postToast (renderResult.message, SampleLoader::Severity::error);
-                    return;
-                }
-
-                safeThis->processor.postToast (renderResult.message, SampleLoader::Severity::info);
-
-                juce::AlertWindow::showAsync (
-                    juce::MessageBoxOptions()
-                        .withIconType (juce::MessageBoxIconType::InfoIcon)
-                        .withTitle ("Export complete")
-                        .withMessage ("File:     " + renderResult.file.getFileName() + "\n"
-                                      + "Location: " + renderResult.file.getParentDirectory().getFullPathName() + "\n"
-                                      + "Length:   " + juce::String (renderResult.lengthSeconds, 2) + " seconds\n"
-                                      + "Quality:  " + WavExporter::describeQuality (options) + "\n"
-                                      + "Size:     " + juce::File::descriptionOfSizeInBytes (renderResult.fileSizeBytes))
-                        .withButton ("Show file")
-                        .withButton ("Done"),
-                    [file = renderResult.file] (int choice)
-                    {
-                        if (choice == 1)
-                            file.revealToUser();
-                    });
-            });
-        }), false);
+        exportDialogWindow = options.launchAsync();
     }
 
     // =========================================================================

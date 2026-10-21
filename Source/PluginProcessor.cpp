@@ -6,6 +6,7 @@
 #include "PluginProcessor.h"
 
 #include "PluginEditor.h"
+#include "Engine/AuditionChords.h"
 #include "Utility/DspHelpers.h"
 #include "Utility/StateSchema.h"
 
@@ -907,14 +908,7 @@ namespace texture
         const auto root = static_cast<int> (command & 0x7fu);
         const auto velocity = static_cast<float> ((command >> 7) & 0x7fu) / 127.0f;
         const auto chord = static_cast<int> ((command >> 14) & 0x3u);
-        constexpr std::array<std::array<int, 4>, 4> offsets {{
-            {{ 0, -1, -1, -1 }},
-            {{ 0, 4, 7, -1 }},
-            {{ 0, 3, 7, -1 }},
-            {{ 0, 7, -1, -1 }}
-        }};
-
-        for (const auto offset : offsets[static_cast<size_t> (chord)])
+        for (const auto offset : AuditionChords::offsets[static_cast<size_t> (chord)])
         {
             if (offset < 0 || root + offset > 127)
                 continue;
@@ -1551,6 +1545,17 @@ namespace texture
         sampleLoadMarksDirty[index].store (true, std::memory_order_release);
         sampleLoader.loadAsync (file, layerIndex);
         markPresetDirty();
+    }
+
+    std::shared_ptr<const PatchSnapshot> TextureAudioProcessor::captureExportSnapshot() const
+    {
+        auto snapshot = std::make_shared<PatchSnapshot>();
+        snapshot->settings = captureRenderSettings();
+
+        for (int layer = 0; layer < numLayers; ++layer)
+            snapshot->samples[static_cast<size_t> (layer)] = getSampleForLayer (layer);
+
+        return snapshot;
     }
 
     juce::File TextureAudioProcessor::getPortableStagingDirectory() const

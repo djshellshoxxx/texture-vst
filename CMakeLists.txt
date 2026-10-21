@@ -132,6 +132,7 @@ set(TEXTURE_SOURCES
     Source/Engine/SampleBuffer.h
     Source/Engine/Voice.cpp
     Source/Engine/Voice.h
+    Source/Engine/AuditionChords.h
 
     Source/Effects/Chorus.cpp
     Source/Effects/Chorus.h
@@ -174,6 +175,12 @@ set(TEXTURE_SOURCES
     Source/IO/MediaStore.h
     Source/IO/PortableMediaWorker.cpp
     Source/IO/PortableMediaWorker.h
+    Source/IO/ExportPlanner.cpp
+    Source/IO/ExportPlanner.h
+    Source/IO/ExportJob.cpp
+    Source/IO/ExportJob.h
+    Source/IO/ExportController.cpp
+    Source/IO/ExportController.h
 
     Source/Presets/PresetManager.cpp
     Source/Presets/PresetManager.h
@@ -201,6 +208,8 @@ set(TEXTURE_SOURCES
     Source/GUI/MainPanel.cpp
     Source/GUI/PortableMediaDialogs.cpp
     Source/GUI/PortableMediaDialogs.h
+    Source/GUI/ExportDialog.cpp
+    Source/GUI/ExportDialog.h
     Source/GUI/MainPanel.h
     Source/GUI/MorphKnob.cpp
     Source/GUI/MorphKnob.h
