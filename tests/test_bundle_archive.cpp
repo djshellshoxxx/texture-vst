@@ -25,7 +25,7 @@ namespace texture::tests
             for (int ch = 0; ch < channels; ++ch)
                 for (int i = 0; i < frames; ++i)
                     buffer.setSample (ch, i, 0.4f * std::sin (juce::MathConstants<float>::twoPi
-                                                               * static_cast<float> (frequency * i / rate)));
+                                                               * static_cast<float> (static_cast<double> (frequency) * static_cast<double> (i) / rate)));
 
             juce::WavAudioFormat format;
             auto* stream = new juce::FileOutputStream (file);
