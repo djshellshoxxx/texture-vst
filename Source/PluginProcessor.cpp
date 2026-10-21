@@ -1417,7 +1417,7 @@ namespace texture
         for (const auto* id : params::allIDs)
             current[id] = getParameterValue (id, params::defaultValueFor (id));
 
-        const auto seed = juce::Random::getSystemRandom().nextInt64()
+        const auto seed = static_cast<std::uint64_t> (juce::Random::getSystemRandom().nextInt64())
                         ^ static_cast<std::uint64_t> (juce::Time::getHighResolutionTicks());
         undoManager.beginNewTransaction();
         for (const auto& change : planMutation (current, locks, amount, seed))

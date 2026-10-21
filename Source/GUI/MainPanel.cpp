@@ -744,6 +744,12 @@ namespace texture
             return true;
         }
 
+        if (key == juce::KeyPress ('m', juce::ModifierKeys::commandModifier, 0))
+        {
+            processor.mutateParameters (0.5f);
+            return true;
+        }
+
         if (key == juce::KeyPress ('r', juce::ModifierKeys::commandModifier, 0))
         {
             processor.randomiseParameters();
@@ -910,6 +916,17 @@ namespace texture
         addItem (15, "Undo", "Ctrl+Z", processor.getUndoManager().canUndo());
         addItem (16, "Redo", "Ctrl+Shift+Z", processor.getUndoManager().canRedo());
         addItem (8, "Randomize", "Ctrl+R");
+        addItem (17, "Mutate (gentle)", "Ctrl+M");
+        {
+            juce::PopupMenu lockMenu;
+            for (int g = 0; g < 8; ++g)
+            {
+                const auto group = static_cast<LockGroup> (g);
+                lockMenu.addItem (60 + g, lockGroupName (group), true,
+                                  processor.getLocks().isGroupLocked (group));
+            }
+            menu.addSubMenu ("Lock groups (Randomize/Mutate)", lockMenu);
+        }
         addItem (9, "Reset all controls");
         addItem (10, "Options...");
         menu.addSubMenu ("Interface size", sizeMenu);
@@ -951,6 +968,17 @@ namespace texture
 
                 case 8:  safeThis->processor.randomiseParameters(); break;
                 case 9:  safeThis->processor.resetToDefaults(); break;
+                case 17: safeThis->processor.mutateParameters (0.5f); break;
+                case 60: case 61: case 62: case 63: case 64: case 65: case 66: case 67:
+                {
+                    const auto group = static_cast<LockGroup> (result - 60);
+                    auto& locks = safeThis->processor.getLocks();
+                    if (locks.isGroupLocked (group))
+                        locks.unlock (group);
+                    else
+                        locks.lock (group);
+                    break;
+                }
 
                 case 10:
                     safeThis->closeOverlays();
