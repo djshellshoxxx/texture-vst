@@ -97,6 +97,7 @@ namespace texture
             engines[index]->setRandomConfig (settings.randomMode, layerSeed);
             engines[index]->setVoiceConfig (settings.mono);
             engines[index]->setScanSettings (settings.scan[index]);
+            engines[index]->setAttackCloud (settings.attackCloud);
         }
 
         lfo.prepare (sampleRate);

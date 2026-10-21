@@ -72,6 +72,10 @@ namespace texture::tests
             data.setParameter (params::grainFirstImmediate, 0.0f);
             data.setParameter (params::morphPersonality, 3.0f);
             data.setParameter (params::personalityIntensity, 0.65f);
+            data.setParameter (params::attackCloudOn, 1.0f);
+            data.setParameter (params::attackCloudHoldMs, 85.0f);
+            data.setParameter (params::attackCloudTransitionMs, 640.0f);
+            data.setParameter (params::attackCloudOriginal, 0.35f);
             data.setParameter (params::glideMs, 240.0f);
             data.setParameter (params::glideMode, 0.0f);
             data.setParameter (params::lfoDivision, 3.0f);

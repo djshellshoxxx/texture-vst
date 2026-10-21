@@ -673,6 +673,18 @@ namespace texture
             std::atomic<float>* intensity { nullptr };
         } personalityParameters;
 
+        /** F17 attack-to-cloud parameters, cached like every other parameter. */
+        struct AttackCloudParameters
+        {
+            std::atomic<float>* on { nullptr };
+            std::atomic<float>* hold { nullptr };
+            std::atomic<float>* transition { nullptr };
+            std::atomic<float>* original { nullptr };
+        } attackCloudParameters;
+
+        /** Reads the F17 parameters. Audio thread. */
+        AttackCloudSettings readAttackCloudSettings() const noexcept;
+
         /** Reads the grain-level inputs for one block: rhythm, personality and MORPH. Audio thread. */
         GrainRenderInputs readGrainRenderInputs (float morph) const noexcept;
 

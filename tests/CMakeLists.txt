@@ -36,6 +36,7 @@ set(TEXTURE_TEST_SOURCES
     test_rendered_audio_cache.cpp
     test_grain_clock.cpp
     test_personality_map.cpp
+    test_attack_cloud.cpp
     test_fuzz.cpp
     TestHelpers.h
 
@@ -136,6 +137,8 @@ add_test(NAME texture_rhythm COMMAND Texture_Tests texture-rhythm)
 set_tests_properties(texture_rhythm PROPERTIES TIMEOUT 600)
 add_test(NAME texture_personality COMMAND Texture_Tests texture-personality)
 set_tests_properties(texture_personality PROPERTIES TIMEOUT 600)
+add_test(NAME texture_attack COMMAND Texture_Tests texture-attack)
+set_tests_properties(texture_attack PROPERTIES TIMEOUT 600)
 
 # Pure waveform math also runs without JUCE for focused boundary/sanitizer checks.
 add_executable(Texture_WaveformMathTests test_waveform_math.cpp)

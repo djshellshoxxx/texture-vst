@@ -4,6 +4,7 @@
 #include "Colors.h"
 #include "GrainControlsPanel.h"
 #include "LookAndFeel.h"
+#include "AttackCloudControlsPanel.h"
 #include "ModulationPanel.h"
 #include "PersonalityControlsPanel.h"
 #include "RhythmControlsPanel.h"
@@ -91,12 +92,14 @@ namespace texture
               grainPanel (owner, [this] { if (onLayoutChanged) onLayoutChanged(); }),
               rhythmPanel (owner, [this] { if (onLayoutChanged) onLayoutChanged(); }),
               personalityPanel (owner, [this] { if (onLayoutChanged) onLayoutChanged(); }),
+              attackPanel (owner, [this] { if (onLayoutChanged) onLayoutChanged(); }),
               modulationPanel (owner, [this] { if (onLayoutChanged) onLayoutChanged(); }),
               scanPanel (owner, [this] { if (onLayoutChanged) onLayoutChanged(); })
         {
             addAndMakeVisible (grainPanel);
             addAndMakeVisible (rhythmPanel);
             addAndMakeVisible (personalityPanel);
+            addAndMakeVisible (attackPanel);
             addAndMakeVisible (modulationPanel);
             addAndMakeVisible (scanPanel);
 
@@ -244,6 +247,7 @@ namespace texture
             height += gap + grainPanel.preferredHeight();      // F13 grains, collapsed by default
             height += gap + rhythmPanel.preferredHeight();     // F19 rhythm grid, collapsed by default
             height += gap + personalityPanel.preferredHeight(); // F16 character, collapsed by default
+            height += gap + attackPanel.preferredHeight();      // F17 attack to cloud, collapsed by default
             height += gap + modulationPanel.preferredHeight(); // F14 motion shapes, collapsed by default
             height += gap + scanPanel.preferredHeight();       // F10 scan and freeze, collapsed by default
             height += gap + rowHeight;                         // performance header
@@ -298,6 +302,9 @@ namespace texture
 
             area.removeFromTop (gap);
             personalityPanel.setBounds (area.removeFromTop (personalityPanel.preferredHeight()));
+
+            area.removeFromTop (gap);
+            attackPanel.setBounds (area.removeFromTop (attackPanel.preferredHeight()));
 
             area.removeFromTop (gap);
             modulationPanel.setBounds (area.removeFromTop (modulationPanel.preferredHeight()));
@@ -514,6 +521,7 @@ namespace texture
         GrainControlsPanel grainPanel;
         RhythmControlsPanel rhythmPanel;
         PersonalityControlsPanel personalityPanel;
+        AttackCloudControlsPanel attackPanel;
         ModulationPanel modulationPanel;
         ScanPanel scanPanel;
 

@@ -55,6 +55,12 @@ namespace texture
         glideRemaining = 0;
         grainPitchDirty = false;
         rhythmFirstPending = false;
+        attackArmed = false;
+        attackFinished = true;
+        attackReaderDone = true;
+        attackPositionPending = false;
+        attackElapsed = 0;
+        attackEarlyShift = 0;
         retireTotal = 0;
         retireRemaining = 0;
         currentTuneSemitones = 0.0f;
@@ -99,6 +105,8 @@ namespace texture
         glideStartOffset = glideOffset;
         grainPitchDirty = false;
         rhythmFirstPending = true;
+        attackArmed = false;
+        attackFinished = true;
 
         retireTotal = 0;
         retireRemaining = 0;
@@ -171,6 +179,100 @@ namespace texture
         grainPitchDirty = true;
     }
 
+    void Voice::armAttackCloud (const AttackCloudSettings& settings) noexcept
+    {
+        attackPlan.latch (settings, preparedSampleRate);
+        attackArmed = attackPlan.isOn();
+        attackFinished = ! attackArmed;
+        attackReaderDone = ! attackArmed;
+        attackPositionPending = attackArmed;
+        attackElapsed = 0;
+        attackEarlyShift = 0;
+
+        const auto amount = std::isfinite (settings.original)
+                                ? juce::jlimit (0.0f, 1.0f, settings.original)
+                                : params::attackCloudOriginalDefault;
+        attackAmount.reset (preparedSampleRate, 0.02);
+        attackAmount.setCurrentAndTargetValue (amount);
+    }
+
+    void Voice::setAttackOriginal (float amount) noexcept
+    {
+        if (std::isfinite (amount))
+            attackAmount.setTargetValue (juce::jlimit (0.0f, 1.0f, amount));
+    }
+
+    void Voice::applyAttackCloud (const SampleBuffer& source, float* scratchLeft, float* scratchRight,
+                                  int numSamples, double readIncrement) noexcept
+    {
+        const auto sourceLength = source.getNumSamples();
+        const auto* left = source.getChannel (0);
+        const auto* right = source.getChannel (1);
+
+        if (sourceLength <= 0 || left == nullptr || right == nullptr)
+        {
+            attackReaderDone = true;
+            return;
+        }
+
+        if (attackPositionPending)
+        {
+            attackPositionPending = false;
+            attackPosition = static_cast<double> (pendingStart) * static_cast<double> (sourceLength - 1);
+        }
+
+        const auto lastFrame = static_cast<double> (sourceLength - 1);
+        const auto fadeFrames = static_cast<double> (juce::jmax (1, juce::jmin (AttackCloudPlan::endFadeFrames, sourceLength)));
+
+        for (int i = 0; i < numSamples; ++i)
+        {
+            float cloud = 1.0f;
+            float direct = 0.0f;
+            const auto elapsed = attackElapsed + attackEarlyShift + i;
+            attackPlan.gainsAt (elapsed, cloud, direct);
+            const auto amount = attackAmount.getNextValue();
+
+            float directLeft = 0.0f;
+            float directRight = 0.0f;
+
+            if (! attackReaderDone && direct > 0.0f)
+            {
+                if (attackPosition >= lastFrame)
+                {
+                    // The sample ended inside the hold. The cloud takes over now, rather than
+                    // waiting out a hold with nothing playing.
+                    attackReaderDone = true;
+
+                    if (elapsed < attackPlan.getHoldSamples())
+                        attackEarlyShift += attackPlan.getHoldSamples() - elapsed;
+                }
+                else
+                {
+                    // The direct read fades out over the last frames of the sample; it never loops.
+                    const auto remaining = lastFrame - attackPosition;
+                    const auto fade = static_cast<float> (juce::jmin (1.0, remaining / fadeFrames));
+                    const auto gain = direct * amount * fade;
+                    const auto position = static_cast<float> (attackPosition);
+
+                    directLeft = dsp::readLinear (left, sourceLength, position) * gain;
+                    directRight = dsp::readLinear (right, sourceLength, position) * gain;
+                    attackPosition += readIncrement;
+                }
+            }
+
+            scratchLeft[i] = scratchLeft[i] * cloud + directLeft;
+            scratchRight[i] = scratchRight[i] * cloud + directRight;
+        }
+
+        attackElapsed += numSamples;
+
+        if (attackElapsed + attackEarlyShift >= attackPlan.getTotalSamples())
+        {
+            attackFinished = true;
+            attackReaderDone = true;
+        }
+    }
+
     void Voice::stopNote()
     {
         if (! active)
@@ -197,6 +299,9 @@ namespace texture
         velocityRampRemaining = 0;
         retireTotal = 0;
         retireRemaining = 0;
+        attackArmed = false;
+        attackFinished = true;
+        attackReaderDone = true;
     }
 
     void Voice::beginRetire (int fadeSamples) noexcept
@@ -583,6 +688,11 @@ namespace texture
         normalisedReadPosition = targets.scanCentre >= 0.0f
                                      ? targets.scanCentre
                                      : static_cast<float> (readPosition / sourceLengthAsDouble);
+
+        // Attack to cloud (F17): the direct attack mixes in before the envelope, so the ADSR and
+        // velocity apply to the combined result exactly once. Off, this branch is never taken.
+        if (attackArmed && ! attackFinished)
+            applyAttackCloud (source, scratchLeft, scratchRight, numSamples, readIncrement);
 
         // Apply the amplitude envelope and mix into the engine output.
         float envelopeLevel = lastEnvelopeLevel;

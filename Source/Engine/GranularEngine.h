@@ -65,6 +65,9 @@ namespace texture
         void setRandomConfig (int mode, std::uint64_t seed) noexcept
         { randomMode = mode < 0 || mode > 2 ? 0 : mode; randomSeed = seed; }
         void resetEvolution() noexcept { evolutionCounter = 0; }
+        /** Attack to cloud (F17). Set once per block; each note latches the times at note-on. */
+        void setAttackCloud (const AttackCloudSettings& settings) noexcept { attackCloud = settings; }
+
         /** Scan and freeze for this layer (F10). Set once per block. Audio thread only. */
         void setScanSettings (const ScanSettings& settings) noexcept { scanSettings = sanitiseScanSettings (settings); }
 
@@ -157,6 +160,7 @@ namespace texture
         int lineVoiceForStart (int midiNote) noexcept;
 
         std::array<Voice, maxVoices> voices {};
+        AttackCloudSettings attackCloud;
         juce::AudioBuffer<float> scratch;
 
         // Scan and freeze (F10). Audio thread state; the latch is handed to the message thread.

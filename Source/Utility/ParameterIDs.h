@@ -75,6 +75,12 @@ namespace texture::params
     inline constexpr const char* grainBurst          = "grain_burst";
     inline constexpr const char* grainFirstImmediate = "grain_first_immediate";
 
+    // F17 attack-to-cloud. Appended. Off by default; with it off the voice path is unchanged.
+    inline constexpr const char* attackCloudOn           = "attack_cloud_on";
+    inline constexpr const char* attackCloudHoldMs       = "attack_cloud_hold_ms";
+    inline constexpr const char* attackCloudTransitionMs = "attack_cloud_transition_ms";
+    inline constexpr const char* attackCloudOriginal     = "attack_cloud_original";
+
     // F16 MORPH personalities. Appended. Legacy is the default and keeps MORPH's mapping.
     inline constexpr const char* morphPersonality     = "morph_personality";
     inline constexpr const char* personalityIntensity = "personality_intensity";
@@ -108,7 +114,8 @@ namespace texture::params
         layer1ScanMode, layer1ScanPosition, layer1ScanSpeed, layer1Freeze, layer1FreezeSpread,
         layer2ScanMode, layer2ScanPosition, layer2ScanSpeed, layer2Freeze, layer2FreezeSpread,
         grainClock, grainDivision, grainSwing, grainProbability, grainGate, grainBurst, grainFirstImmediate,
-        morphPersonality, personalityIntensity
+        morphPersonality, personalityIntensity,
+        attackCloudOn, attackCloudHoldMs, attackCloudTransitionMs, attackCloudOriginal
     };
 
     inline constexpr int numParameters = static_cast<int> (std::size (allIDs));
@@ -193,6 +200,12 @@ namespace texture::params
     inline constexpr int grainBurstMin = 1,            grainBurstMax = 4,     grainBurstDefault = 1;
     inline constexpr bool grainFirstImmediateDefault = true;
 
+    // F17 ranges. Off by default. Hold may be zero; the transition is at least 5 ms.
+    inline constexpr bool attackCloudOnDefault = false;
+    inline constexpr float attackCloudHoldMinMs = 0.0f,         attackCloudHoldMaxMs = 500.0f, attackCloudHoldDefaultMs = 40.0f;
+    inline constexpr float attackCloudTransitionMinMs = 5.0f,   attackCloudTransitionMaxMs = 2000.0f, attackCloudTransitionDefaultMs = 250.0f;
+    inline constexpr float attackCloudOriginalMin = 0.0f,       attackCloudOriginalMax = 1.0f, attackCloudOriginalDefault = 1.0f;
+
     // F16 ranges. Legacy (0) is the default; intensity only matters for the other styles.
     inline constexpr int personalityCount = 5;         // Legacy, Cloud, Pulse, Fracture, Swarm
     inline constexpr int personalityDefault = 0;
@@ -219,6 +232,9 @@ namespace texture::params
 
     /** True for the F16 personality controls. Randomize leaves them as the user set them. */
     bool isPersonalityParameter (const juce::String& parameterID);
+
+    /** True for the F17 attack-to-cloud controls. Randomize leaves them as the user set them. */
+    bool isAttackCloudParameter (const juce::String& parameterID);
 
     /** True for the F10 scan and freeze controls. Randomize leaves them as the user set them. */
     bool isScanParameter (const juce::String& parameterID);

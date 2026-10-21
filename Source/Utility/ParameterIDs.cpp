@@ -70,6 +70,10 @@ namespace texture::params
         if (parameterID == grainFirstImmediate) return "Grain First Immediate";
         if (parameterID == morphPersonality) return "MORPH Personality";
         if (parameterID == personalityIntensity) return "Personality Intensity";
+        if (parameterID == attackCloudOn) return "Attack To Cloud";
+        if (parameterID == attackCloudHoldMs) return "Attack Hold";
+        if (parameterID == attackCloudTransitionMs) return "Attack Transition";
+        if (parameterID == attackCloudOriginal) return "Attack Original Level";
 
         return parameterID;
     }
@@ -108,6 +112,15 @@ namespace texture::params
     {
         for (const auto* id : { layer1ScanMode, layer1ScanPosition, layer1ScanSpeed, layer1Freeze, layer1FreezeSpread,
                                 layer2ScanMode, layer2ScanPosition, layer2ScanSpeed, layer2Freeze, layer2FreezeSpread })
+            if (parameterID == id)
+                return true;
+
+        return false;
+    }
+
+    bool isAttackCloudParameter (const juce::String& parameterID)
+    {
+        for (const auto* id : { attackCloudOn, attackCloudHoldMs, attackCloudTransitionMs, attackCloudOriginal })
             if (parameterID == id)
                 return true;
 
@@ -199,6 +212,10 @@ namespace texture::params
         if (parameterID == grainFirstImmediate) return grainFirstImmediateDefault ? 1.0f : 0.0f;
         if (parameterID == morphPersonality) return static_cast<float> (personalityDefault);
         if (parameterID == personalityIntensity) return personalityIntensityDefault;
+        if (parameterID == attackCloudOn) return attackCloudOnDefault ? 1.0f : 0.0f;
+        if (parameterID == attackCloudHoldMs) return attackCloudHoldDefaultMs;
+        if (parameterID == attackCloudTransitionMs) return attackCloudTransitionDefaultMs;
+        if (parameterID == attackCloudOriginal) return attackCloudOriginalDefault;
 
         return 0.0f;
     }

@@ -81,7 +81,8 @@ namespace texture::tests
 
                 locks.setGroupLocked (LockGroup::envelope, true);
                 expect (locks.groupState (LockGroup::envelope) == LockPolicy::GroupState::all);
-                expectEquals (locks.countLocked (LockGroup::envelope), 4);
+                // Envelope holds the ADSR (4) and the F17 attack-to-cloud controls (4).
+                expectEquals (locks.countLocked (LockGroup::envelope), 8);
 
                 locks.setGroupLocked (LockGroup::envelope, false);
                 expect (locks.groupState (LockGroup::envelope) == LockPolicy::GroupState::none);

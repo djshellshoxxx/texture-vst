@@ -141,6 +141,7 @@ set(TEXTURE_SOURCES
     Source/Engine/GrainClock.h
     Source/Engine/GrainRenderController.cpp
     Source/Engine/GrainRenderController.h
+    Source/Engine/AttackCloud.h
 
     Source/Effects/Chorus.cpp
     Source/Effects/Chorus.h
@@ -247,6 +248,8 @@ set(TEXTURE_SOURCES
     Source/GUI/RhythmControlsPanel.h
     Source/GUI/PersonalityControlsPanel.cpp
     Source/GUI/PersonalityControlsPanel.h
+    Source/GUI/AttackCloudControlsPanel.cpp
+    Source/GUI/AttackCloudControlsPanel.h
     Source/GUI/CurveEditor.cpp
     Source/GUI/CurveEditor.h
     Source/GUI/ModulationPanel.cpp

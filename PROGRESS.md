@@ -421,3 +421,17 @@ Deviations and gaps:
 - Randomize leaves the personality alone, a decision recorded here rather than in the specification.
 - The Character panel is laid out by build only; not run in the standalone. No DAW, listening or CPU evidence.
 
+## 2026-10-21: F17 attack-to-cloud
+
+Implemented F17 core. Four appended parameters: `attack_cloud_on` (off by default), `attack_cloud_hold_ms` (0 to 500, default 40), `attack_cloud_transition_ms` (5 to 2000, default 250) and `attack_cloud_original` (0 to 1, default 1). `AttackCloudPlan` (pure) latches the hold and transition in samples at note-on and gives the gains: the direct read holds at the requested level, then a smoothstep crossfade gives cloud = t and direct = (1 - t) x level, with no equal-power boost. Each voice has a direct read head at the sample start, at the note's calibrated pitch, which reads forward once and fades over the last 256 frames of the sample. It mixes in before the ADSR and velocity, so both apply once. Mono Legato keeps a crossfade that is running, and Mono Retrigger restarts it. If the sample ends during the hold, the cloud starts at once. With the feature off no branch is taken, so the default path is unchanged. The times and the level sit in the Envelope lock group, and the times and level move under Gentle Mutate only while the feature is on.
+
+Evidence: 150 attack checks in `texture-attack` pass under Linux gcc and clang. The central check is an exact identity: with unit envelope and root-pitched playback, the attack-on output minus t times the attack-off output equals (1 - t) x level x source, sample for sample, through the hold and the crossfade. After the crossfade the output is bit-identical to the attack-off render. Other checks cover the smoothstep, the gains, latching and clamping (including non-finite input), zero hold, a disabled feature matching a default engine exactly, an edit during a sounding note not moving its crossfade, a sample shorter than the hold, a release during the crossfade, and a rapid stream of attacks. A mutation that ignored the level was caught by both identity checks, then reverted. The full existing suite passes (131,887 checks). The Linux and clang builds are warning-free.
+
+Deviations and gaps:
+- The hold is an explicit time, not transient detection, as the specification requires for this version.
+- The direct read ignores Freeze and scan (F10), Reverse and Shimmer, by design. It plays at the note's pitch and does not follow Glide.
+- Mono Legato and Retrigger behaviour is checked by code review, not by a host or a standalone run.
+- The Lock group membership changed the Envelope group's count from 4 to 8. Locking the group now also locks the attack-to-cloud controls.
+- No factory presets use the feature, and no listening or CPU evidence exists. The specification's audition clips and CPU overhead measurement are not done.
+- The Attack panel is laid out by build only; not run in the standalone.
+

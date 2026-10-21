@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../Effects/ToneSpace.h"
+#include "../Engine/AttackCloud.h"
 #include "../Engine/GrainClock.h"
 #include "../Engine/GrainTargetResolver.h"
 #include "../Engine/MonoNoteStack.h"
@@ -54,6 +55,7 @@ namespace texture
             RhythmSettings rhythm;        // F19: Legacy grain clock unless set
             int personality { 0 };        // F16: Legacy unless set (Personality index)
             float personalityIntensity { 0.5f };
+            AttackCloudSettings attackCloud;  // F17: off unless set
             int lfoShape { 0 };           // F14: Sine unless set (LfoShape index)
             int lfoRetrigger { 0 };       // F14: Legacy unless set (LfoRetrigger index)
             float lfoPhase { 0.0f };

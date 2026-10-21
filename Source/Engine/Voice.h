@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Grain.h"
+#include "AttackCloud.h"
 #include "GrainClock.h"
 #include "SourcePitchModel.h"
 #include "../Modulation/EnvelopeADSR.h"
@@ -97,6 +98,11 @@ namespace texture
 
         void setAdsrParameters (float attackMs, float decayMs, float sustainLevel, float releaseMs);
 
+        /** Attack-to-cloud (F17). Latched at note-on by armAttackCloud; a retarget (mono legato)
+            never re-arms it, a retrigger does. setAttackOriginal follows the live amount. */
+        void armAttackCloud (const AttackCloudSettings& settings) noexcept;
+        void setAttackOriginal (float amount) noexcept;
+
         /** Pitch bend as a multiplicative ratio, shared by all voices. */
         void setPitchBendRatio (float ratio) noexcept { pitchBendRatio = ratio; }
 
@@ -131,6 +137,10 @@ namespace texture
                          float taper,
                          float glideMultiplier,
                          float amplitudeOverride = 0.0f) noexcept;
+
+        /** Direct read of the sample start, crossfading into the grains (F17). Audio thread. */
+        void applyAttackCloud (const SampleBuffer& source, float* scratchLeft, float* scratchRight,
+                               int numSamples, double readIncrement) noexcept;
 
         /** Rhythmic path (F19): grains start on the scheduler's events, not on the legacy hop. */
         void renderRhythmicSpan (const SampleBuffer& source, const MorphTargets& targets,
@@ -183,6 +193,17 @@ namespace texture
 
         // Rhythmic grains (F19). The first grain of a note may start at once.
         bool rhythmFirstPending { false };
+
+        // Attack-to-cloud (F17). The direct read head is independent of the grains.
+        AttackCloudPlan attackPlan;
+        bool attackArmed { false };
+        bool attackFinished { true };
+        bool attackReaderDone { true };
+        bool attackPositionPending { false };
+        int attackElapsed { 0 };
+        int attackEarlyShift { 0 };       // moves the crossfade forward when the sample ends first
+        double attackPosition { 0.0 };    // direct read head, in source samples
+        juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> attackAmount;
 
         // Retirement: a linear fade before the voice is stopped.
         int retireTotal { 0 };

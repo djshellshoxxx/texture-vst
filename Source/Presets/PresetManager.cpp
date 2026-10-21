@@ -211,6 +211,19 @@ namespace texture
 
             if (id == params::personalityIntensity) return inRange (params::personalityIntensityMin, params::personalityIntensityMax);
 
+            // F17 attack-to-cloud.
+            if (id == params::attackCloudOn)
+                return juce::exactlyEqual (numeric, 0.0) || juce::exactlyEqual (numeric, 1.0);
+
+            if (id == params::attackCloudHoldMs)
+                return inRange (params::attackCloudHoldMinMs, params::attackCloudHoldMaxMs);
+
+            if (id == params::attackCloudTransitionMs)
+                return inRange (params::attackCloudTransitionMinMs, params::attackCloudTransitionMaxMs);
+
+            if (id == params::attackCloudOriginal)
+                return inRange (params::attackCloudOriginalMin, params::attackCloudOriginalMax);
+
             if (id == params::lfoSlewMs)   return inRange (params::lfoSlewMsMin, params::lfoSlewMsMax);
 
             return false;

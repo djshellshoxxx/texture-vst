@@ -200,6 +200,17 @@ namespace texture
         text.add ("  time. Grain Size, Density and the other Grains controls set manually still win");
         text.add ("  over a style. Reverse keeps its own chance and the style adds to it.");
         text.add ("");
+        text.add ("ATTACK TO CLOUD (sliders button, Attack to cloud section)");
+        text.add ("  Off by default. On: the first moments of the sample play exactly as recorded,");
+        text.add ("  then fade into the granular cloud, so the transient survives the texture.");
+        text.add ("  Hold     How long the sample's start plays unchanged, 0 to 500 ms.");
+        text.add ("  Fade     How long the crossfade into the cloud takes, 5 ms to 2 s.");
+        text.add ("  Level    How loud the unchanged start is. Zero leaves only the cloud.");
+        text.add ("  Example: a piano with Hold 40 ms and Fade 250 ms keeps the hammer click, then");
+        text.add ("  blooms into a cloud. The times apply to the next note. A note already sounding");
+        text.add ("  keeps its own. Mono Legato keeps a fade that is running; Mono Retrigger restarts it.");
+        text.add ("  If the sample ends during the hold, the cloud starts at once.");
+        text.add ("");
 
         text.add ("=== RIGHT-CLICK ON ANY CONTROL ===");
         text.add ("  Reset to default");

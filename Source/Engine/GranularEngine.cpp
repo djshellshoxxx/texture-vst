@@ -141,6 +141,7 @@ namespace texture
                          sampleStart.load (std::memory_order_relaxed), auditionOwned,
                          randomMode, randomSeed, ++evolutionCounter,
                          sourceRootMidiNote, sourceFineCents);
+        voice.armAttackCloud (attackCloud);
     }
 
     void GranularEngine::noteOff (int midiChannel, int midiNote, bool auditionOwned)
@@ -494,6 +495,7 @@ namespace texture
                          sampleStart.load (std::memory_order_relaxed), false,
                          randomMode, randomSeed, ++evolutionCounter,
                          sourceRootMidiNote, sourceFineCents, glideFrom, glideLength);
+        voice.armAttackCloud (attackCloud);
 
         monoVoiceIndex = index;
         lastMonoPitch = static_cast<float> (note.number);
@@ -540,6 +542,7 @@ namespace texture
                          sampleStart.load (std::memory_order_relaxed), false,
                          randomMode, randomSeed, ++evolutionCounter,
                          sourceRootMidiNote, sourceFineCents);
+        voice.armAttackCloud (attackCloud);
         voice.setHeldBySustain (sustainHeld);
     }
 
@@ -698,6 +701,7 @@ namespace texture
             if (! voice.isActive())
                 continue;
 
+            voice.setAttackOriginal (attackCloud.original);
             voice.renderAdding (*source, *effective, scratch, leftOut, rightOut, numSamples, rhythm);
             ++rendered;
 

@@ -608,6 +608,11 @@ namespace texture
         personalityParameters.style     = apvts.getRawParameterValue (params::morphPersonality);
         personalityParameters.intensity = apvts.getRawParameterValue (params::personalityIntensity);
 
+        attackCloudParameters.on         = apvts.getRawParameterValue (params::attackCloudOn);
+        attackCloudParameters.hold       = apvts.getRawParameterValue (params::attackCloudHoldMs);
+        attackCloudParameters.transition = apvts.getRawParameterValue (params::attackCloudTransitionMs);
+        attackCloudParameters.original   = apvts.getRawParameterValue (params::attackCloudOriginal);
+
         const std::array<std::array<const char*, 5>, numLayers> scanIDs {{
             { params::layer1ScanMode, params::layer1ScanPosition, params::layer1ScanSpeed,
               params::layer1Freeze, params::layer1FreezeSpread },
@@ -686,6 +691,21 @@ namespace texture
         settings.burst = juce::roundToInt (read (rhythmParameters.burst, static_cast<float> (params::grainBurstDefault)));
         settings.firstGrainImmediate = read (rhythmParameters.firstImmediate,
                                              params::grainFirstImmediateDefault ? 1.0f : 0.0f) > 0.5f;
+        return settings;
+    }
+
+    AttackCloudSettings TextureAudioProcessor::readAttackCloudSettings() const noexcept
+    {
+        const auto read = [] (const std::atomic<float>* value, float fallback)
+        {
+            return value != nullptr ? value->load (std::memory_order_relaxed) : fallback;
+        };
+
+        AttackCloudSettings settings;
+        settings.on = read (attackCloudParameters.on, 0.0f) > 0.5f;
+        settings.holdMs = read (attackCloudParameters.hold, params::attackCloudHoldDefaultMs);
+        settings.transitionMs = read (attackCloudParameters.transition, params::attackCloudTransitionDefaultMs);
+        settings.original = read (attackCloudParameters.original, params::attackCloudOriginalDefault);
         return settings;
     }
 
@@ -1101,6 +1121,10 @@ namespace texture
 
         for (size_t layer = 0; layer < engines.size(); ++layer)
             engines[layer].setScanSettings (readScanSettings (static_cast<int> (layer)));
+
+        const auto attackCloud = readAttackCloudSettings();
+        for (auto& engine : engines)
+            engine.setAttackCloud (attackCloud);
 
         effects.setToneSpace (readToneSpaceSettings());
         effects.setMorphTargets (currentTargets);
@@ -2360,7 +2384,8 @@ namespace texture
                 && ! params::isPerformanceParameter (id)
                 && ! params::isScanParameter (id)
                 && ! params::isRhythmParameter (id)
-                && ! params::isPersonalityParameter (id))
+                && ! params::isPersonalityParameter (id)
+                && ! params::isAttackCloudParameter (id))
                 write (id, params::defaultValueFor (id));
 
         write (params::morph, random.nextFloat());
@@ -2500,7 +2525,8 @@ namespace texture
             field.eligible = info.mutableByDefault && (! info.proOnly || licenseManager.isPro())
                              && isGrainParameterMutable (info.id, grainSettings)
                              && rhythm::isRhythmParameterMutable (info.id, readRhythmSettings().rhythmic)
-                             && isPersonalityParameterMutable (info.id, getPersonalityStyle());
+                             && isPersonalityParameterMutable (info.id, getPersonalityStyle())
+                             && isAttackCloudParameterMutable (info.id, readAttackCloudSettings().on);
 
             const auto* parameter = apvts.getParameter (juce::String (std::string (info.id)));
             if (parameter == nullptr)
@@ -2779,6 +2805,7 @@ namespace texture
         settings.rhythm = readRhythmSettings();
         settings.personality = getPersonalityStyle();
         settings.personalityIntensity = getParameterValue (params::personalityIntensity, params::personalityIntensityDefault);
+        settings.attackCloud = readAttackCloudSettings();
         settings.lfoShape = juce::roundToInt (getParameterValue (params::lfoShape, static_cast<float> (params::lfoShapeDefault)));
         settings.lfoRetrigger = juce::roundToInt (getParameterValue (params::lfoRetrigger, static_cast<float> (params::lfoRetriggerDefault)));
         settings.lfoPhase = getParameterValue (params::lfoPhase, params::lfoPhaseDefault);

@@ -92,6 +92,11 @@ namespace texture
             // only while a style other than Legacy is selected (see isPersonalityParameterMutable).
             { params::morphPersonality,     LockGroup::motion,         false, false },
             { params::personalityIntensity, LockGroup::motion,         true,  false },
+            // F17 attack-to-cloud. The switch is never mutated; the times and amount only while on.
+            { params::attackCloudOn,           LockGroup::envelope,    false, false },
+            { params::attackCloudHoldMs,       LockGroup::envelope,    true,  false },
+            { params::attackCloudTransitionMs, LockGroup::envelope,    true,  false },
+            { params::attackCloudOriginal,     LockGroup::envelope,    true,  false },
         } };
 
         static_assert (LockPolicy::numFields == static_cast<std::size_t> (params::numParameters),
