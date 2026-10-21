@@ -362,6 +362,10 @@ licence, audit, or accidentally infringe.
 
 ---
 
+## Wiki
+
+Wiki source pages are in [docs/wiki/](docs/wiki/Home.md): user guide, developer guide, architecture rationale and codebase map.
+
 ## Licence
 
 TEXTURE source code is proprietary. Inter remains under the SIL Open Font License.
