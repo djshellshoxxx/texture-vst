@@ -17,9 +17,9 @@ namespace texture
         if (! pending.compare_exchange_strong (expected, 1))
             return false;
 
-        pool.addJob ([this, job = std::move (job)]
+        pool.addJob ([this, task = std::move (job)]
         {
-            job();
+            task();
             pending.store (0);
         });
 
@@ -32,16 +32,16 @@ namespace texture
                                            std::array<juce::File, 2> layerFiles,
                                            ExportCallback done)
     {
-        return enqueue ([destination, stagingRoot, preset = std::move (preset), layerFiles, done = std::move (done)]
+        return enqueue ([destination, stagingRoot, presetData = std::move (preset), layerFiles, onDone = std::move (done)]
         {
             // Writing the archive needs no preset state, so a detached manager is enough.
             const PresetManager presets (nullptr);
-            auto result = BundleArchive::write (destination, stagingRoot, presets, preset, layerFiles);
+            auto result = BundleArchive::write (destination, stagingRoot, presets, presetData, layerFiles);
 
-            juce::MessageManager::callAsync ([done, result = std::move (result)]
+            juce::MessageManager::callAsync ([onDone, outcome = std::move (result)]
             {
-                if (done)
-                    done (result);
+                if (onDone)
+                    onDone (outcome);
             });
         });
     }
@@ -53,7 +53,7 @@ namespace texture
                                            const juce::File& presetDirectory,
                                            ImportCallback done)
     {
-        return enqueue ([archive, stagingRoot, &presets, store, presetDirectory, done = std::move (done)]
+        return enqueue ([archive, stagingRoot, &presets, store, presetDirectory, onDone = std::move (done)]
         {
             auto read = BundleArchive::read (archive, stagingRoot);
             const auto plan = BundleImportPlanner::plan (read, presets, store);
@@ -68,10 +68,10 @@ namespace texture
             // Failed or succeeded, the staged copies are no longer needed.
             BundleArchive::discardStaging (read.stagingDirectory);
 
-            juce::MessageManager::callAsync ([done, result = std::move (result)]
+            juce::MessageManager::callAsync ([onDone, outcome = std::move (result)]
             {
-                if (done)
-                    done (result);
+                if (onDone)
+                    onDone (outcome);
             });
         });
     }
@@ -80,15 +80,15 @@ namespace texture
                                            MediaRelinker::Expectation expectation,
                                            SearchCallback done)
     {
-        return enqueue ([folder, expectation = std::move (expectation), done = std::move (done)]
+        return enqueue ([folder, expectationCopy = std::move (expectation), onDone = std::move (done)]
         {
             static const std::atomic<bool> neverCancelled { false };
-            auto result = MediaRelinker::search (folder, expectation, neverCancelled);
+            auto result = MediaRelinker::search (folder, expectationCopy, neverCancelled);
 
-            juce::MessageManager::callAsync ([done, result = std::move (result)]
+            juce::MessageManager::callAsync ([onDone, outcome = std::move (result)]
             {
-                if (done)
-                    done (result);
+                if (onDone)
+                    onDone (outcome);
             });
         });
     }

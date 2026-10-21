@@ -28,14 +28,14 @@ namespace texture
             pending = {};
         }
 
-        pool.addJob ([this, request = std::move (request)]
+        pool.addJob ([this, queued = std::move (request)]
         {
-            auto result = ExportJob::run (*request.snapshot, request.plan, request.sampleRate,
-                                          request.bitDepth, request.destination,
+            auto result = ExportJob::run (*queued.snapshot, queued.plan, queued.sampleRate,
+                                          queued.bitDepth, queued.destination,
                                           cancelRequested, framesDone);
 
-            if (result.succeeded && request.afterSuccess)
-                request.afterSuccess (result);
+            if (result.succeeded && queued.afterSuccess)
+                queued.afterSuccess (result);
 
             {
                 const juce::ScopedLock sl (lock);

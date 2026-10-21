@@ -435,13 +435,13 @@ namespace texture
                     .withMessage ("A render is already running. Cancel it and start this one?")
                     .withButton ("Restart")
                     .withButton ("Keep current"),
-                [safeThis, request = std::move (request), forDrag] (int choice) mutable
+                [safeThis, queued = std::move (request), forDrag] (int choice) mutable
                 {
                     // AlertWindow maps the first of two buttons to 1.
                     if (safeThis == nullptr || choice != 1)
                         return;
 
-                    safeThis->queuedRestart = std::move (request);
+                    safeThis->queuedRestart = std::move (queued);
                     safeThis->queuedRestartForDrag = forDrag;
                     safeThis->requestCancel();
                 });

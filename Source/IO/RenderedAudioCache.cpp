@@ -40,8 +40,8 @@ namespace texture
         std::map<juce::String, int> counts;
     };
 
-    RenderedAudioCache::Lease::Lease (std::shared_ptr<Registry> registry, juce::File leased)
-        : owner (std::move (registry)),
+    RenderedAudioCache::Lease::Lease (std::shared_ptr<Registry> sharedRegistry, juce::File leased)
+        : owner (std::move (sharedRegistry)),
           file (std::move (leased))
     {
     }

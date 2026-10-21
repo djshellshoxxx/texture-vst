@@ -26,10 +26,10 @@ namespace texture
                     .withMessage (message)
                     .withButton (acceptText)
                     .withButton ("Cancel"),
-                [onAccept = std::move (onAccept)] (int choice)
+                [accepted = std::move (onAccept)] (int choice)
                 {
-                    if (choice == firstOfTwoButtons && onAccept)
-                        onAccept();
+                    if (choice == firstOfTwoButtons && accepted)
+                        accepted();
                 });
         }
     }
@@ -46,7 +46,7 @@ namespace texture
         // The previous chooser is replaced here, never from its own callback.
         chooser = std::move (newChooser);
 
-        chooser->launchAsync (flags, [this, alive = anchor, onPicked = std::move (onPicked)] (const juce::FileChooser& picked)
+        chooser->launchAsync (flags, [alive = anchor, callback = std::move (onPicked)] (const juce::FileChooser& picked)
         {
             if (alive == nullptr)
                 return;
@@ -54,7 +54,7 @@ namespace texture
             const auto result = picked.getResult();
 
             if (result != juce::File())
-                onPicked (result);
+                callback (result);
         });
     }
 
