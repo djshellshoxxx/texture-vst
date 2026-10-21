@@ -161,7 +161,7 @@ namespace texture
         // A one-pole never quite arrives. Snap once it is inaudibly close, so an idle
         // filter mix reaches exactly zero and the bypass path becomes exact again.
         constexpr float settled = 1.0e-5f;
-        const auto snap = [settled] (float& value, float goalValue)
+        const auto snap = [] (float& value, float goalValue)
         {
             if (std::abs (value - goalValue) < settled)
                 value = goalValue;
