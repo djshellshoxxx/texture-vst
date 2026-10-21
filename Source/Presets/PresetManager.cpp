@@ -1,5 +1,6 @@
 #include "PresetManager.h"
 
+#include "../IO/MediaManifest.h"
 #include "../Utility/ParameterIDs.h"
 
 #include <algorithm>
@@ -500,6 +501,21 @@ namespace texture
                 }
 
                 parsedData.sampleStarts[static_cast<size_t> (layer)] = static_cast<float> (start);
+
+                const auto hashVar = sampleVar.getProperty ("sha256", juce::var());
+
+                if (! hashVar.isVoid())
+                {
+                    const auto hash = hashVar.toString();
+
+                    if (! hashVar.isString() || (hash.isNotEmpty() && ! BundleFormat::isSha256 (hash)))
+                    {
+                        errorMessage = "Preset sample content hash is invalid.";
+                        return Status::invalidData;
+                    }
+
+                    parsedData.mediaSha256[static_cast<size_t> (layer)] = hash;
+                }
             }
 
             parsedData.samplePath = parsedData.samplePaths[0];
@@ -581,6 +597,19 @@ namespace texture
 
             sampleObject->setProperty ("path", path);
             sampleObject->setProperty ("start", start);
+
+            const auto& hash = data.mediaSha256[static_cast<size_t> (layer)];
+
+            if (hash.isNotEmpty())
+            {
+                if (! BundleFormat::isSha256 (hash))
+                {
+                    errorMessage = "Preset sample content hash is invalid.";
+                    return Status::invalidData;
+                }
+
+                sampleObject->setProperty ("sha256", hash);
+            }
             sampleArray.add (juce::var (sampleObject.get()));
         }
 

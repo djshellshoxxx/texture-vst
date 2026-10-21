@@ -26,6 +26,8 @@ set(TEXTURE_TEST_SOURCES
     test_tone_space.cpp
     test_mono_legato.cpp
     test_variation_history.cpp
+    test_media_manifest.cpp
+    test_bundle_archive.cpp
     test_fuzz.cpp
     TestHelpers.h
 
@@ -45,7 +47,14 @@ set(TEXTURE_TEST_SOURCES
     ../Source/Modulation/EnvelopeADSR.cpp
     ../Source/Modulation/MorphLFO.cpp
 
+    ../Source/IO/AtomicFileWriter.cpp
+    ../Source/IO/BundleArchive.cpp
+    ../Source/IO/BundleImportPlanner.cpp
     ../Source/IO/FactoryContent.cpp
+    ../Source/IO/MediaManifest.cpp
+    ../Source/IO/MediaRelinker.cpp
+    ../Source/IO/MediaStore.cpp
+    ../Source/IO/PortableMediaWorker.cpp
     ../Source/IO/SampleLoader.cpp
     ../Source/IO/WavExporter.cpp
 

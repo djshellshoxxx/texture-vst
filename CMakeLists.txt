@@ -160,6 +160,20 @@ set(TEXTURE_SOURCES
     Source/IO/WavExporter.h
     Source/IO/OfflineRenderTimeline.h
     Source/IO/OfflinePatchMath.h
+    Source/IO/AtomicFileWriter.cpp
+    Source/IO/AtomicFileWriter.h
+    Source/IO/BundleArchive.cpp
+    Source/IO/BundleArchive.h
+    Source/IO/BundleImportPlanner.cpp
+    Source/IO/BundleImportPlanner.h
+    Source/IO/MediaManifest.cpp
+    Source/IO/MediaManifest.h
+    Source/IO/MediaRelinker.cpp
+    Source/IO/MediaRelinker.h
+    Source/IO/MediaStore.cpp
+    Source/IO/MediaStore.h
+    Source/IO/PortableMediaWorker.cpp
+    Source/IO/PortableMediaWorker.h
 
     Source/Presets/PresetManager.cpp
     Source/Presets/PresetManager.h
@@ -185,6 +199,8 @@ set(TEXTURE_SOURCES
     Source/GUI/LookAndFeel.cpp
     Source/GUI/LookAndFeel.h
     Source/GUI/MainPanel.cpp
+    Source/GUI/PortableMediaDialogs.cpp
+    Source/GUI/PortableMediaDialogs.h
     Source/GUI/MainPanel.h
     Source/GUI/MorphKnob.cpp
     Source/GUI/MorphKnob.h

@@ -301,3 +301,19 @@ Gaps:
 - Accepted Family candidates (F20) are not implemented, so they do not record variations.
 - No DAW or keyboard/accessibility pass for the new controls yet.
 
+
+## 2026-10-21: F05 portable sample bundles and relinking
+
+Implemented F05 core. A `.texturepack` is a ZIP of `manifest.json`, `preset.texture` and `media/<sha256>.<ext>`, written through `AtomicFileWriter` (temp file, size check, then rename). `BundleFormat`/`MediaManifest` (pure) define the fixed entry names, the path policy and strict manifest validation. `BundleArchive` reads with hard limits: 256 MiB archive, 512 MiB expanded, 16 entries, 64 KiB manifest, 8 KiB preset, 100 MiB per audio file, 30 s per layer. Sizes are enforced while streaming; every audio file is hashed and its decoded header compared with the manifest; output goes only into a fresh staging folder under names the reader generates. `BundleImportPlanner` validates preset against manifest and computes library paths before anything is committed; `MediaStore` is content-addressed and never deletes. `MediaRelinker` searches one user-chosen folder (depth 4, 5000 files, 64 hashes, no links, no roots), with content matches ranked above filename-only matches. Presets gain an optional per-layer `sha256` key (schema 2, additive; older readers ignore it). `PortableMediaWorker` runs jobs off the message thread, one at a time. Export of bundles is Pro-gated, matching WAV export; import is open to all tiers. This tier split is a provisional release decision.
+
+Evidence: `texture_unit_tests` covers path policy, malformed manifests, traversal and absolute names, duplicate and unexpected entries, hash and size and format mismatches, every limit, truncated and non-zip files, staging cleanup, planner disagreement, write and round-trip, a two-layer shared file, dedupe, collision-free presets, atomic replace and abandon, content store, and relink ranking and depth.
+
+Gaps:
+- Processor glue (`relinkLayer`, `captureBundleSource`, and the missing-sample hook) and the dialogs are not automated: the test binary does not link the processor. The plugin target builds.
+- Negative-path tests were not mutation-checked against a deliberately broken guard.
+- Relink shows no audition for a filename-only match, and it takes the first candidate without a picker.
+- Symlink rejection relies on JUCE's `ZipEntry::isSymbolicLink`; no test archive exercises it.
+- Stale staging folders from a crash are not swept at startup.
+- Bundle preset limit is still the schema-2 8 KiB; the 256 KiB schema-3 ceiling is not implemented.
+- Normal user presets carry no content hash, so relinking them is by chosen file or filename only.
+- No Windows, macOS or DAW verification of bundle round trips, and no help-panel text yet.

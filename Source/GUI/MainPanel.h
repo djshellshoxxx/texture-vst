@@ -7,6 +7,7 @@
 #include "EditToolsPanel.h"
 #include "HelpPanel.h"
 #include "MorphKnob.h"
+#include "PortableMediaDialogs.h"
 #include "SecretPanel.h"
 #include "SettingsPanel.h"
 #include "SoundControlsPanel.h"
@@ -56,6 +57,7 @@ namespace texture
         void sampleChanged (int layerIndex) override;
         void toastRequested (const juce::String& message, SampleLoader::Severity severity) override;
         void pluginStateChanged() override;
+        void sampleMissing (int layerIndex, const juce::String& expectedSha256, const juce::String& fileName) override;
 
         /** Turns the hover tooltips on or off (Settings > Preferences). */
         void setTooltipsEnabled (bool shouldBeEnabled);
@@ -185,6 +187,7 @@ namespace texture
         std::unique_ptr<EditToolsPanel> editToolsPanel;
         std::unique_ptr<SoundControlsPanel> soundPanel;
         std::unique_ptr<juce::FileChooser> fileChooser;
+        PortableMediaDialogs portableMedia { *this, processor };
 
         /** The pixel that reveals the hidden effect (include.md, "easter egg"). */
         juce::Rectangle<int> secretHotspot;

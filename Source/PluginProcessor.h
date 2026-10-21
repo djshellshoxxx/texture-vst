@@ -10,6 +10,8 @@
 #include "Engine/MonoNoteStack.h"
 #include "Engine/GranularEngine.h"
 #include "IO/FactoryContent.h"
+#include "IO/MediaStore.h"
+#include "IO/PortableMediaWorker.h"
 #include "IO/SampleLoader.h"
 #include "IO/WavExporter.h"
 #include "License/LicenseManager.h"
@@ -71,6 +73,14 @@ namespace texture
 
             /** The current preset name or the Pro/Free state changed. */
             virtual void pluginStateChanged() {}
+
+            /** A preset's sample could not be found. The hash is empty when the preset
+                predates sound bundles (F05). */
+            virtual void sampleMissing (int layerIndex, const juce::String& expectedSha256,
+                                        const juce::String& fileName)
+            {
+                juce::ignoreUnused (layerIndex, expectedSha256, fileName);
+            }
         };
 
         TextureAudioProcessor();
@@ -190,6 +200,25 @@ namespace texture
 
         void markPresetDirty();
         bool isPresetDirty() const noexcept { return presetDirty; }
+
+        /** Everything a sound bundle needs, captured on the message thread. */
+        struct BundleSource
+        {
+            PresetManager::PresetData preset;
+            std::array<juce::File, numLayers> files;
+        };
+
+        BundleSource captureBundleSource (const juce::String& name,
+                                          const juce::String& category,
+                                          const juce::StringArray& tags) const;
+
+        /** Points a layer at a file the user chose to replace a missing sample (F05).
+            Loads asynchronously; the preset is marked dirty because its path changes. */
+        void relinkLayer (int layerIndex, const juce::File& file);
+
+        PortableMediaWorker& getPortableMediaWorker() noexcept { return portableMediaWorker; }
+        MediaStore& getMediaStore() noexcept { return mediaStore; }
+        juce::File getPortableStagingDirectory() const;
 
         // --- Bulk parameter actions ------------------------------------------
         /** Restores every parameter to its documented default. */
@@ -392,6 +421,7 @@ namespace texture
         void onSampleLoaded (const SampleLoader::LoadResult& result, int layerIndex);
         void reloadSamplesForNewSampleRate();
         void notifyListeners (void (Listener::*callback)(int), int argument);
+        void notifySampleMissing (int layerIndex, const juce::String& expectedSha256, const juce::String& fileName);
         void notifyPluginStateChanged();
         float getParameterValue (const juce::String& id, float fallback) const;
         void setParameterValue (const juce::String& id, float value);
@@ -434,6 +464,10 @@ namespace texture
         juce::AudioProcessorValueTreeState apvts;
         LicenseManager licenseManager;
         PresetManager presetManager;
+        // Declared after presetManager so it is destroyed first: queued jobs finish
+        // while the preset manager they read from is still alive.
+        PortableMediaWorker portableMediaWorker;
+        MediaStore mediaStore { MediaStore::defaultDirectory() };
         MidiLearn midiLearn;
         SampleLoader sampleLoader;
         std::array<std::atomic<bool>, numLayers> sampleLoadMarksDirty {};

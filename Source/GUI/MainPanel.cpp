@@ -1028,6 +1028,8 @@ namespace texture
 
         menu.addSectionHeader ("Audio");
         addItem (5, processor.isPro() ? "Export audio..." : "Export audio...  (PRO)");
+        addItem (40, processor.isPro() ? "Export sound bundle..." : "Export sound bundle...  (PRO)");
+        addItem (41, "Import sound bundle...");
         menu.addSeparator();
 
         menu.addSectionHeader ("Snapshots");
@@ -1074,6 +1076,13 @@ namespace texture
                 case 3:  safeThis->saveCurrentPreset (true); break;
                 case 4:  safeThis->openPresetBrowser(); break;
                 case 5:  safeThis->exportAudio(); break;
+                case 40:
+                    if (safeThis->processor.isPro())
+                        safeThis->portableMedia.exportBundle();
+                    else
+                        safeThis->showProUpsell ("Sound bundle export");
+                    break;
+                case 41: safeThis->portableMedia.importBundle(); break;
 
                 case 6:
                     safeThis->processor.copyCompareSlot (0, 1);
@@ -1444,6 +1453,11 @@ namespace texture
             dropZoneB->refreshFromProcessor();
 
         updateAuditionAvailability();
+    }
+
+    void MainPanel::sampleMissing (int layerIndex, const juce::String& expectedSha256, const juce::String& fileName)
+    {
+        portableMedia.offerRelink (layerIndex, expectedSha256, fileName);
     }
 
     void MainPanel::toastRequested (const juce::String& message, SampleLoader::Severity severity)

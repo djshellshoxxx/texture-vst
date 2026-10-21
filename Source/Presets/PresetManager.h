@@ -41,6 +41,11 @@ namespace texture
             std::array<juce::String, 2> samplePaths {};
             std::array<float, 2> sampleStarts { 0.0f, 0.0f };
 
+            /** Optional content hash (lower-case SHA-256) per layer, written by sound
+                bundles (F05) so a missing sample can be relinked by content. Empty when
+                unknown. Older readers ignore the key. */
+            std::array<juce::String, 2> mediaSha256 {};
+
             /** Parameter ID to value, in real-world units. */
             juce::NamedValueSet parameters;
 

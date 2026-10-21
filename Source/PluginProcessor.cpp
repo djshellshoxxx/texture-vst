@@ -1160,6 +1160,12 @@ namespace texture
         listeners.call ([callback, argument] (Listener& l) { (l.*callback) (argument); });
     }
 
+    void TextureAudioProcessor::notifySampleMissing (int layerIndex, const juce::String& expectedSha256,
+                                                     const juce::String& fileName)
+    {
+        listeners.call ([=] (Listener& l) { l.sampleMissing (layerIndex, expectedSha256, fileName); });
+    }
+
     void TextureAudioProcessor::notifyPluginStateChanged()
     {
         listeners.call ([] (Listener& l) { l.pluginStateChanged(); });
@@ -1518,6 +1524,40 @@ namespace texture
         return layers[index].messageThreadCopy;
     }
 
+    TextureAudioProcessor::BundleSource TextureAudioProcessor::captureBundleSource (const juce::String& name,
+                                                                                   const juce::String& category,
+                                                                                   const juce::StringArray& tags) const
+    {
+        BundleSource source;
+        source.preset = captureCurrentPreset (name, category, tags);
+
+        for (int layer = 0; layer < numLayers; ++layer)
+            source.files[static_cast<size_t> (layer)] = getSampleFileForLayer (layer);
+
+        return source;
+    }
+
+    void TextureAudioProcessor::relinkLayer (int layerIndex, const juce::File& file)
+    {
+        const auto index = static_cast<size_t> (juce::jlimit (0, numLayers - 1, layerIndex));
+
+        if (! file.existsAsFile() || ! sampleLoader.isSupportedAudioFile (file))
+        {
+            postToast ("That file cannot be used as a sample.", SampleLoader::Severity::warning);
+            return;
+        }
+
+        logInfo ("loader", "Relinking layer " + juce::String (layerIndex + 1) + " to " + file.getFullPathName());
+        sampleLoadMarksDirty[index].store (true, std::memory_order_release);
+        sampleLoader.loadAsync (file, layerIndex);
+        markPresetDirty();
+    }
+
+    juce::File TextureAudioProcessor::getPortableStagingDirectory() const
+    {
+        return PresetManager::getPluginDataDirectory().getChildFile ("Staging");
+    }
+
     juce::File TextureAudioProcessor::getSampleFileForLayer (int layerIndex) const
     {
         const auto index = static_cast<size_t> (juce::jlimit (0, numLayers - 1, layerIndex));
@@ -1715,6 +1755,8 @@ namespace texture
                                + storedPath.fromLastOccurrenceOf ("/", false, false)
                                + "' is missing in layer " + juce::String (layerIndex + 1) + ".",
                            SampleLoader::Severity::warning);
+                notifySampleMissing (layerIndex, data.mediaSha256[index],
+                                     storedPath.fromLastOccurrenceOf ("/", false, false));
             }
 
             notifyListeners (&Listener::sampleChanged, layerIndex);
