@@ -33,20 +33,42 @@ namespace texture
         void reset();
 
         /** `startNormalised` is where the read head begins, as a fraction of the
-            sample; it is resolved against the source length on the first render. */
+            sample; it is resolved against the source length on the first render.
+
+            `glideSamples` > 0 starts the pitch at `glideFromSemitones` (absolute, in
+            semitones) and moves it linearly to `midiNote` over that many samples. */
         void startNote (int midiNote, float velocity, int midiChannel, juce::int64 noteStamp,
                         float startNormalised = 0.0f, bool auditionOwned = false,
                         int randomMode = params::randomModeDefault,
                         std::uint64_t randomSeed = 0,
                         std::uint64_t randomNoteEvent = 0,
                         int sourceRootMidiNote = sourcePitch::defaultRootMidiNote,
-                        float sourceFineCents = 0.0f);
+                        float sourceFineCents = 0.0f,
+                        float glideFromSemitones = 0.0f,
+                        int glideSamples = 0);
+
+        /** Monophonic legato: moves this voice to a new note without restarting its
+            envelope, source position or grains. Velocity ramps over `velocityRampSamples`.
+            `glideSamples` > 0 glides from the instantaneous pitch; zero jumps. */
+        void retarget (int midiNote, float velocity, int midiChannel, juce::int64 noteStamp,
+                       int glideSamples, int velocityRampSamples);
 
         /** Begins the release stage. The voice keeps rendering until the tail ends. */
         void stopNote();
 
         /** Kills the voice immediately (all-sound-off / voice steal). */
         void hardStop();
+
+        /** Fades the voice out over `fadeSamples`, then stops it. Used when a voice mode
+            change retires voices, so they never cut off with a click. */
+        void beginRetire (int fadeSamples) noexcept;
+        bool isRetiring() const noexcept { return retireTotal > 0; }
+
+        /** Instantaneous pitch in semitones: the note plus any glide still to travel. */
+        float getPitchSemitones() const noexcept { return static_cast<float> (currentNote) + glideOffset; }
+
+        /** Velocity captured at the last note-on or retarget, used when a key is restored. */
+        float getStartVelocity() const noexcept { return startVelocity; }
 
         bool isActive() const noexcept { return active; }
         bool isReleasing() const noexcept { return active && envelope.isInReleasePhase(); }
@@ -89,12 +111,20 @@ namespace texture
         void spawnGrain (const SampleBuffer& source,
                          const MorphTargets& targets,
                          int grainDurationSamples,
-                         float taper) noexcept;
+                         float taper,
+                         float glideMultiplier) noexcept;
 
         int findFreeGrainSlot() noexcept;
         float nextRandom (VersionedRandomStreams::Lane lane) noexcept;
+        void renderSpan (const SampleBuffer& source, const MorphTargets& targets,
+                         int durationSamples, float taper, double hop, bool canSpawn,
+                         float* scratchLeft, float* scratchRight,
+                         int begin, int end, float multiplier) noexcept;
+        void updateGrainPitch (float basePitch, float multiplier) noexcept;
 
         std::array<Grain, maxGrains> grains {};
+        /** Each grain's pitch without the note and glide factors, so glide can rescale it. */
+        std::array<float, maxGrains> grainPitchFactor {};
         EnvelopeADSR envelope;
 
         bool active { false };
@@ -106,7 +136,23 @@ namespace texture
         juce::int64 stamp { 0 };
 
         float velocityGain { 1.0f };
+        float velocityTarget { 1.0f };
+        float velocityStep { 0.0f };
+        int velocityRampRemaining { 0 };
+        float startVelocity { 0.0f };
         float pitchBendRatio { 1.0f };
+
+        // Glide: pitch offset in semitones above the note, falling linearly to zero.
+        float glideOffset { 0.0f };
+        float glideStartOffset { 0.0f };
+        int glideTotal { 0 };
+        int glideRemaining { 0 };
+        bool grainPitchDirty { false };
+
+        // Retirement: a linear fade before the voice is stopped.
+        int retireTotal { 0 };
+        int retireRemaining { 0 };
+
         float currentTuneSemitones { 0.0f };
         float fineTuneForCurrentBlock { 0.0f };
         float lastEnvelopeLevel { 0.0f };

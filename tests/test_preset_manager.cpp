@@ -37,6 +37,10 @@ namespace texture::tests
             data.setParameter (params::spaceReverb, 0.4f);
             data.setParameter (params::spaceChorus, 0.55f);
             data.setParameter (params::toneDrive, 0.7f);
+            data.setParameter (params::voiceMode, 2.0f);
+            data.setParameter (params::notePriority, 1.0f);
+            data.setParameter (params::glideMs, 240.0f);
+            data.setParameter (params::glideMode, 0.0f);
             data.setParameter (params::lfoDivision, 3.0f);
             data.setParameter (params::layerBlend, 0.5f);
             data.setParameter (params::tune, -7.0f);

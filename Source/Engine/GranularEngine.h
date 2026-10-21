@@ -1,5 +1,6 @@
 #pragma once
 
+#include "MonoNoteStack.h"
 #include "Voice.h"
 #include "../Utility/VersionedRandomStreams.h"
 
@@ -31,6 +32,12 @@ namespace texture
 
         /** Silences everything immediately. */
         void reset();
+
+        /** Voice mode, note priority and glide (F11). Poly is the default and keeps the
+            original behaviour exactly. Called once per block; a changed mode is applied
+            at that block boundary. Audio thread only. */
+        void setVoiceConfig (const MonoConfig& config);
+        VoiceMode getVoiceMode() const noexcept { return voiceMode; }
 
         // --- MIDI ------------------------------------------------------------
         void noteOn (int midiChannel, int midiNote, float velocity, bool auditionOwned = false);
@@ -97,11 +104,47 @@ namespace texture
 
         float getPitchBendRatio() const noexcept { return pitchBendRatio; }
 
+        /** Introspection for the monophonic line (tests and the GUI). -1 when silent. */
+        int getMonoLineNote() const noexcept;
+        int getMonoLineVoiceIndex() const noexcept { return monoVoiceIndex; }
+        /** Instantaneous pitch of the line in semitones, including any glide in progress. */
+        float getMonoLinePitch() const noexcept;
+        /** Velocity the line is sounding at (the value captured when its key was pressed). */
+        float getMonoLineVelocity() const noexcept;
+
+        /** Read-only view of the performance state, for tests. */
+        const MonoNoteStack& getMonoNoteStack() const noexcept { return monoStack; }
+
     private:
         int findVoiceToUse (int midiNote, bool auditionOwned) noexcept;
 
+        // --- Monophonic line (F11). All state below is audio-thread owned.
+        void monoNoteOn (int midiChannel, int midiNote, float velocity);
+        void monoNoteOff (int midiChannel, int midiNote);
+        void applyMonoDecision (const MonoNoteStack::Note* after, bool hadSelection,
+                                bool previousHeld, bool pressEvent);
+        void reselectMonoLine (bool pressEvent);
+        bool isLineSounding() const noexcept;
+        bool lineSoundsKey (const MonoNoteStack::Note& note) const noexcept;
+        void restartMonoLine (const MonoNoteStack::Note& note, bool glide);
+        void retargetMonoLine (const MonoNoteStack::Note& note, bool glide);
+        void releaseMonoLine() noexcept;
+        void changeVoiceMode (VoiceMode newMode);
+        void startPolyVoice (int midiChannel, int midiNote, float velocity, bool sustainHeld);
+        int lineVoiceForStart (int midiNote) noexcept;
+
         std::array<Voice, maxVoices> voices {};
         juce::AudioBuffer<float> scratch;
+
+        VoiceMode voiceMode { VoiceMode::poly };
+        NotePriority notePriority { NotePriority::last };
+        GlideMode glideMode { GlideMode::overlapOnly };
+        int glideSamples { 0 };
+        MonoNoteStack monoStack;
+        int monoVoiceIndex { -1 };
+        float lastMonoPitch { 0.0f };
+        bool hasLastMonoPitch { false };
+        std::uint64_t monoPressSequence { 0 };
 
         double preparedSampleRate { 44100.0 };
         int preparedBlockSize { 512 };

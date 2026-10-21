@@ -18,10 +18,11 @@ namespace texture
         grain,
         motion,
         toneSpace,
-        layers
+        layers,
+        performance   // F11 voice and glide controls, appended after the original six
     };
 
-    inline constexpr int numLockGroups = 6;
+    inline constexpr int numLockGroups = 7;
 
     /** Named user actions. Only Randomize and Gentle Mutate (and, once implemented,
         preset browsing with its preference enabled) consult locks. Automation, MIDI,
@@ -46,7 +47,7 @@ namespace texture
         static constexpr std::size_t maxIdLength = 64;
 
         /** Registry of lockable fields, in the same order as params::allIDs. */
-        static constexpr std::size_t numFields = 29;
+        static constexpr std::size_t numFields = 33;
 
         struct FieldInfo
         {

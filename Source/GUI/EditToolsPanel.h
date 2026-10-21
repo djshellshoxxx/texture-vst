@@ -54,11 +54,12 @@ namespace texture
         juce::Label resultLabel;
 
         juce::Label locksHeader;
-        static constexpr std::array<LockGroup, 6> lockGroups {
+        static constexpr std::array<LockGroup, 7> lockGroups {
             LockGroup::pitchCalibration, LockGroup::envelope,
             LockGroup::grain, LockGroup::motion,
-            LockGroup::toneSpace, LockGroup::layers };
-        std::array<juce::TextButton, 6> lockGroupButtons;
+            LockGroup::toneSpace, LockGroup::layers,
+            LockGroup::performance };
+        std::array<juce::TextButton, 7> lockGroupButtons;
         juce::TextButton unlockAllButton { "Unlock all" };
         juce::TextButton undoLockButton { "Undo lock change" };
         juce::Label hintLabel;

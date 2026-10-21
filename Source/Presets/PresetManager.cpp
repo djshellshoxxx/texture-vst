@@ -131,6 +131,18 @@ namespace texture
             if (id == params::spaceChorus) return inRange (params::spaceChorusMin, params::spaceChorusMax);
             if (id == params::toneDrive)   return inRange (params::toneDriveMin, params::toneDriveMax);
 
+            // F11 voice and glide.
+            if (id == params::voiceMode || id == params::notePriority || id == params::glideMode)
+            {
+                const auto count = id == params::voiceMode ? params::voiceModeCount
+                                 : id == params::notePriority ? params::notePriorityCount
+                                                              : params::glideModeCount;
+                return juce::exactlyEqual (numeric, std::floor (numeric))
+                    && numeric >= 0.0 && numeric < static_cast<double> (count);
+            }
+
+            if (id == params::glideMs)     return inRange (params::glideMsMin, params::glideMsMax);
+
             return false;
         }
     }

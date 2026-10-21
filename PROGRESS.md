@@ -273,3 +273,18 @@ Deviations and gaps:
 - No DAW, listening, CPU or 24-hour soak evidence yet. Tone and space are available on both tiers pending the release decision.
 - Processor-level state migration is covered through the `StateSchema::missingParameterIDs` seam, not through a live processor test.
 
+## 2026-10-21: F11 mono, legato and glide
+
+Implemented F11 core. Four appended parameters: `voice_mode` (Poly default, Mono retrigger, Mono legato), `note_priority` (Last default, High, Low), `glide_ms` (0 to 2000 ms, logarithmic above zero, off by default) and `glide_mode` (Always, Overlap only default). Poly with zero glide is the default and keeps the golden fixtures within 1e-5.
+
+`MonoNoteStack` (pure, 32 keys) tracks held keys by channel and note, counts repeated presses with a saturating count, retains released keys under the sustain pedal, and selects by priority. `decideMonoLine` (pure) chooses between release, retarget under the same envelope, and restart. `GranularEngine` owns the line. Glide, a 5 ms velocity ramp and a 10 ms retire fade are in `Voice`. Mode changes adopt the sounding key's voice rather than striking it again, and leave held keys sounding as poly notes. Glide is pitch-stepped every 16 samples, and grains follow the pitch. Export uses the same configuration. The performance section is in the Tone, space and performance overlay. The lock registry gains a Performance group (appended as group 6). Randomize leaves these controls alone.
+
+Evidence: `texture_unit_tests` passes 121,854 checks. `test_mono_legato` covers the stack, the decision rules, glide arithmetic, all release orders of three keys, priorities, repeated keys, channel ownership, sustain, zero-velocity note-ons, glide endpoints and duration, mode transitions, panic, audition isolation, and a seeded 4000-event stream that must end with no sounding note.
+
+Gaps:
+- Overlap only glides a press that lands on a held key. A fallback to a held key after release does not glide in that mode. This is a reading of the spec's "overlap" and is recorded here, not decided with the user.
+- Glide is applied to grains in 16-sample steps, not per sample.
+- No MPE interaction (F23). Audition uses the polyphonic pool in every mode.
+- The stack holds 32 keys per engine; beyond that the oldest released key, then the oldest held key, is evicted.
+- No DAW, listening or CPU evidence. Performance controls are available on both tiers pending the release decision.
+

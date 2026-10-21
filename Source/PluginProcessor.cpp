@@ -276,6 +276,45 @@ namespace texture
             Range { params::toneDriveMin, params::toneDriveMax, 0.0001f }, params::toneDriveDefault,
             juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentFormatter)));
 
+        // --- F11 mono, legato and glide. Appended: older states read Poly with no glide.
+        layout.add (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { params::voiceMode, 1 }, params::displayNameFor (params::voiceMode),
+            juce::StringArray { "Poly", "Mono Retrigger", "Mono Legato" }, params::voiceModeDefault));
+
+        layout.add (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { params::notePriority, 1 }, params::displayNameFor (params::notePriority),
+            juce::StringArray { "Last", "High", "Low" }, params::notePriorityDefault));
+
+        // Glide is logarithmic above zero: a small value is a short slide, and zero is off.
+        juce::NormalisableRange<float> glideRange (params::glideMsMin, params::glideMsMax,
+            [] (float start, float end, float normalised)
+            {
+                juce::ignoreUnused (start, end);
+                return normalised <= 0.0f ? 0.0f : std::pow (params::glideMsMax + 1.0f, normalised) - 1.0f;
+            },
+            [] (float start, float end, float value)
+            {
+                juce::ignoreUnused (start, end);
+                return value <= 0.0f ? 0.0f : std::log (value + 1.0f) / std::log (params::glideMsMax + 1.0f);
+            },
+            [] (float start, float end, float value)
+            {
+                return juce::jlimit (start, end, value);
+            });
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::glideMs, 1 }, params::displayNameFor (params::glideMs),
+            glideRange, params::glideMsDefault,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction ([] (float value, int)
+            {
+                return value >= 1000.0f ? juce::String (value / 1000.0f, 2) + " s"
+                                        : juce::String (juce::roundToInt (value)) + " ms";
+            })));
+
+        layout.add (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { params::glideMode, 1 }, params::displayNameFor (params::glideMode),
+            juce::StringArray { "Always", "Overlap only" }, params::glideModeDefault));
+
         return layout;
     }
 
@@ -424,6 +463,25 @@ namespace texture
         toneSpaceParameters.reverb   = apvts.getRawParameterValue (params::spaceReverb);
         toneSpaceParameters.chorus   = apvts.getRawParameterValue (params::spaceChorus);
         toneSpaceParameters.drive    = apvts.getRawParameterValue (params::toneDrive);
+
+        performanceParameters.voiceMode    = apvts.getRawParameterValue (params::voiceMode);
+        performanceParameters.priority     = apvts.getRawParameterValue (params::notePriority);
+        performanceParameters.glideMs      = apvts.getRawParameterValue (params::glideMs);
+        performanceParameters.glideMode    = apvts.getRawParameterValue (params::glideMode);
+    }
+
+    MonoConfig TextureAudioProcessor::readPerformanceSettings() const noexcept
+    {
+        const auto read = [] (const std::atomic<float>* value, float fallback)
+        {
+            return value != nullptr ? value->load (std::memory_order_relaxed) : fallback;
+        };
+
+        const auto& p = performanceParameters;
+        return monoConfigFromParameters (juce::roundToInt (read (p.voiceMode, 0.0f)),
+                                         juce::roundToInt (read (p.priority, 0.0f)),
+                                         read (p.glideMs, params::glideMsDefault),
+                                         juce::roundToInt (read (p.glideMode, static_cast<float> (params::glideModeDefault))));
     }
 
     float TextureAudioProcessor::getFollowMorphValueForGui (int index) const noexcept
@@ -660,6 +718,10 @@ namespace texture
             engines[i].setRandomConfig (randomMode, layerSeed);
             engines[i].setAdsrParameters (attack, decay, sustain, release);
         }
+
+        const auto monoConfig = readPerformanceSettings();
+        for (auto& engine : engines)
+            engine.setVoiceConfig (monoConfig);
 
         effects.setToneSpace (readToneSpaceSettings());
         effects.setMorphTargets (currentTargets);
@@ -1513,7 +1575,8 @@ namespace texture
                 && juce::String (id) != params::layer2Root
                 && juce::String (id) != params::layer1FineCents
                 && juce::String (id) != params::layer2FineCents
-                && ! params::isToneSpaceParameter (id))
+                && ! params::isToneSpaceParameter (id)
+                && ! params::isPerformanceParameter (id))
                 write (id, params::defaultValueFor (id));
 
         write (params::morph, random.nextFloat());
@@ -1904,6 +1967,7 @@ namespace texture
         settings.randomSeed = randomSeed.load (std::memory_order_relaxed);
         settings.randomAlgorithmVersion = VersionedRandomStreams::algorithmVersion;
         settings.toneSpace = readToneSpaceSettings();
+        settings.mono = readPerformanceSettings();
 
         const auto secret = getSecretSettings();
         settings.gritBits = secret.bitDepth;

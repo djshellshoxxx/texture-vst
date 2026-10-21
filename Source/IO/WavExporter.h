@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../Effects/ToneSpace.h"
+#include "../Engine/MonoNoteStack.h"
 #include "../Engine/SampleBuffer.h"
 
 #include <array>
@@ -43,6 +44,7 @@ namespace texture
             float gritDownsample { 4.0f };
             float gritMix { 0.0f };
             ToneSpaceSettings toneSpace;  // F07: Follow MORPH unless independent
+            MonoConfig mono;              // F11: Poly with no glide unless set
             int midiNote { 60 };          // C3
             float velocity { 0.9f };
         };

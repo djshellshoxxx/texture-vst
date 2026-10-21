@@ -101,6 +101,7 @@ namespace texture
             const auto layerSeed = settings.randomSeed ^ (static_cast<std::uint64_t> (layer + 1)
                                                            * UINT64_C (0x9E3779B97F4A7C15));
             engines[static_cast<size_t> (layer)]->setRandomConfig (settings.randomMode, layerSeed);
+            engines[static_cast<size_t> (layer)]->setVoiceConfig (settings.mono);
         }
 
         lfo.prepare (sampleRate);

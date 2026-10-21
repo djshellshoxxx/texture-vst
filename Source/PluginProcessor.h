@@ -7,6 +7,7 @@
 
 #include "Effects/EffectsChain.h"
 #include "Effects/ToneSpace.h"
+#include "Engine/MonoNoteStack.h"
 #include "Engine/GranularEngine.h"
 #include "IO/FactoryContent.h"
 #include "IO/SampleLoader.h"
@@ -449,7 +450,20 @@ namespace texture
         } toneSpaceParameters;
 
         /** Reads the F07 parameters into the DSP settings struct. Audio thread. */
-        ToneSpaceSettings readToneSpaceSettings() const noexcept;        std::atomic<std::uint64_t> randomSeed { VersionedRandomStreams::defaultSeed };
+        ToneSpaceSettings readToneSpaceSettings() const noexcept;
+
+        /** F11 voice and glide parameters, cached like every other parameter. */
+        struct PerformanceParameters
+        {
+            std::atomic<float>* voiceMode { nullptr };
+            std::atomic<float>* priority { nullptr };
+            std::atomic<float>* glideMs { nullptr };
+            std::atomic<float>* glideMode { nullptr };
+        } performanceParameters;
+
+        /** Reads the F11 parameters into a validated mono configuration. Audio thread. */
+        MonoConfig readPerformanceSettings() const noexcept;
+        std::atomic<std::uint64_t> randomSeed { VersionedRandomStreams::defaultSeed };
         std::atomic<bool> randomEvolutionResetRequested { false };
 
         /** Bumped by every parameter notification. Gentle Mutate compares it between

@@ -41,6 +41,12 @@ namespace texture::params
     inline constexpr const char* spaceChorus   = "space_chorus";
     inline constexpr const char* toneDrive     = "tone_drive";
 
+    // F11 mono, legato and glide. Appended; Poly with zero glide is the default.
+    inline constexpr const char* voiceMode     = "voice_mode";
+    inline constexpr const char* notePriority  = "note_priority";
+    inline constexpr const char* glideMs       = "glide_ms";
+    inline constexpr const char* glideMode     = "glide_mode";
+
     /** Every ID in preset/serialisation order. Append only: positions are part of
         the lock registry's contract and of the preset file layout. */
     inline constexpr const char* allIDs[] = {
@@ -49,7 +55,8 @@ namespace texture::params
         tune, reverse, shimmer, randomMode,
         layer1Root, layer2Root, layer1FineCents, layer2FineCents,
         toneSpaceMode, toneHpHz, toneLpHz, toneFilterOn, toneTiltDb,
-        spaceWidth, spaceReverb, spaceChorus, toneDrive
+        spaceWidth, spaceReverb, spaceChorus, toneDrive,
+        voiceMode, notePriority, glideMs, glideMode
     };
 
     inline constexpr int numParameters = static_cast<int> (std::size (allIDs));
@@ -89,6 +96,15 @@ namespace texture::params
     inline constexpr float spaceChorusMin = 0.0f,   spaceChorusMax = 1.0f, spaceChorusDefault = 0.2f;
     inline constexpr float toneDriveMin = 0.0f,     toneDriveMax = 1.0f,   toneDriveDefault = 0.1f;
 
+    // F11 ranges. Poly (0) is the default; glide is off until the user asks for it.
+    inline constexpr int voiceModeCount = 3;          // Poly, Mono retrigger, Mono legato
+    inline constexpr int voiceModeDefault = 0;
+    inline constexpr int notePriorityCount = 3;       // Last, High, Low
+    inline constexpr int notePriorityDefault = 0;
+    inline constexpr float glideMsMin = 0.0f,       glideMsMax = 2000.0f, glideMsDefault = 0.0f;
+    inline constexpr int glideModeCount = 2;          // Always, Overlap only
+    inline constexpr int glideModeDefault = 1;
+
     /** Tempo divisions offered when LFO sync is engaged. */
     inline constexpr const char* divisionNames[] = { "1/1", "1/2", "1/4", "1/8", "1/16" };
     inline constexpr int numDivisions = static_cast<int> (std::size (divisionNames));
@@ -101,6 +117,9 @@ namespace texture::params
 
     /** True for the F07 tone and space controls. Randomize leaves them as the user set them. */
     bool isToneSpaceParameter (const juce::String& parameterID);
+
+    /** True for the F11 voice and glide controls. Randomize leaves them as the user set them. */
+    bool isPerformanceParameter (const juce::String& parameterID);
 
     /** Default value for a parameter, in its own (real-world) units. */
     float defaultValueFor (const juce::String& parameterID);

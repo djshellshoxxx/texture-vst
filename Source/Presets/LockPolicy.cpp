@@ -43,6 +43,11 @@ namespace texture
             { params::spaceReverb,     LockGroup::toneSpace,         false, false },
             { params::spaceChorus,     LockGroup::toneSpace,         false, false },
             { params::toneDrive,       LockGroup::toneSpace,         false, false },
+            // F11 voice and glide. Not mutable: Gentle Mutate leaves voice mode alone.
+            { params::voiceMode,       LockGroup::performance,       false, false },
+            { params::notePriority,    LockGroup::performance,       false, false },
+            { params::glideMs,         LockGroup::performance,       false, false },
+            { params::glideMode,       LockGroup::performance,       false, false },
         } };
 
         static_assert (LockPolicy::numFields == static_cast<std::size_t> (params::numParameters),
@@ -73,6 +78,7 @@ namespace texture
             case LockGroup::motion:           return "Motion";
             case LockGroup::toneSpace:        return "Tone/Space";
             case LockGroup::layers:           return "Layers";
+            case LockGroup::performance:      return "Performance";
         }
 
         return "Unknown";

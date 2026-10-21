@@ -33,6 +33,10 @@ namespace texture::params
         if (parameterID == spaceReverb) return "Space Reverb";
         if (parameterID == spaceChorus) return "Space Chorus";
         if (parameterID == toneDrive)   return "Tone Drive";
+        if (parameterID == voiceMode)   return "Voice Mode";
+        if (parameterID == notePriority) return "Note Priority";
+        if (parameterID == glideMs)     return "Glide";
+        if (parameterID == glideMode)   return "Glide Mode";
 
         return parameterID;
     }
@@ -41,6 +45,15 @@ namespace texture::params
     {
         for (const auto* id : { toneSpaceMode, toneHpHz, toneLpHz, toneFilterOn, toneTiltDb,
                                 spaceWidth, spaceReverb, spaceChorus, toneDrive })
+            if (parameterID == id)
+                return true;
+
+        return false;
+    }
+
+    bool isPerformanceParameter (const juce::String& parameterID)
+    {
+        for (const auto* id : { voiceMode, notePriority, glideMs, glideMode })
             if (parameterID == id)
                 return true;
 
@@ -76,6 +89,10 @@ namespace texture::params
         if (parameterID == spaceReverb) return spaceReverbDefault;
         if (parameterID == spaceChorus) return spaceChorusDefault;
         if (parameterID == toneDrive)   return toneDriveDefault;
+        if (parameterID == voiceMode)   return static_cast<float> (voiceModeDefault);
+        if (parameterID == notePriority) return static_cast<float> (notePriorityDefault);
+        if (parameterID == glideMs)     return glideMsDefault;
+        if (parameterID == glideMode)   return static_cast<float> (glideModeDefault);
 
         return 0.0f;
     }

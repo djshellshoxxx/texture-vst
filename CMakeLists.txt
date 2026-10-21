@@ -124,6 +124,8 @@ set(TEXTURE_SOURCES
 
     Source/Engine/GranularEngine.cpp
     Source/Engine/GranularEngine.h
+    Source/Engine/MonoNoteStack.cpp
+    Source/Engine/MonoNoteStack.h
     Source/Engine/Grain.cpp
     Source/Engine/Grain.h
     Source/Engine/SampleBuffer.cpp

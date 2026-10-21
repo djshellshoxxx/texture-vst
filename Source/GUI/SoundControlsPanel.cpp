@@ -40,9 +40,17 @@ namespace texture
                             "Enables the high-pass and low-pass before the saturator."),
               widthKnob (owner, params::spaceWidth, "Width", "Stereo width. 0% sums to mono, 100% leaves the image alone."),
               reverbKnob (owner, params::spaceReverb, "Reverb", "Reverb send. The Reverb switch still gates it."),
-              chorusKnob (owner, params::spaceChorus, "Chorus", "Chorus depth.")
+              chorusKnob (owner, params::spaceChorus, "Chorus", "Chorus depth."),
+              voiceBox (owner, params::voiceMode, juce::StringArray { "Poly", "Mono retrigger", "Mono legato" },
+                        "Poly: every key has its own voice. Mono retrigger: one voice that restarts on each key. "
+                        "Mono legato: one voice that keeps playing through overlapping keys."),
+              priorityBox (owner, params::notePriority, juce::StringArray { "Last", "High", "Low" },
+                           "Which held key the mono line sounds: the most recent, the highest or the lowest."),
+              glideKnob (owner, params::glideMs, "Glide", "Pitch slide time between notes in mono modes. Off at zero."),
+              glideModeBox (owner, params::glideMode, juce::StringArray { "Always", "Overlap only" },
+                            "Always: glide on every mono note. Overlap only: glide only when a key lands on a held one.")
         {
-            for (auto* header : { &toneHeader, &spaceHeader })
+            for (auto* header : { &toneHeader, &spaceHeader, &performanceHeader })
             {
                 header->setClickingTogglesState (true);
                 header->setToggleState (true, juce::dontSendNotification);
@@ -54,6 +62,8 @@ namespace texture
             toneHeader.setTooltip ("Show or hide the tone controls.");
             spaceHeader.setButtonText ("Space");
             spaceHeader.setTooltip ("Show or hide the space controls.");
+            performanceHeader.setButtonText ("Performance");
+            performanceHeader.setTooltip ("Show or hide the voice and glide controls.");
 
             modeLabel.setText ("Mode", juce::dontSendNotification);
             modeLabel.setFont (TextureLookAndFeel::labelFont());
@@ -77,6 +87,22 @@ namespace texture
             }
 
             addAndMakeVisible (filterToggle);
+
+            for (auto* label : { &voiceLabel, &priorityLabel, &glideModeLabel })
+            {
+                label->setFont (TextureLookAndFeel::labelFont());
+                label->setColour (juce::Label::textColourId, colours::textMuted);
+                addAndMakeVisible (*label);
+            }
+
+            voiceLabel.setText ("Voice", juce::dontSendNotification);
+            priorityLabel.setText ("Priority", juce::dontSendNotification);
+            glideModeLabel.setText ("Glide mode", juce::dontSendNotification);
+            glideKnob.setShowsLabel (true);
+            addAndMakeVisible (voiceBox);
+            addAndMakeVisible (priorityBox);
+            addAndMakeVisible (glideKnob);
+            addAndMakeVisible (glideModeBox);
         }
 
         /** Enables the controls that apply and states which source is in charge. */
@@ -105,6 +131,9 @@ namespace texture
             height += gap + rowHeight;                         // space header
             if (spaceHeader.getToggleState())
                 height += knobHeight;
+            height += gap + rowHeight;                         // performance header
+            if (performanceHeader.getToggleState())
+                height += rowHeight + gap / 2 + knobHeight;    // mode and priority, glide row
             return height;
         }
 
@@ -136,6 +165,38 @@ namespace texture
             spaceHeader.setBounds (area.removeFromTop (rowHeight).removeFromLeft (120));
             layoutKnobs (area.removeFromTop (spaceOpen ? knobHeight : 0),
                          { &widthKnob, &reverbKnob, &chorusKnob }, spaceOpen);
+
+            area.removeFromTop (gap);
+            const auto performanceOpen = performanceHeader.getToggleState();
+            performanceHeader.setBounds (area.removeFromTop (rowHeight).removeFromLeft (120));
+
+            auto modeRowArea = area.removeFromTop (performanceOpen ? rowHeight : 0);
+            auto glideRowArea = area.removeFromTop (performanceOpen ? knobHeight : 0);
+
+            for (auto* component : std::initializer_list<juce::Component*> { &voiceLabel, &voiceBox, &priorityLabel, &priorityBox })
+                component->setVisible (performanceOpen);
+
+            if (performanceOpen)
+            {
+                auto row = modeRowArea;
+                voiceLabel.setBounds (row.removeFromLeft (44));
+                voiceBox.setBounds (row.removeFromLeft (140));
+                row.removeFromLeft (gap);
+                priorityLabel.setBounds (row.removeFromLeft (54));
+                priorityBox.setBounds (row.removeFromLeft (110));
+            }
+
+            glideKnob.setVisible (performanceOpen);
+            glideModeLabel.setVisible (performanceOpen);
+            glideModeBox.setVisible (performanceOpen);
+
+            if (performanceOpen)
+            {
+                glideKnob.setBounds (glideRowArea.removeFromLeft (knobWidth));
+                glideRowArea.removeFromLeft (gap);
+                glideModeLabel.setBounds (glideRowArea.removeFromLeft (70));
+                glideModeBox.setBounds (glideRowArea.removeFromLeft (140));
+            }
         }
 
     private:
@@ -169,6 +230,15 @@ namespace texture
         ParameterKnob reverbKnob;
         ParameterKnob chorusKnob;
 
+        juce::TextButton performanceHeader;
+        juce::Label voiceLabel;
+        ParameterChoiceBox voiceBox;
+        juce::Label priorityLabel;
+        ParameterChoiceBox priorityBox;
+        ParameterKnob glideKnob;
+        juce::Label glideModeLabel;
+        ParameterChoiceBox glideModeBox;
+
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Body)
     };
 
@@ -177,7 +247,7 @@ namespace texture
     {
         setWantsKeyboardFocus (true);
 
-        titleLabel.setText ("TONE AND SPACE", juce::dontSendNotification);
+        titleLabel.setText ("TONE, SPACE AND PERFORMANCE", juce::dontSendNotification);
         titleLabel.setFont (TextureLookAndFeel::labelFont());
         titleLabel.setColour (juce::Label::textColourId, colours::textPrimary);
         addAndMakeVisible (titleLabel);

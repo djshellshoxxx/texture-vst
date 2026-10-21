@@ -24,11 +24,13 @@ set(TEXTURE_TEST_SOURCES
     test_mutation_planner.cpp
     test_legacy_render_fixtures.cpp
     test_tone_space.cpp
+    test_mono_legato.cpp
     test_fuzz.cpp
     TestHelpers.h
 
     ../Source/Engine/Grain.cpp
     ../Source/Engine/GranularEngine.cpp
+    ../Source/Engine/MonoNoteStack.cpp
     ../Source/Engine/SampleBuffer.cpp
     ../Source/Engine/Voice.cpp
 
