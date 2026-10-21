@@ -298,6 +298,9 @@ namespace texture
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ToastBar)
     };
 
+    /** A padlock glyph fitted inside `area`. Used for locked controls and group headers. */
+    void drawPadlock (juce::Graphics& g, juce::Rectangle<float> area, juce::Colour colour);
+
     /** A small section header: uppercase text with the 2 px accent bar (theme.md). */
     class SectionHeader : public juce::Component
     {
@@ -305,11 +308,21 @@ namespace texture
         explicit SectionHeader (juce::String titleText, juce::Colour accentColour = colours::accentPrimary);
 
         void setTitle (const juce::String& newTitle);
+
+        /** Shows "n locked" and a padlock when some of the group's controls are locked. */
+        void setLockCount (int lockedCount, int totalCount);
+
+        /** Right-click opens the group lock menu. */
+        std::function<void()> onMenuRequested;
+
         void paint (juce::Graphics& g) override;
+        void mouseDown (const juce::MouseEvent& event) override;
 
     private:
         juce::String title;
         juce::Colour accent;
+        int lockedCount { 0 };
+        int totalCount { 0 };
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SectionHeader)
     };
@@ -336,7 +349,7 @@ namespace texture
     class IconButton : public juce::Button
     {
     public:
-        enum class Icon { gear, help, dice, reset, chevronDown, folder, save, compare, chevronLeft, chevronRight };
+        enum class Icon { gear, help, dice, reset, chevronDown, folder, save, compare, chevronLeft, chevronRight, lock };
 
         IconButton (Icon iconToDraw, const juce::String& tooltipText);
 

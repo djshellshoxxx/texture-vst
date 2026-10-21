@@ -4,6 +4,7 @@
 #include "../Presets/PresetBrowser.h"
 #include "DebugWindow.h"
 #include "DropZone.h"
+#include "EditToolsPanel.h"
 #include "HelpPanel.h"
 #include "MorphKnob.h"
 #include "SecretPanel.h"
@@ -87,6 +88,10 @@ namespace texture
         void closeOverlays();
         void openHelp();
         void openDebugWindow();
+        void openEditTools();
+        void runGentleMutate();
+        void showGroupLockMenu (LockGroup group, juce::Component& target);
+        void updateLockIndicators();
         void saveCurrentPreset (bool forceSaveAs);
         void openPresetFile();
         void exportAudio();
@@ -105,8 +110,9 @@ namespace texture
         TierBadge tierBadge;
         IconButton gearButton { IconButton::Icon::gear, "Settings: licence, folders, preferences and about" };
         IconButton helpButton { IconButton::Icon::help, "Help: the full manual, troubleshooting and debug tools" };
-        IconButton randomiseButton { IconButton::Icon::dice, "Randomize every control. Each press starts from defaults first." };
-        IconButton resetButton { IconButton::Icon::reset, "Reset every control to its default value" };
+        IconButton randomiseButton { IconButton::Icon::dice, "Randomize every unlocked control. Each press starts from defaults first; locked controls are kept." };
+        IconButton lockButton { IconButton::Icon::lock, "Edit locks and Gentle Mutate: protect controls from Randomize and Mutate" };
+        IconButton resetButton { IconButton::Icon::reset, "Reset every control to its default value. Locks do not protect against Reset." };
         IconButton fileMenuButton { IconButton::Icon::folder, "File: open, save, export audio and options" };
         juce::TextButton presetNameButton;
         IconButton previousPresetButton { IconButton::Icon::chevronLeft, "Previous preset" };
@@ -173,6 +179,7 @@ namespace texture
         std::unique_ptr<HelpPanel> helpPanel;
         std::unique_ptr<SecretPanel> secretPanel;
         std::unique_ptr<DebugWindow> debugWindow;
+        std::unique_ptr<EditToolsPanel> editToolsPanel;
         std::unique_ptr<juce::FileChooser> fileChooser;
 
         /** The pixel that reveals the hidden effect (include.md, "easter egg"). */

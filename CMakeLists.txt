@@ -160,6 +160,10 @@ set(TEXTURE_SOURCES
     Source/Presets/PresetManager.h
     Source/Presets/PresetBrowser.cpp
     Source/Presets/PresetBrowser.h
+    Source/Presets/LockPolicy.cpp
+    Source/Presets/LockPolicy.h
+    Source/Presets/MutationPlanner.cpp
+    Source/Presets/MutationPlanner.h
 
     Source/License/LicenseManager.cpp
     Source/License/LicenseManager.h
@@ -169,6 +173,8 @@ set(TEXTURE_SOURCES
     Source/GUI/DebugWindow.h
     Source/GUI/DropZone.cpp
     Source/GUI/DropZone.h
+    Source/GUI/EditToolsPanel.cpp
+    Source/GUI/EditToolsPanel.h
     Source/GUI/HelpPanel.cpp
     Source/GUI/HelpPanel.h
     Source/GUI/LookAndFeel.cpp

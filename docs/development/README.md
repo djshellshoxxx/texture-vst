@@ -2,7 +2,7 @@
 
 26 feature specifications plus shared contracts and delivery guidance. Created 2026-10-20 from repository review at `38d9aec4556fc3b6594fe53888ea15d36698e43e`.
 
-**Status: F01, F04 core, and F12 are implemented in the current development branch.** Their automated checks are included in the test suite; manual DAW and standalone validation remains in `../MANUAL_TEST_PLAN.md`. F04's optional layer-linking preference and note-detection worker remain deferred. The other 23 specifications remain proposals. F24 is explicitly research-gated; implementation must satisfy its prototype criteria before product integration.
+**Status: F01, F02, F03, F04 core, and F12 are implemented in the current development branch.** Their automated checks are included in the test suite; manual DAW and standalone validation remains in `../MANUAL_TEST_PLAN.md`. F02 covers Randomize and Gentle Mutate; preset-browse locking and media locks are deferred. F04's optional layer-linking preference and note-detection worker remain deferred. The other 22 specifications remain proposals. F24 is explicitly research-gated; implementation must satisfy its prototype criteria before product integration.
 
 ## Start here
 1. Read [Shared contracts](00_SHARED_CONTRACTS.md) for parameter precedence, backward compatibility, bounded DSP, state ownership and release gates.
@@ -17,8 +17,8 @@ Every recommendation from the preceding feature review has exactly one specifica
 | ID | Feature specification | Benefit | Effort | Phase |
 |---|---|---|---|---|
 | F01 | [Audition button and Hold](F01_AUDITION_HOLD.md) | Usability | Easy–medium | Implemented |
-| F02 | [Parameter locks](F02_PARAMETER_LOCKS.md) | Usability | Easy–medium | 1 |
-| F03 | [Gentle Mutate](F03_GENTLE_MUTATE.md) | Exploration | Easy–medium | 1 |
+| F02 | [Parameter locks](F02_PARAMETER_LOCKS.md) | Usability | Easy–medium | Core implemented |
+| F03 | [Gentle Mutate](F03_GENTLE_MUTATE.md) | Exploration | Easy–medium | Implemented |
 | F04 | [Fine tuning and source-note controls](F04_FINE_TUNING_SOURCE_NOTE.md) | Musical accuracy | Medium | Core implemented |
 | F05 | [Portable sample bundles and relinking](F05_PORTABLE_MEDIA.md) | Portability | Medium | 2 |
 | F06 | [Configurable background WAV export](F06_BACKGROUND_EXPORT.md) | Export | Medium | 2 |

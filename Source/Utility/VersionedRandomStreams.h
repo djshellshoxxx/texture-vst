@@ -59,7 +59,10 @@ namespace texture
             detune        = 0x589965CC75374CC3ULL,
             pan           = 0x1D8E4E27C47D124FULL,
             modulation    = 0xEB44ACCAB455D165ULL,
-            effects       = 0x9E3779B97F4A7C15ULL
+            effects       = 0x9E3779B97F4A7C15ULL,
+            // Gentle Mutate draws. Appended, so existing lanes and their golden
+            // vectors are unchanged; no other feature may draw from this lane.
+            mutation      = 0xC2B2AE3D27D4EB4FULL
         };
 
         /** Returns a deterministic 64-bit value for one independent draw. */

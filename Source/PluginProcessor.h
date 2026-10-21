@@ -12,6 +12,8 @@
 #include "IO/WavExporter.h"
 #include "License/LicenseManager.h"
 #include "Modulation/MorphLFO.h"
+#include "Presets/LockPolicy.h"
+#include "Presets/MutationPlanner.h"
 #include "Presets/PresetManager.h"
 #include "Utility/AtomicHelpers.h"
 #include "Utility/Logging.h"
@@ -188,8 +190,46 @@ namespace texture
         /** Restores every parameter to its documented default. */
         void resetToDefaults();
 
-        /** Randomises every parameter into a musically sensible range. */
+        /** Randomises every parameter into a musically sensible range. Locked
+            parameters are left exactly as they are (F02). */
         void randomiseParameters();
+
+        // --- Editing locks and Gentle Mutate (F02, F03) -----------------------
+        // Locks are per-instance host state. They are read only by Randomize and
+        // Gentle Mutate; reset, automation, MIDI, project restore and undo ignore
+        // them. Message thread only: the audio thread never reads them.
+
+        bool isFieldLocked (const juce::String& parameterID) const;
+        void setFieldLocked (const juce::String& parameterID, bool shouldLock);
+        void setGroupLocked (LockGroup group, bool shouldLock);
+        LockPolicy::GroupState getGroupLockState (LockGroup group) const;
+        int getLockedFieldCount() const;
+        void unlockAllFields();
+        bool canUndoLockChange() const { return lockHistory.canUndo(); }
+        bool undoLockChange();
+
+        /** Gentle Mutate settings. Session-only: they are a tool setting, not sound. */
+        struct MutateOptions
+        {
+            float strength { 0.15f };
+            std::uint32_t groupMask { MutationPlanner::groupBit (LockGroup::grain)
+                                    | MutationPlanner::groupBit (LockGroup::motion) };
+            bool allowCategorical { false };
+        };
+
+        MutateOptions getMutateOptions() const { return mutateOptions; }
+        void setMutateOptions (const MutateOptions& options);
+
+        struct MutateResult
+        {
+            PlanStatus status { PlanStatus::noOp };
+            int changed { 0 };
+            int locked { 0 };
+            juce::String message;
+        };
+
+        /** One Mutate press: one validated change set, one undo transaction. */
+        MutateResult mutateParameters();
 
         /** Deletes preferences, mappings, license and cached presets. Destructive. */
         void hardResetAllSettings();
@@ -317,6 +357,7 @@ namespace texture
         void setParameterValue (const juce::String& id, float value);
         juce::ValueTree captureParameterTree() const;
         void applyParameterTree (const juce::ValueTree& tree);
+        std::vector<MutationField> buildMutationFields() const;
 
         /** Configures the properties file before any service reads from it.
 
@@ -385,6 +426,16 @@ namespace texture
         std::atomic<float>* randomModeParameter { nullptr };
         std::atomic<std::uint64_t> randomSeed { VersionedRandomStreams::defaultSeed };
         std::atomic<bool> randomEvolutionResetRequested { false };
+
+        /** Bumped by every parameter notification. Gentle Mutate compares it between
+            planning and writing so a concurrent edit is rejected, not overwritten. */
+        std::atomic<std::uint64_t> parameterRevision { 0 };
+
+        // Editing locks and Gentle Mutate state (message thread only).
+        LockPolicy::LockSet editLocks;
+        LockHistory lockHistory;
+        MutateOptions mutateOptions;
+        std::uint64_t mutationOperationCount { 0 };
 
         // --- Host state -------------------------------------------------------
         double currentSampleRate { 44100.0 };

@@ -2,8 +2,11 @@
 
 #include <juce_data_structures/juce_data_structures.h>
 #include "VersionedRandomStreams.h"
+#include "../Presets/LockPolicy.h"
 
 #include <cmath>
+#include <string>
+#include <vector>
 
 namespace texture
 {
@@ -17,6 +20,13 @@ namespace texture
         inline static const juce::Identifier compareTag { "Compare" };
         inline static const juce::Identifier compareSlotTag { "Slot" };
         inline static const juce::Identifier versionAttribute { "pluginVersion" };
+        inline static const juce::Identifier featureStateTag { "FeatureState" };
+        inline static const juce::Identifier lockTag { "Lock" };
+
+        /** Optional host-state block for per-instance editing locks (F02). Missing means
+            no locks. Newer readers reject unknown versions; this constant is the only
+            version this build reads or writes. */
+        static constexpr int featureStateSchemaVersion = 1;
 
         static constexpr int currentMajorVersion = 1;
 
@@ -100,6 +110,7 @@ namespace texture
             bool seenPreset = false;
             bool seenSecret = false;
             bool seenCompare = false;
+            bool seenFeatureState = false;
 
             const auto readFiniteNumber = [] (const juce::var& value, double& result)
             {
@@ -192,6 +203,42 @@ namespace texture
                                          "Plugin state contains non-numeric A/B parameter data." };
                         }
                     }
+
+                    continue;
+                }
+
+                if (child.getType() == featureStateTag)
+                {
+                    if (seenFeatureState)
+                        return { Status::duplicateSingleton,
+                                 "Plugin state contains duplicate feature state." };
+
+                    seenFeatureState = true;
+
+                    if (child.getProperty ("schema").toString() != juce::String (featureStateSchemaVersion))
+                        return { Status::invalidFeatureData,
+                                 "Plugin state uses an unsupported feature state version." };
+
+                    std::vector<std::string> lockIds;
+
+                    for (const auto& lock : child)
+                    {
+                        if (lock.getType() != lockTag)
+                            return { Status::invalidFeatureData,
+                                     "Plugin state contains malformed lock records." };
+
+                        const auto idValue = lock.getProperty ("id");
+
+                        if (! idValue.isString())
+                            return { Status::invalidFeatureData,
+                                     "Plugin state contains a lock record with a non-text ID." };
+
+                        lockIds.push_back (idValue.toString().toStdString());
+                    }
+
+                    if (! LockPolicy::parseIds (lockIds).accepted)
+                        return { Status::invalidFeatureData,
+                                 "Plugin state contains an oversized or empty lock list." };
 
                     continue;
                 }

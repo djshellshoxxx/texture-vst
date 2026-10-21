@@ -126,6 +126,9 @@ namespace texture
         randomiseButton.onClick = [this] { processor.randomiseParameters(); };
         addAndMakeVisible (randomiseButton);
 
+        lockButton.onClick = [this] { openEditTools(); };
+        addAndMakeVisible (lockButton);
+
         resetButton.onClick = [this] { processor.resetToDefaults(); };
         addAndMakeVisible (resetButton);
 
@@ -339,6 +342,17 @@ namespace texture
         helpPanel->onOpenDebugWindow = [this] { openDebugWindow(); };
         addChildComponent (*helpPanel);
 
+        editToolsPanel = std::make_unique<EditToolsPanel> (processor);
+        editToolsPanel->onClose = [this] { editToolsPanel->setVisible (false); };
+        addChildComponent (*editToolsPanel);
+
+        envelopeHeader.onMenuRequested = [this] { showGroupLockMenu (LockGroup::envelope, envelopeHeader); };
+        grainHeader.onMenuRequested = [this] { showGroupLockMenu (LockGroup::grain, grainHeader); };
+        lfoHeader.onMenuRequested = [this] { showGroupLockMenu (LockGroup::motion, lfoHeader); };
+        outputHeader.onMenuRequested = [this] { showGroupLockMenu (LockGroup::toneSpace, outputHeader); };
+        layerHeader.onMenuRequested = [this] { showGroupLockMenu (LockGroup::layers, layerHeader); };
+        updateLockIndicators();
+
         secretPanel = std::make_unique<SecretPanel> (processor);
         secretPanel->onClose = [this]
         {
@@ -433,6 +447,8 @@ namespace texture
         helpButton.setBounds (headerContent.removeFromRight (22));
         headerContent.removeFromRight (4);
         resetButton.setBounds (headerContent.removeFromRight (22));
+        headerContent.removeFromRight (4);
+        lockButton.setBounds (headerContent.removeFromRight (22));
         headerContent.removeFromRight (4);
         randomiseButton.setBounds (headerContent.removeFromRight (22));
         headerContent.removeFromRight (4);
@@ -750,6 +766,12 @@ namespace texture
             return true;
         }
 
+        if (key == juce::KeyPress ('m', juce::ModifierKeys::commandModifier, 0))
+        {
+            runGentleMutate();
+            return true;
+        }
+
         if (key == juce::KeyPress::F1Key)
         {
             openHelp();
@@ -787,6 +809,9 @@ namespace texture
         if (presetBrowser != nullptr)
             presetBrowser->setVisible (false);
 
+        if (editToolsPanel != nullptr)
+            editToolsPanel->setVisible (false);
+
         if (helpPanel != nullptr)
             helpPanel->setVisible (false);
 
@@ -804,6 +829,82 @@ namespace texture
         helpPanel->setBounds (getLocalBounds());
         helpPanel->setVisible (true);
         helpPanel->toFront (true);
+    }
+
+    void MainPanel::openEditTools()
+    {
+        closeOverlays();
+
+        if (editToolsPanel == nullptr)
+            return;
+
+        editToolsPanel->setBounds (getLocalBounds());
+        editToolsPanel->refresh();
+        editToolsPanel->setVisible (true);
+        editToolsPanel->toFront (true);
+        editToolsPanel->grabKeyboardFocus();
+    }
+
+    void MainPanel::runGentleMutate()
+    {
+        // Mutate reports its own result as a toast, and writes nothing when it is refused.
+        processor.mutateParameters();
+        updateLockIndicators();
+    }
+
+    void MainPanel::showGroupLockMenu (LockGroup group, juce::Component& target)
+    {
+        const auto allLocked = processor.getGroupLockState (group) == LockPolicy::GroupState::all;
+
+        juce::PopupMenu menu;
+        menu.setLookAndFeel (&getLookAndFeel());
+        menu.addItem (1, juce::String (allLocked ? "Unlock all " : "Lock all ")
+                             + LockPolicy::groupName (group));
+        menu.addItem (2, "Open edit locks and Mutate...");
+
+        juce::Component::SafePointer<MainPanel> safeThis (this);
+
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (target),
+                            [safeThis, group] (int result)
+        {
+            if (safeThis == nullptr || result == 0)
+                return;
+
+            if (result == 1)
+            {
+                const auto shouldLock = safeThis->processor.getGroupLockState (group)
+                                        != LockPolicy::GroupState::all;
+                safeThis->processor.setGroupLocked (group, shouldLock);
+                safeThis->updateLockIndicators();
+            }
+            else if (result == 2)
+            {
+                safeThis->openEditTools();
+            }
+        });
+    }
+
+    void MainPanel::updateLockIndicators()
+    {
+        const auto refresh = [this] (SectionHeader& header, LockGroup group)
+        {
+            int locked = 0;
+
+            for (const auto& field : LockPolicy::fields())
+                if (field.group == group && processor.isFieldLocked (juce::String (std::string (field.id))))
+                    ++locked;
+
+            header.setLockCount (locked, LockPolicy::countFieldsIn (group));
+        };
+
+        refresh (envelopeHeader, LockGroup::envelope);
+        refresh (grainHeader, LockGroup::grain);
+        refresh (lfoHeader, LockGroup::motion);
+        refresh (outputHeader, LockGroup::toneSpace);
+        refresh (layerHeader, LockGroup::layers);
+
+        if (auto* lockPanel = editToolsPanel.get(); lockPanel != nullptr && lockPanel->isVisible())
+            lockPanel->refresh();
     }
 
     void MainPanel::openDebugWindow()
@@ -910,6 +1011,7 @@ namespace texture
         addItem (15, "Undo", "Ctrl+Z", processor.getUndoManager().canUndo());
         addItem (16, "Redo", "Ctrl+Shift+Z", processor.getUndoManager().canRedo());
         addItem (8, "Randomize", "Ctrl+R");
+        addItem (17, "Gentle Mutate", "Ctrl+M");
         addItem (9, "Reset all controls");
         addItem (10, "Options...");
         menu.addSubMenu ("Interface size", sizeMenu);
@@ -950,6 +1052,7 @@ namespace texture
                     break;
 
                 case 8:  safeThis->processor.randomiseParameters(); break;
+                case 17: safeThis->runGentleMutate(); break;
                 case 9:  safeThis->processor.resetToDefaults(); break;
 
                 case 10:
@@ -1329,6 +1432,7 @@ namespace texture
         if (! processor.isAuditionRequested())
             auditionHoldButton.setToggleState (false, juce::dontSendNotification);
         updateAuditionAvailability();
+        updateLockIndicators();
         repaint();
     }
 

@@ -20,6 +20,8 @@ set(TEXTURE_TEST_SOURCES
     test_sample_loader.cpp
     test_license_manager.cpp
     test_preset_manager.cpp
+    test_parameter_locks.cpp
+    test_mutation_planner.cpp
     test_fuzz.cpp
     TestHelpers.h
 
@@ -41,6 +43,8 @@ set(TEXTURE_TEST_SOURCES
     ../Source/IO/SampleLoader.cpp
     ../Source/IO/WavExporter.cpp
 
+    ../Source/Presets/LockPolicy.cpp
+    ../Source/Presets/MutationPlanner.cpp
     ../Source/Presets/PresetManager.cpp
 
     ../Source/License/LicenseManager.cpp

@@ -116,9 +116,103 @@ namespace texture::tests
             emptyWrapper.appendChild (juce::ValueTree (StateSchema::parametersTag), nullptr);
             expectEquals (StateSchema::validate (emptyWrapper).status,
                           StateSchema::Status::missingParameters);
+
+            beginTest ("legacy state without FeatureState loads with no locks");
+            {
+                auto legacyNoFeature = makeRoot ("1.0.0", true);
+                expectEquals (StateSchema::validate (legacyNoFeature).status, StateSchema::Status::ok);
+
+                const auto parsed = LockPolicy::parseIds ({});
+                expect (parsed.accepted);
+                expect (parsed.locks.empty());
+            }
+
+            beginTest ("version 1 FeatureState with lock records is accepted");
+            {
+                auto root = makeRoot ("1.0.0", true);
+                root.appendChild (makeFeatureState ({ "morph", "attack" }), nullptr);
+                expectEquals (StateSchema::validate (root).status, StateSchema::Status::ok);
+            }
+
+            beginTest ("unknown lock IDs and duplicates are accepted, not applied");
+            {
+                auto root = makeRoot ("1.0.0", true);
+                root.appendChild (makeFeatureState ({ "retired_knob", "morph", "morph" }), nullptr);
+                expectEquals (StateSchema::validate (root).status, StateSchema::Status::ok);
+            }
+
+            beginTest ("unsupported FeatureState versions are rejected atomically");
+            {
+                auto futureFeature = makeRoot ("1.0.0", true);
+                auto feature = makeFeatureState ({ "morph" });
+                feature.setProperty ("schema", 2, nullptr);
+                futureFeature.appendChild (feature, nullptr);
+                expectEquals (StateSchema::validate (futureFeature).status, StateSchema::Status::invalidFeatureData);
+
+                auto unversioned = makeRoot ("1.0.0", true);
+                juce::ValueTree noSchema (StateSchema::featureStateTag);
+                noSchema.appendChild (juce::ValueTree (StateSchema::lockTag), nullptr);
+                unversioned.appendChild (noSchema, nullptr);
+                expectEquals (StateSchema::validate (unversioned).status, StateSchema::Status::invalidFeatureData);
+            }
+
+            beginTest ("lock records must be lock elements with text IDs");
+            {
+                auto wrongChild = makeRoot ("1.0.0", true);
+                juce::ValueTree feature = makeFeatureState ({});
+                feature.appendChild (juce::ValueTree ("Knob"), nullptr);
+                wrongChild.appendChild (feature, nullptr);
+                expectEquals (StateSchema::validate (wrongChild).status, StateSchema::Status::invalidFeatureData);
+
+                auto numericId = makeRoot ("1.0.0", true);
+                juce::ValueTree numeric = makeFeatureState ({});
+                juce::ValueTree lock (StateSchema::lockTag);
+                lock.setProperty ("id", 42, nullptr);
+                numeric.appendChild (lock, nullptr);
+                numericId.appendChild (numeric, nullptr);
+                expectEquals (StateSchema::validate (numericId).status, StateSchema::Status::invalidFeatureData);
+            }
+
+            beginTest ("oversized and empty lock lists are rejected");
+            {
+                std::vector<juce::String> many;
+                for (int i = 0; i <= 64; ++i)
+                    many.push_back ("morph");
+
+                auto oversized = makeRoot ("1.0.0", true);
+                oversized.appendChild (makeFeatureState (many), nullptr);
+                expectEquals (StateSchema::validate (oversized).status, StateSchema::Status::invalidFeatureData);
+
+                auto empty = makeRoot ("1.0.0", true);
+                empty.appendChild (makeFeatureState ({ "" }), nullptr);
+                expectEquals (StateSchema::validate (empty).status, StateSchema::Status::invalidFeatureData);
+            }
+
+            beginTest ("duplicate FeatureState records are rejected");
+            {
+                auto duplicateFeature = makeRoot ("1.0.0", true);
+                duplicateFeature.appendChild (makeFeatureState ({ "morph" }), nullptr);
+                duplicateFeature.appendChild (makeFeatureState ({ "attack" }), nullptr);
+                expectEquals (StateSchema::validate (duplicateFeature).status, StateSchema::Status::duplicateSingleton);
+            }
         }
 
     private:
+        static juce::ValueTree makeFeatureState (const std::vector<juce::String>& lockIds)
+        {
+            juce::ValueTree feature (StateSchema::featureStateTag);
+            feature.setProperty ("schema", StateSchema::featureStateSchemaVersion, nullptr);
+
+            for (const auto& id : lockIds)
+            {
+                juce::ValueTree lock (StateSchema::lockTag);
+                lock.setProperty ("id", id, nullptr);
+                feature.appendChild (lock, nullptr);
+            }
+
+            return feature;
+        }
+
         static juce::ValueTree makeRoot (const juce::String& version, bool includeParameterState)
         {
             juce::ValueTree root (StateSchema::rootTag);

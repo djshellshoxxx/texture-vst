@@ -140,6 +140,9 @@ namespace texture
             case VersionedRandomStreams::Lane::pan:           laneIndex = 4; break;
             case VersionedRandomStreams::Lane::modulation:    laneIndex = 5; break;
             case VersionedRandomStreams::Lane::effects:        laneIndex = 6; break;
+
+            // Gentle Mutate's lane belongs to the planner. A voice never draws from it.
+            case VersionedRandomStreams::Lane::mutation:       return voiceRandom.nextFloat();
         }
 
         const auto draw = randomDrawCounts[laneIndex]++;

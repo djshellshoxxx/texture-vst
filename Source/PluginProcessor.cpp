@@ -11,6 +11,7 @@
 
 #include <cmath>
 #include <algorithm>
+#include <string>
 
 namespace texture
 {
@@ -815,6 +816,8 @@ namespace texture
 
     void TextureAudioProcessor::parameterChanged (const juce::String&, float)
     {
+        parameterRevision.fetch_add (1, std::memory_order_relaxed);
+
         if (suppressPresetDirtyTracking.load (std::memory_order_relaxed))
             return;
 
@@ -1359,6 +1362,15 @@ namespace texture
         undoManager.beginNewTransaction();
         auto& random = juce::Random::getSystemRandom();
 
+        // One snapshot of the locks for the whole operation (F02): a lock toggled while
+        // this runs cannot change which values are written.
+        const auto locks = editLocks;
+        const auto write = [this, &locks] (const char* id, float value)
+        {
+            if (! locks.isLocked (id))
+                setParameterValue (id, value);
+        };
+
         // Start sound-design parameters from defaults so results do not drift.
         // TUNE calibrates the source sample and must survive randomisation.
         for (const auto* id : params::allIDs)
@@ -1367,40 +1379,251 @@ namespace texture
                 && juce::String (id) != params::layer2Root
                 && juce::String (id) != params::layer1FineCents
                 && juce::String (id) != params::layer2FineCents)
-                setParameterValue (id, params::defaultValueFor (id));
+                write (id, params::defaultValueFor (id));
 
-        setParameterValue (params::morph, random.nextFloat());
-        setParameterValue (params::attack, juce::jmap (random.nextFloat(), 5.0f, 2500.0f));
-        setParameterValue (params::decay, juce::jmap (random.nextFloat(), 50.0f, 3000.0f));
-        setParameterValue (params::sustain, juce::jmap (random.nextFloat(), 0.35f, 1.0f));
-        setParameterValue (params::release, juce::jmap (random.nextFloat(), 200.0f, 6000.0f));
-        setParameterValue (params::reverbOn, random.nextFloat() < 0.85f ? 1.0f : 0.0f);
-        setParameterValue (params::gainDb, juce::jmap (random.nextFloat(), -8.0f, 0.0f));
+        write (params::morph, random.nextFloat());
+        write (params::attack, juce::jmap (random.nextFloat(), 5.0f, 2500.0f));
+        write (params::decay, juce::jmap (random.nextFloat(), 50.0f, 3000.0f));
+        write (params::sustain, juce::jmap (random.nextFloat(), 0.35f, 1.0f));
+        write (params::release, juce::jmap (random.nextFloat(), 200.0f, 6000.0f));
+        write (params::reverbOn, random.nextFloat() < 0.85f ? 1.0f : 0.0f);
+        write (params::gainDb, juce::jmap (random.nextFloat(), -8.0f, 0.0f));
 
         // Tune stays put: it describes the sample, not the sound. The two grain
         // effects are applied sparingly so most rolls still sound like the sample.
         if (random.nextFloat() < 0.35f)
-            setParameterValue (params::reverse, juce::jmap (random.nextFloat(), 0.1f, 0.6f));
+            write (params::reverse, juce::jmap (random.nextFloat(), 0.1f, 0.6f));
 
         if (random.nextFloat() < 0.35f)
-            setParameterValue (params::shimmer, juce::jmap (random.nextFloat(), 0.1f, 0.7f));
+            write (params::shimmer, juce::jmap (random.nextFloat(), 0.1f, 0.7f));
 
         if (licenseManager.isPro())
         {
-            setParameterValue (params::lfoRate, juce::jmap (random.nextFloat(), 0.05f, 1.5f));
-            setParameterValue (params::lfoDepth, random.nextFloat() < 0.5f ? 0.0f
-                                                                          : juce::jmap (random.nextFloat(), 0.1f, 0.7f));
-            setParameterValue (params::lfoSync, random.nextFloat() < 0.3f ? 1.0f : 0.0f);
-            setParameterValue (params::lfoDivision,
-                               static_cast<float> (random.nextInt (params::numDivisions)));
+            write (params::lfoRate, juce::jmap (random.nextFloat(), 0.05f, 1.5f));
+            write (params::lfoDepth, random.nextFloat() < 0.5f ? 0.0f
+                                                              : juce::jmap (random.nextFloat(), 0.1f, 0.7f));
+            write (params::lfoSync, random.nextFloat() < 0.3f ? 1.0f : 0.0f);
+            write (params::lfoDivision,
+                   static_cast<float> (random.nextInt (params::numDivisions)));
 
             if (getSampleForLayer (1) != nullptr && getSampleForLayer (1)->isValid())
-                setParameterValue (params::layerBlend, juce::jmap (random.nextFloat(), 0.0f, 0.8f));
+                write (params::layerBlend, juce::jmap (random.nextFloat(), 0.0f, 0.8f));
         }
 
         enforceTierLimits();
         markPresetDirty();
-        postToast ("Randomised.", SampleLoader::Severity::info);
+
+        const auto lockedKept = locks.countLockedTotal();
+        postToast (lockedKept > 0 ? "Randomised; " + juce::String (lockedKept) + " locked "
+                                        + (lockedKept == 1 ? "control" : "controls") + " kept."
+                                  : juce::String ("Randomised."),
+                   SampleLoader::Severity::info);
+    }
+
+    // =========================================================================
+    //  Editing locks and Gentle Mutate
+    // =========================================================================
+
+    bool TextureAudioProcessor::isFieldLocked (const juce::String& parameterID) const
+    {
+        return editLocks.isLocked (parameterID.toStdString());
+    }
+
+    void TextureAudioProcessor::setFieldLocked (const juce::String& parameterID, bool shouldLock)
+    {
+        auto next = editLocks;
+
+        if (! next.setLocked (parameterID.toStdString(), shouldLock) || next == editLocks)
+            return;
+
+        lockHistory.record (editLocks);
+        editLocks = std::move (next);
+        notifyPluginStateChanged();
+    }
+
+    void TextureAudioProcessor::setGroupLocked (LockGroup group, bool shouldLock)
+    {
+        auto next = editLocks;
+        next.setGroupLocked (group, shouldLock);
+
+        if (next == editLocks)
+            return;
+
+        lockHistory.record (editLocks);
+        editLocks = std::move (next);
+        notifyPluginStateChanged();
+    }
+
+    LockPolicy::GroupState TextureAudioProcessor::getGroupLockState (LockGroup group) const
+    {
+        return editLocks.groupState (group);
+    }
+
+    int TextureAudioProcessor::getLockedFieldCount() const
+    {
+        return editLocks.countLockedTotal();
+    }
+
+    void TextureAudioProcessor::unlockAllFields()
+    {
+        if (editLocks.empty())
+            return;
+
+        lockHistory.record (editLocks);
+        editLocks.clear();
+        notifyPluginStateChanged();
+    }
+
+    bool TextureAudioProcessor::undoLockChange()
+    {
+        LockPolicy::LockSet restored;
+
+        if (! lockHistory.undo (restored))
+            return false;
+
+        editLocks = std::move (restored);
+        notifyPluginStateChanged();
+        return true;
+    }
+
+    void TextureAudioProcessor::setMutateOptions (const MutateOptions& options)
+    {
+        // Only the four sound groups are selectable. Pitch calibration and Layers are
+        // never mutated, so their bits are dropped rather than trusted from the GUI.
+        const auto selectable = MutationPlanner::groupBit (LockGroup::envelope)
+                              | MutationPlanner::groupBit (LockGroup::grain)
+                              | MutationPlanner::groupBit (LockGroup::motion)
+                              | MutationPlanner::groupBit (LockGroup::toneSpace);
+
+        mutateOptions.strength = std::isfinite (options.strength)
+                                     ? juce::jlimit (0.0f, 1.0f, options.strength)
+                                     : 0.0f;
+        mutateOptions.groupMask = options.groupMask & selectable;
+        mutateOptions.allowCategorical = options.allowCategorical;
+    }
+
+    std::vector<MutationField> TextureAudioProcessor::buildMutationFields() const
+    {
+        std::vector<MutationField> fields;
+        const auto& registry = LockPolicy::fields();
+        fields.reserve (registry.size());
+
+        for (const auto& info : registry)
+        {
+            MutationField field;
+            field.id = info.id;
+            field.group = info.group;
+            field.eligible = info.mutableByDefault && (! info.proOnly || licenseManager.isPro());
+
+            const auto* parameter = apvts.getParameter (juce::String (std::string (info.id)));
+            if (parameter == nullptr)
+            {
+                field.eligible = false;
+                fields.push_back (field);
+                continue;
+            }
+
+            field.normalised = juce::jlimit (0.0f, 1.0f, parameter->getValue());
+
+            if (dynamic_cast<const juce::AudioParameterChoice*> (parameter) != nullptr)
+            {
+                field.kind = FieldKind::categorical;
+                field.choiceCount = static_cast<const juce::AudioParameterChoice*> (parameter)->choices.size();
+            }
+            else if (dynamic_cast<const juce::AudioParameterBool*> (parameter) != nullptr)
+            {
+                field.kind = FieldKind::categorical;
+                field.choiceCount = 2;
+            }
+            else if (dynamic_cast<const juce::AudioParameterInt*> (parameter) != nullptr)
+            {
+                field.kind = FieldKind::discrete;
+                const auto range = parameter->getNormalisableRange();
+                field.choiceCount = juce::roundToInt ((range.end - range.start) / range.interval) + 1;
+            }
+            else
+            {
+                field.kind = FieldKind::continuous;
+            }
+
+            fields.push_back (field);
+        }
+
+        return fields;
+    }
+
+    TextureAudioProcessor::MutateResult TextureAudioProcessor::mutateParameters()
+    {
+        MutateResult result;
+
+        if (mutateOptions.strength <= 0.0f)
+        {
+            result.status = PlanStatus::noOp;
+            result.message = "Mutate strength is zero; nothing changed.";
+            return result;
+        }
+
+        // Capture everything the plan depends on before planning: the baseline values,
+        // the lock snapshot, the revision and the operation seed.
+        const auto revision = parameterRevision.load (std::memory_order_relaxed);
+        const auto fields = buildMutationFields();
+        const auto locks = editLocks;
+
+        MutationRequest request;
+        request.strength = mutateOptions.strength;
+        request.seed = VersionedRandomStreams::value (randomSeed.load (std::memory_order_relaxed),
+                                                      VersionedRandomStreams::Lane::mutation,
+                                                      mutationOperationCount++, 0);
+        request.groupMask = mutateOptions.groupMask;
+        request.allowCategorical = mutateOptions.allowCategorical;
+        request.baselineRevision = revision;
+
+        const auto plan = MutationPlanner::plan (fields, locks, request, revision);
+        result.status = plan.status;
+        result.locked = plan.lockedSkipped;
+
+        if (plan.status == PlanStatus::staleRevision)
+            result.message = "Parameters changed while Mutate was planning. Press Mutate again.";
+        else if (plan.status == PlanStatus::invalidInput)
+            result.message = "Mutate skipped: a current value was not valid.";
+        else if (plan.changes.empty())
+            result.message = "Nothing moved" + juce::String (plan.lockedSkipped > 0
+                                 ? "; " + juce::String (plan.lockedSkipped) + " locked." : ".");
+
+        if (plan.status != PlanStatus::ok || plan.changes.empty())
+        {
+            if (! result.message.isEmpty())
+                postToast (result.message, SampleLoader::Severity::info);
+            return result;
+        }
+
+        // Writes are one undo step. A revision change here means a parameter moved
+        // after the baseline was captured; nothing is written in that case.
+        if (parameterRevision.load (std::memory_order_relaxed) != revision)
+        {
+            result.status = PlanStatus::staleRevision;
+            result.message = "Parameters changed while Mutate was planning. Press Mutate again.";
+            postToast (result.message, SampleLoader::Severity::warning);
+            return result;
+        }
+
+        undoManager.beginNewTransaction ("Gentle Mutate");
+
+        for (const auto& change : plan.changes)
+        {
+            if (auto* parameter = apvts.getParameter (juce::String (std::string (fields[change.fieldIndex].id))))
+                parameter->setValueNotifyingHost (change.normalised);
+        }
+
+        enforceTierLimits();
+        markPresetDirty();
+
+        result.changed = static_cast<int> (plan.changes.size());
+        result.message = "Changed " + juce::String (result.changed)
+                       + (result.changed == 1 ? " control" : " controls")
+                       + (plan.lockedSkipped > 0 ? "; " + juce::String (plan.lockedSkipped) + " locked." : ".");
+        postToast (result.message, SampleLoader::Severity::info);
+        return result;
     }
 
     void TextureAudioProcessor::hardResetAllSettings()
@@ -1600,6 +1823,18 @@ namespace texture
             root.appendChild (sample, nullptr);
         }
 
+        juce::ValueTree feature (StateSchema::featureStateTag);
+        feature.setProperty ("schema", StateSchema::featureStateSchemaVersion, nullptr);
+
+        for (const auto& id : editLocks.lockedIds())
+        {
+            juce::ValueTree lock (StateSchema::lockTag);
+            lock.setProperty ("id", juce::String (id), nullptr);
+            feature.appendChild (lock, nullptr);
+        }
+
+        root.appendChild (feature, nullptr);
+
         juce::ValueTree preset (StateSchema::presetTag);
         preset.setProperty ("name", currentPresetName, nullptr);
         preset.setProperty ("category", currentPresetCategory, nullptr);
@@ -1678,6 +1913,26 @@ namespace texture
         // A restored session starts a fresh history: undo must never step back into
         // whatever this instance was doing before the host loaded the project.
         undoManager.clearUndoHistory();
+
+        // Locks belong to this instance's host state. Restore applies values regardless
+        // of locks; it only reinstates which controls are protected from later edits.
+        editLocks.clear();
+        lockHistory.clear();
+
+        if (const auto feature = root.getChildWithName (StateSchema::featureStateTag); feature.isValid())
+        {
+            std::vector<std::string> lockIds;
+
+            for (const auto& lock : feature)
+                if (lock.getType() == StateSchema::lockTag)
+                    lockIds.push_back (lock.getProperty ("id").toString().toStdString());
+
+            const auto parsed = LockPolicy::parseIds (lockIds);
+            editLocks = parsed.locks;
+
+            for (const auto& ignored : parsed.ignoredIds)
+                logWarn ("locks", "Ignored unknown lock ID in host state: " + juce::String (ignored));
+        }
 
         const auto preset = root.getChildWithName (StateSchema::presetTag);
 
