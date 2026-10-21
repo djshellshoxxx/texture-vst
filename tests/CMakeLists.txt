@@ -34,6 +34,7 @@ set(TEXTURE_TEST_SOURCES
     test_export_planner.cpp
     test_export_job.cpp
     test_rendered_audio_cache.cpp
+    test_grain_clock.cpp
     test_fuzz.cpp
     TestHelpers.h
 
@@ -44,6 +45,8 @@ set(TEXTURE_TEST_SOURCES
     ../Source/Engine/MonoNoteStack.cpp
     ../Source/Engine/SampleBuffer.cpp
     ../Source/Engine/Voice.cpp
+    ../Source/Engine/GrainClock.cpp
+    ../Source/Engine/GrainRenderController.cpp
 
     ../Source/Effects/Chorus.cpp
     ../Source/Effects/EffectsChain.cpp
@@ -124,6 +127,11 @@ add_test(NAME texture_fuzz COMMAND Texture_Tests fuzz)
 
 set_tests_properties(texture_unit_tests PROPERTIES TIMEOUT 600)
 set_tests_properties(texture_fuzz PROPERTIES TIMEOUT 300)
+
+# Feature categories run as their own CTest entries, so their failures are attributable to the
+# feature and CI runs them. The unit category above does not include them.
+add_test(NAME texture_rhythm COMMAND Texture_Tests texture-rhythm)
+set_tests_properties(texture_rhythm PROPERTIES TIMEOUT 600)
 
 # Pure waveform math also runs without JUCE for focused boundary/sanitizer checks.
 add_executable(Texture_WaveformMathTests test_waveform_math.cpp)

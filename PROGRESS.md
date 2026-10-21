@@ -393,3 +393,16 @@ Deviations and gaps:
 - The processor glue (the latch write, the Randomize exclusion, the export settings) is reviewed and checked in the standalone, not automated, because the test binary does not link the processor.
 - Freeze was checked for layout only in the standalone. Its effect on sound has not been listened to, and no DAW or CPU evidence exists.
 
+## 2026-10-21: F19 rhythmic grains
+
+Implemented F19 core. Seven appended parameters: `grain_clock` (Legacy default, Rhythmic), `grain_division` (1/4, 1/8, 1/16, 1/32, 1/8T, 1/16T; default 1/16), `grain_swing` (0 to 0.75), `grain_probability` (0 to 1), `grain_gate` (0.05 to 1), `grain_burst` (1 to 4) and `grain_first_immediate` (default on). `GrainClock` (pure) turns a transport position into sample-accurate grain starts: grid point n sits at n x D beats with odd points delayed by swing x D, bursts subdivide the interval after a point, and the gate sets length within 5 to 500 ms. A position jump, a loop, a stop or a grid change realigns to the next point, so nothing is replayed. Without a host transport the grid free-runs at the last valid tempo (120 BPM at start). A division change is held for 20 ms. `GrainRenderController` composes the grid for each block and is shared by the live processor and the offline renderer. The probability draw is keyed by the voice seed (layer and note) and the grid index, so it repeats. Randomize leaves the rhythm controls alone. Gentle Mutate may move swing, chance, gate and burst only while the grid is on. Legacy adds no starts and renders through the unchanged path.
+
+Evidence: 508 rhythm checks in `texture-rhythm` pass under Linux gcc and clang. They cover grid math, timing within one sample at five tempos, straight and swung grids, burst bounds, gate clamping, negative pre-roll, tempo changes, seeks, loops, stops, free-run, overflow counting, the 20 ms hold, chunk independence, the first-grain toggle, probability repeatability, bit-identity of the default engine path, and a self-generated golden render for the rhythmic path. The full existing suite passes (130,633 checks). The Linux and clang builds are warning-free.
+
+Deviations and gaps:
+- Offline export free-runs at the last live tempo. It does not reproduce the host's transport position, so an exported rhythmic patch can place its grid differently from a live render that starts mid-song.
+- In Rhythmic mode the grid sets timing, so Grain Density is not applied. Overlap follows the gate.
+- Probability and burst draws are keyed by the voice seed, not by an absolute note counter, so live and offline renders of the same note agree.
+- Gentle Mutate and Randomize are reviewed, not automated, because the test binary does not link the processor.
+- Rhythmic panel: layout checked by build only; not run in the standalone. No DAW, listening or CPU evidence yet.
+

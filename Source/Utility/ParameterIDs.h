@@ -66,6 +66,15 @@ namespace texture::params
     inline constexpr const char* lfoPhase      = "lfo_phase";
     inline constexpr const char* lfoSlewMs     = "lfo_slew_ms";
 
+    // F19 rhythmic grains. Appended. Legacy clock is the default and leaves the grain path unchanged.
+    inline constexpr const char* grainClock          = "grain_clock";
+    inline constexpr const char* grainDivision       = "grain_division";
+    inline constexpr const char* grainSwing          = "grain_swing";
+    inline constexpr const char* grainProbability    = "grain_probability";
+    inline constexpr const char* grainGate           = "grain_gate";
+    inline constexpr const char* grainBurst          = "grain_burst";
+    inline constexpr const char* grainFirstImmediate = "grain_first_immediate";
+
     // F10 freeze and scan. Appended, one set per layer.
     inline constexpr const char* layer1ScanMode     = "layer_1_scan_mode";
     inline constexpr const char* layer1ScanPosition = "layer_1_scan_position";
@@ -93,7 +102,8 @@ namespace texture::params
         grainPanSpread, grainPanFollow,
         lfoShape, lfoRetrigger, lfoPhase, lfoSlewMs,
         layer1ScanMode, layer1ScanPosition, layer1ScanSpeed, layer1Freeze, layer1FreezeSpread,
-        layer2ScanMode, layer2ScanPosition, layer2ScanSpeed, layer2Freeze, layer2FreezeSpread
+        layer2ScanMode, layer2ScanPosition, layer2ScanSpeed, layer2Freeze, layer2FreezeSpread,
+        grainClock, grainDivision, grainSwing, grainProbability, grainGate, grainBurst, grainFirstImmediate
     };
 
     inline constexpr int numParameters = static_cast<int> (std::size (allIDs));
@@ -167,6 +177,20 @@ namespace texture::params
     inline constexpr bool  freezeDefault = false;
     inline constexpr float freezeSpreadMin = 0.0f,     freezeSpreadMax = 1.0f, freezeSpreadDefault = 0.1f;
 
+    // F19 ranges. Legacy (0) is the default; the grid settings only matter when Rhythmic is chosen.
+    inline constexpr int grainClockCount = 2;          // Legacy, Rhythmic
+    inline constexpr int grainClockDefault = 0;
+    inline constexpr int grainDivisionCount = 6;       // 1/4, 1/8, 1/16, 1/32, 1/8T, 1/16T
+    inline constexpr int grainDivisionDefault = 2;     // 1/16
+    inline constexpr float grainSwingMin = 0.0f,       grainSwingMax = 0.75f, grainSwingDefault = 0.0f;
+    inline constexpr float grainProbabilityMin = 0.0f, grainProbabilityMax = 1.0f, grainProbabilityDefault = 1.0f;
+    inline constexpr float grainGateMin = 0.05f,       grainGateMax = 1.0f,   grainGateDefault = 0.5f;
+    inline constexpr int grainBurstMin = 1,            grainBurstMax = 4,     grainBurstDefault = 1;
+    inline constexpr bool grainFirstImmediateDefault = true;
+
+    /** Grid labels for grain_division, in choice order. */
+    inline constexpr const char* grainDivisionNames[] = { "1/4", "1/8", "1/16", "1/32", "1/8T", "1/16T" };
+
     /** Tempo divisions offered when LFO sync is engaged. */
     inline constexpr const char* divisionNames[] = { "1/1", "1/2", "1/4", "1/8", "1/16" };
     inline constexpr int numDivisions = static_cast<int> (std::size (divisionNames));
@@ -179,6 +203,9 @@ namespace texture::params
 
     /** True for the F14 modulation shape controls. */
     bool isModulationShapeParameter (const juce::String& parameterID);
+
+    /** True for the F19 rhythmic grain controls. Randomize leaves them as the user set them. */
+    bool isRhythmParameter (const juce::String& parameterID);
 
     /** True for the F10 scan and freeze controls. Randomize leaves them as the user set them. */
     bool isScanParameter (const juce::String& parameterID);

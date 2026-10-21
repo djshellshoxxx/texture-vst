@@ -54,6 +54,7 @@ namespace texture
         glideTotal = 0;
         glideRemaining = 0;
         grainPitchDirty = false;
+        rhythmFirstPending = false;
         retireTotal = 0;
         retireRemaining = 0;
         currentTuneSemitones = 0.0f;
@@ -97,6 +98,7 @@ namespace texture
         glideOffset = glideTotal > 0 ? glideFromSemitones - static_cast<float> (midiNote) : 0.0f;
         glideStartOffset = glideOffset;
         grainPitchDirty = false;
+        rhythmFirstPending = true;
 
         retireTotal = 0;
         retireRemaining = 0;
@@ -238,6 +240,8 @@ namespace texture
 
             // Gentle Mutate's lane belongs to the planner. A voice never draws from it.
             case VersionedRandomStreams::Lane::mutation:       return voiceRandom.nextFloat();
+            // Rhythm draws use rhythmDraw(); this lane is never taken through nextRandom.
+            case VersionedRandomStreams::Lane::rhythm:         return voiceRandom.nextFloat();
         }
 
         const auto draw = randomDrawCounts[laneIndex]++;
@@ -248,7 +252,8 @@ namespace texture
                             const MorphTargets& targets,
                             int grainDurationSamples,
                             float taper,
-                            float glideMultiplier) noexcept
+                            float glideMultiplier,
+                            float amplitudeOverride) noexcept
     {
         const auto slot = findFreeGrainSlot();
 
@@ -316,8 +321,10 @@ namespace texture
 
         // Overlapping grains sum, so scale back by the incoherent-summation factor
         // to keep perceived loudness steady as MORPH opens the grain count up.
-        const auto amplitude = amplitudeScale
-                             / std::sqrt (static_cast<float> (juce::jmax (1, targets.grainsPerVoice)));
+        // A rhythmic grain carries its own level from the grid overlap; legacy grains use MORPH's count.
+        const auto amplitude = amplitudeOverride > 0.0f
+            ? amplitudeScale * amplitudeOverride
+            : amplitudeScale / std::sqrt (static_cast<float> (juce::jmax (1, targets.grainsPerVoice)));
 
         grains[static_cast<size_t> (slot)].start (start, grainDurationSamples, ratio, pan, amplitude, taper, reversed);
         grainStarts.fetch_add (1, std::memory_order_relaxed);
@@ -375,12 +382,76 @@ namespace texture
         }
     }
 
+    void Voice::renderGrainsOnly (const SampleBuffer& source, float* scratchLeft, float* scratchRight,
+                                  int from, int to) noexcept
+    {
+        if (to <= from)
+            return;
+
+        for (auto& grain : grains)
+            if (grain.isActive())
+                grain.renderAdding (source, scratchLeft + from, scratchRight + from, to - from);
+    }
+
+    float Voice::rhythmDraw (std::int64_t gridIndex) const noexcept
+    {
+        return VersionedRandomStreams::unitFloat (randomSeed, VersionedRandomStreams::Lane::rhythm,
+                                                  static_cast<std::uint64_t> (gridIndex), 0);
+    }
+
+    void Voice::spawnRhythmGrain (const SampleBuffer& source, const MorphTargets& targets,
+                                  int durationSamples, float intervalSamples, float multiplier) noexcept
+    {
+        const auto length = juce::jmax (1, durationSamples);
+        const auto interval = intervalSamples > 0.0f ? intervalSamples : static_cast<float> (length);
+        const auto overlap = static_cast<float> (length) / interval;
+
+        // Overlap sets both the taper (a lone grain stays near-rectangular) and the level
+        // (overlapping grains are scaled back by the incoherent-sum factor).
+        const auto taper = juce::jlimit (Grain::minimumTaper, 1.0f, overlap);
+        const auto level = 1.0f / std::sqrt (juce::jmax (1.0f, overlap));
+        spawnGrain (source, targets, length, taper, multiplier, level);
+    }
+
+    void Voice::renderRhythmicSpan (const SampleBuffer& source, const MorphTargets& targets,
+                                    const RhythmSpan& rhythm, int manualDurationSamples, bool canSpawn,
+                                    float* scratchLeft, float* scratchRight,
+                                    int begin, int end, float multiplier, int& eventIndex) noexcept
+    {
+        const auto& list = *rhythm.events;
+        int offset = begin;
+
+        while (eventIndex < list.count)
+        {
+            const auto& event = list.events[static_cast<std::size_t> (eventIndex)];
+
+            if (event.offset >= end)
+                break;
+
+            const auto at = juce::jmax (begin, event.offset);
+            renderGrainsOnly (source, scratchLeft, scratchRight, offset, at);
+            offset = at;
+
+            if (canSpawn && rhythmDraw (event.gridIndex) < rhythm.probability)
+            {
+                // Follow size: the gate sets the length. A manual size overrides it (F13).
+                const auto length = rhythm.gateSetsDuration ? event.durationSamples : manualDurationSamples;
+                spawnRhythmGrain (source, targets, length, event.intervalSamples, multiplier);
+            }
+
+            ++eventIndex;
+        }
+
+        renderGrainsOnly (source, scratchLeft, scratchRight, offset, end);
+    }
+
     void Voice::renderAdding (const SampleBuffer& source,
                               const MorphTargets& targets,
                               juce::AudioBuffer<float>& scratch,
                               float* leftOut,
                               float* rightOut,
-                              int numSamples) noexcept
+                              int numSamples,
+                              const RhythmSpan* rhythm) noexcept
     {
         if (! active || numSamples <= 0 || leftOut == nullptr || rightOut == nullptr)
             return;
@@ -446,6 +517,23 @@ namespace texture
         const auto glideOrJump = glideRemaining > 0 || grainPitchDirty;
         int chunkStart = 0;
 
+        const auto rhythmic = rhythm != nullptr && rhythm->active && rhythm->events != nullptr;
+        int rhythmEventIndex = 0;
+
+        // A note's first grain may start at once. It does not use up a grid event, so the
+        // regular grid continues unchanged.
+        if (rhythmic && rhythmFirstPending && rhythm->clockRunning)
+        {
+            rhythmFirstPending = false;
+
+            if (rhythm->firstGrainImmediate && canSpawn)
+            {
+                const auto startMultiplier = glideRemaining > 0 ? dsp::semitonesToRatio (glideOffset) : 1.0f;
+                const auto length = rhythm->gateSetsDuration ? rhythm->immediateDurationSamples : durationSamples;
+                spawnRhythmGrain (source, targets, length, rhythm->immediateIntervalSamples, startMultiplier);
+            }
+        }
+
         while (chunkStart < numSamples)
         {
             const auto gliding = glideRemaining > 0;
@@ -461,8 +549,13 @@ namespace texture
                 grainPitchDirty = false;
             }
 
-            renderSpan (source, targets, durationSamples, taper, hop, canSpawn,
-                        scratchLeft, scratchRight, chunkStart, chunkEnd, multiplier);
+            if (rhythmic)
+                renderRhythmicSpan (source, targets, *rhythm, durationSamples, canSpawn,
+                                    scratchLeft, scratchRight, chunkStart, chunkEnd, multiplier,
+                                    rhythmEventIndex);
+            else
+                renderSpan (source, targets, durationSamples, taper, hop, canSpawn,
+                            scratchLeft, scratchRight, chunkStart, chunkEnd, multiplier);
 
             const auto chunkLength = chunkEnd - chunkStart;
 

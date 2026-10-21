@@ -79,6 +79,15 @@ namespace texture
             { params::layer2ScanSpeed,     LockGroup::grain,           false, false },
             { params::layer2Freeze,        LockGroup::grain,           false, false },
             { params::layer2FreezeSpread,  LockGroup::grain,           false, false },
+            // F19 rhythmic grains. The clock and grid are structural and never mutated. Swing,
+            // probability, gate and burst may move under Gentle Mutate only while the grid is on.
+            { params::grainClock,          LockGroup::grain,           false, false },
+            { params::grainDivision,       LockGroup::grain,           false, false },
+            { params::grainSwing,          LockGroup::grain,           true,  false },
+            { params::grainProbability,    LockGroup::grain,           true,  false },
+            { params::grainGate,           LockGroup::grain,           true,  false },
+            { params::grainBurst,          LockGroup::grain,           true,  false },
+            { params::grainFirstImmediate, LockGroup::grain,           false, false },
         } };
 
         static_assert (LockPolicy::numFields == static_cast<std::size_t> (params::numParameters),

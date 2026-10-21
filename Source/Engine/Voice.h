@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Grain.h"
+#include "GrainClock.h"
 #include "SourcePitchModel.h"
 #include "../Modulation/EnvelopeADSR.h"
 #include "../Utility/ParameterIDs.h"
@@ -120,14 +121,29 @@ namespace texture
                            juce::AudioBuffer<float>& scratch,
                            float* leftOut,
                            float* rightOut,
-                           int numSamples) noexcept;
+                           int numSamples,
+                           const RhythmSpan* rhythm = nullptr) noexcept;
 
     private:
         void spawnGrain (const SampleBuffer& source,
                          const MorphTargets& targets,
                          int grainDurationSamples,
                          float taper,
-                         float glideMultiplier) noexcept;
+                         float glideMultiplier,
+                         float amplitudeOverride = 0.0f) noexcept;
+
+        /** Rhythmic path (F19): grains start on the scheduler's events, not on the legacy hop. */
+        void renderRhythmicSpan (const SampleBuffer& source, const MorphTargets& targets,
+                                 const RhythmSpan& rhythm, int manualDurationSamples, bool canSpawn,
+                                 float* scratchLeft, float* scratchRight,
+                                 int begin, int end, float multiplier, int& eventIndex) noexcept;
+        void renderGrainsOnly (const SampleBuffer& source, float* scratchLeft, float* scratchRight,
+                               int from, int to) noexcept;
+        void spawnRhythmGrain (const SampleBuffer& source, const MorphTargets& targets,
+                               int durationSamples, float intervalSamples, float multiplier) noexcept;
+        /** One probability draw per logical grid event, keyed by the voice's seed (which holds the
+            layer and the note) and the grid index, so it repeats across renders. */
+        float rhythmDraw (std::int64_t gridIndex) const noexcept;
 
         int findFreeGrainSlot() noexcept;
         float nextRandom (VersionedRandomStreams::Lane lane) noexcept;
@@ -164,6 +180,9 @@ namespace texture
         int glideTotal { 0 };
         int glideRemaining { 0 };
         bool grainPitchDirty { false };
+
+        // Rhythmic grains (F19). The first grain of a note may start at once.
+        bool rhythmFirstPending { false };
 
         // Retirement: a linear fade before the voice is stopped.
         int retireTotal { 0 };

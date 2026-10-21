@@ -2,7 +2,7 @@
 
 26 feature specifications plus shared contracts and delivery guidance. Created 2026-10-20 from repository review at `38d9aec4556fc3b6594fe53888ea15d36698e43e`.
 
-**Status: F01, F02, F03, F04 core, F05 core, F06 core, F07 core, F13 core, F14 core, F10 core, F15 core, F09 core, F11 core, and F12 are implemented in the current development branch.** Their automated checks are included in the test suite; manual DAW and standalone validation remains in `../MANUAL_TEST_PLAN.md`. F02 covers Randomize and Gentle Mutate; preset-browse locking and media locks are deferred. F04's optional layer-linking preference and note-detection worker remain deferred. The other 22 specifications remain proposals. F24 is explicitly research-gated; implementation must satisfy its prototype criteria before product integration.
+**Status: F01, F02, F03, F04 core, F05 core, F06 core, F07 core, F13 core, F14 core, F10 core, F15 core, F09 core, F11 core, F12 and F19 core are implemented in the current development branch.** Their automated checks are included in the test suite; manual DAW and standalone validation remains in `../MANUAL_TEST_PLAN.md`. F02 covers Randomize and Gentle Mutate; preset-browse locking and media locks are deferred. F04's optional layer-linking preference and note-detection worker remain deferred. The other 22 specifications remain proposals. F24 is explicitly research-gated; implementation must satisfy its prototype criteria before product integration.
 
 ## Start here
 1. Read [Shared contracts](00_SHARED_CONTRACTS.md) for parameter precedence, backward compatibility, bounded DSP, state ownership and release gates.
@@ -34,7 +34,7 @@ Every recommendation from the preceding feature review has exactly one specifica
 | F16 | [MORPH personalities](F16_MORPH_PERSONALITIES.md) | Product identity | Medium | 3 |
 | F17 | [Attack-to-cloud](F17_ATTACK_TO_CLOUD.md) | Product identity | Medium–hard | 3 |
 | F18 | [Sample journeys](F18_SAMPLE_JOURNEYS.md) | Movement | Medium–hard | 3 |
-| F19 | [Rhythmic grain mode](F19_RHYTHMIC_GRAINS.md) | Rhythm | Medium–hard | 3 |
+| F19 | [Rhythmic grain mode](F19_RHYTHMIC_GRAINS.md) | Rhythm | Medium–hard | Core implemented |
 | F20 | [Texture family generator](F20_TEXTURE_FAMILY.md) | Exploration | Medium–hard | 3 |
 | F21 | [Morph between sound snapshots](F21_SNAPSHOT_MORPH.md) | Performance | Hard | 4 |
 | F22 | [Live audio capture](F22_LIVE_CAPTURE.md) | Capture | Hard | 4 |

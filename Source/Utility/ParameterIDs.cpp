@@ -61,6 +61,13 @@ namespace texture::params
         if (parameterID == layer2ScanSpeed) return "Layer 2 Scan Speed";
         if (parameterID == layer2Freeze) return "Layer 2 Freeze";
         if (parameterID == layer2FreezeSpread) return "Layer 2 Freeze Spread";
+        if (parameterID == grainClock) return "Grain Clock";
+        if (parameterID == grainDivision) return "Grain Division";
+        if (parameterID == grainSwing) return "Grain Swing";
+        if (parameterID == grainProbability) return "Grain Probability";
+        if (parameterID == grainGate) return "Grain Gate";
+        if (parameterID == grainBurst) return "Grain Burst";
+        if (parameterID == grainFirstImmediate) return "Grain First Immediate";
 
         return parameterID;
     }
@@ -99,6 +106,16 @@ namespace texture::params
     {
         for (const auto* id : { layer1ScanMode, layer1ScanPosition, layer1ScanSpeed, layer1Freeze, layer1FreezeSpread,
                                 layer2ScanMode, layer2ScanPosition, layer2ScanSpeed, layer2Freeze, layer2FreezeSpread })
+            if (parameterID == id)
+                return true;
+
+        return false;
+    }
+
+    bool isRhythmParameter (const juce::String& parameterID)
+    {
+        for (const auto* id : { grainClock, grainDivision, grainSwing, grainProbability,
+                                grainGate, grainBurst, grainFirstImmediate })
             if (parameterID == id)
                 return true;
 
@@ -166,6 +183,13 @@ namespace texture::params
         if (parameterID == layer1ScanSpeed || parameterID == layer2ScanSpeed) return scanSpeedDefault;
         if (parameterID == layer1Freeze || parameterID == layer2Freeze) return freezeDefault ? 1.0f : 0.0f;
         if (parameterID == layer1FreezeSpread || parameterID == layer2FreezeSpread) return freezeSpreadDefault;
+        if (parameterID == grainClock) return static_cast<float> (grainClockDefault);
+        if (parameterID == grainDivision) return static_cast<float> (grainDivisionDefault);
+        if (parameterID == grainSwing) return grainSwingDefault;
+        if (parameterID == grainProbability) return grainProbabilityDefault;
+        if (parameterID == grainGate) return grainGateDefault;
+        if (parameterID == grainBurst) return static_cast<float> (grainBurstDefault);
+        if (parameterID == grainFirstImmediate) return grainFirstImmediateDefault ? 1.0f : 0.0f;
 
         return 0.0f;
     }

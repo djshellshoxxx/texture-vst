@@ -63,6 +63,13 @@ namespace texture::tests
             data.setParameter (params::layer2ScanSpeed, 0.5f);
             data.setParameter (params::layer2Freeze, 0.0f);
             data.setParameter (params::layer2FreezeSpread, 0.6f);
+            data.setParameter (params::grainClock, 1.0f);
+            data.setParameter (params::grainDivision, 4.0f);
+            data.setParameter (params::grainSwing, 0.35f);
+            data.setParameter (params::grainProbability, 0.8f);
+            data.setParameter (params::grainGate, 0.3f);
+            data.setParameter (params::grainBurst, 3.0f);
+            data.setParameter (params::grainFirstImmediate, 0.0f);
             data.setParameter (params::glideMs, 240.0f);
             data.setParameter (params::glideMode, 0.0f);
             data.setParameter (params::lfoDivision, 3.0f);

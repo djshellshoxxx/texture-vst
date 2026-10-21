@@ -5,6 +5,7 @@
 #include "GrainControlsPanel.h"
 #include "LookAndFeel.h"
 #include "ModulationPanel.h"
+#include "RhythmControlsPanel.h"
 #include "ScanPanel.h"
 
 namespace texture
@@ -87,10 +88,12 @@ namespace texture
               glideModeBox (owner, params::glideMode, juce::StringArray { "Always", "Overlap only" },
                             "Always: glide on every mono note. Overlap only: glide only when a key lands on a held one."),
               grainPanel (owner, [this] { if (onLayoutChanged) onLayoutChanged(); }),
+              rhythmPanel (owner, [this] { if (onLayoutChanged) onLayoutChanged(); }),
               modulationPanel (owner, [this] { if (onLayoutChanged) onLayoutChanged(); }),
               scanPanel (owner, [this] { if (onLayoutChanged) onLayoutChanged(); })
         {
             addAndMakeVisible (grainPanel);
+            addAndMakeVisible (rhythmPanel);
             addAndMakeVisible (modulationPanel);
             addAndMakeVisible (scanPanel);
 
@@ -208,6 +211,7 @@ namespace texture
         void refresh()
         {
             grainPanel.refresh();
+            rhythmPanel.refresh();
             modulationPanel.refresh();
 
             const auto* raw = processor.getValueTreeState().getRawParameterValue (params::toneSpaceMode);
@@ -234,6 +238,7 @@ namespace texture
             if (spaceHeader.getToggleState())
                 height += knobHeight;
             height += gap + grainPanel.preferredHeight();      // F13 grains, collapsed by default
+            height += gap + rhythmPanel.preferredHeight();     // F19 rhythm grid, collapsed by default
             height += gap + modulationPanel.preferredHeight(); // F14 motion shapes, collapsed by default
             height += gap + scanPanel.preferredHeight();       // F10 scan and freeze, collapsed by default
             height += gap + rowHeight;                         // performance header
@@ -282,6 +287,9 @@ namespace texture
 
             area.removeFromTop (gap);
             grainPanel.setBounds (area.removeFromTop (grainPanel.preferredHeight()));
+
+            area.removeFromTop (gap);
+            rhythmPanel.setBounds (area.removeFromTop (rhythmPanel.preferredHeight()));
 
             area.removeFromTop (gap);
             modulationPanel.setBounds (area.removeFromTop (modulationPanel.preferredHeight()));
@@ -496,6 +504,7 @@ namespace texture
         ParameterChoiceBox glideModeBox;
 
         GrainControlsPanel grainPanel;
+        RhythmControlsPanel rhythmPanel;
         ModulationPanel modulationPanel;
         ScanPanel scanPanel;
 

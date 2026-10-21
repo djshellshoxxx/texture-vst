@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../Effects/ToneSpace.h"
+#include "../Engine/GrainClock.h"
 #include "../Engine/GrainTargetResolver.h"
 #include "../Engine/MonoNoteStack.h"
 #include "../Engine/SamplePositionController.h"
@@ -50,6 +51,7 @@ namespace texture
             ToneSpaceSettings toneSpace;  // F07: Follow MORPH unless independent
             MonoConfig mono;              // F11: Poly with no glide unless set
             GrainControlSettings grain;   // F13: Follow MORPH everywhere unless set
+            RhythmSettings rhythm;        // F19: Legacy grain clock unless set
             int lfoShape { 0 };           // F14: Sine unless set (LfoShape index)
             int lfoRetrigger { 0 };       // F14: Legacy unless set (LfoRetrigger index)
             float lfoPhase { 0.0f };

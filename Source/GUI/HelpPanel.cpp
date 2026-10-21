@@ -166,6 +166,23 @@ namespace texture
         text.add ("  Each voice holds 8 grains. If the settings ask for more, extra grains are");
         text.add ("  skipped and the Grains section says the pool is full.");
         text.add ("");
+        text.add ("RHYTHM GRID (sliders button, Rhythm (grid) section)");
+        text.add ("  Clock    Legacy: grains start where MORPH puts them, as before. Rhythmic: each");
+        text.add ("           grain starts on a musical grid, locked to the host's tempo and position.");
+        text.add ("  Division 1/4, 1/8, 1/16, 1/32, and 1/8T or 1/16T (triplets) between grid points.");
+        text.add ("  Swing    Delays every other grid point, so the pattern leans. Zero is straight.");
+        text.add ("  Chance   The share of grid points that start a grain. The same seed picks the");
+        text.add ("           same points every time.");
+        text.add ("  Gate     Grain length as a share of its slot. Turn Grain Size manual and it wins.");
+        text.add ("  Burst    1 to 4 grains per grid point, spaced evenly through the slot after it.");
+        text.add ("  First grain now  A note's first grain starts at once rather than at the next point.");
+        text.add ("  Example: Rhythmic, 1/16, Swing 20%, Chance 70%, Gate 30% gives a loose, dancing");
+        text.add ("  sixteenth-note texture under a sustained chord at the song's tempo.");
+        text.add ("  The grid is free-running at 120 BPM (or the tempo the host last sent) when the host");
+        text.add ("  sends no transport. A stopped transport starts no new grains; notes already");
+        text.add ("  sounding finish their release. In Rhythmic mode the grid sets the timing, so");
+        text.add ("  Grain Density does not apply.");
+        text.add ("");
 
         text.add ("=== RIGHT-CLICK ON ANY CONTROL ===");
         text.add ("  Reset to default");

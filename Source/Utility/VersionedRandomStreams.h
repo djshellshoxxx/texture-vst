@@ -62,7 +62,9 @@ namespace texture
             effects       = 0x9E3779B97F4A7C15ULL,
             // Gentle Mutate draws. Appended, so existing lanes and their golden
             // vectors are unchanged; no other feature may draw from this lane.
-            mutation      = 0xC2B2AE3D27D4EB4FULL
+            mutation      = 0xC2B2AE3D27D4EB4FULL,
+            // F19 rhythmic grain probability draws. Appended; keyed by layer seed, voice and grid event.
+            rhythm        = 0xD1B54A32D192ED03ULL
         };
 
         /** Returns a deterministic 64-bit value for one independent draw. */

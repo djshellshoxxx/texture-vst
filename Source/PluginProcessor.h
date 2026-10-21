@@ -7,6 +7,7 @@
 
 #include "Effects/EffectsChain.h"
 #include "Effects/ToneSpace.h"
+#include "Engine/GrainRenderController.h"
 #include "Engine/GrainTargetResolver.h"
 #include "Engine/MonoNoteStack.h"
 #include "Engine/SamplePositionController.h"
@@ -326,6 +327,14 @@ namespace texture
             block, the value is computed from the current MORPH setting. Message thread. */
         float getGrainEffectiveValue (GrainField field) const;
 
+        /** The F19 rhythmic grain settings as the parameters hold them. Message thread. */
+        RhythmSettings getRhythmSettings() const noexcept { return readRhythmSettings(); }
+
+        /** Tempo the grid is using: the host's, or the last valid one (120 BPM at start). Read from
+            the atomic host tempo, which the audio thread writes only when the host sends a valid one,
+            so the message thread never touches the clock's own state. */
+        double getRhythmTempoForGui() const noexcept { return lastHostBpm.load (std::memory_order_relaxed); }
+
         /** True when the last block asked for more grains than a voice can hold. */
         bool isGrainOversubscribed() const noexcept { return grainOversubscribedFlag.load (std::memory_order_relaxed); }
 
@@ -633,6 +642,24 @@ namespace texture
 
         /** Reads the F13 parameters. Audio thread. */
         GrainControlSettings readGrainSettings() const noexcept;
+
+        /** F19 rhythmic grain parameters, cached like every other parameter. */
+        struct RhythmParameters
+        {
+            std::atomic<float>* clock { nullptr };
+            std::atomic<float>* division { nullptr };
+            std::atomic<float>* swing { nullptr };
+            std::atomic<float>* probability { nullptr };
+            std::atomic<float>* gate { nullptr };
+            std::atomic<float>* burst { nullptr };
+            std::atomic<float>* firstImmediate { nullptr };
+        } rhythmParameters;
+
+        /** Reads the F19 parameters. Audio thread. */
+        RhythmSettings readRhythmSettings() const noexcept;
+
+        /** Per-block composition of the grain features (F19). Audio thread only. */
+        GrainRenderController renderController;
 
         /** F10 scan and freeze parameters for one layer, cached like every other parameter. */
         struct ScanParameters

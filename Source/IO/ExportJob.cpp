@@ -4,6 +4,7 @@
 #include "OfflinePatchMath.h"
 
 #include "../Effects/EffectsChain.h"
+#include "../Engine/GrainRenderController.h"
 #include "../Engine/GrainTargetResolver.h"
 #include "../Engine/GranularEngine.h"
 #include "../Modulation/HeldNoteCounter.h"
@@ -122,6 +123,11 @@ namespace texture
         GrainTargetResolver grainResolver;
         grainResolver.prepare (sampleRate);
 
+        // F19: the same grain-level composition as the live processor. There is no host
+        // transport here, so the grid free-runs at the tempo the live patch last saw.
+        auto renderController = std::make_unique<GrainRenderController>();
+        renderController->prepare (sampleRate);
+
         effects->prepare (sampleRate, renderBlockSize, 2);
         effects->setReverbEnabled (settings.reverbOn);
         effects->setOutputGainDb (settings.gainDb);
@@ -232,6 +238,15 @@ namespace texture
             targets.tuneSemitones = settings.tuneSemitones;
             targets.reverseChance = settings.reverseChance;
             targets.shimmerAmount = settings.shimmerAmount;
+            {
+                TransportSpan transport;
+                transport.bpm = settings.hostBpm;
+                renderController->beginBlock (settings.rhythm,
+                                              settings.grain.follow[static_cast<std::size_t> (GrainField::size)],
+                                              transport, numSamples);
+            }
+            const auto& schedule = renderController->renderSpan (0, numSamples);
+
             targets = grainResolver.advance (targets, settings.grain, numSamples).targets;
             effects->setToneSpace (settings.toneSpace);
             effects->setMorphTargets (targets);
@@ -247,7 +262,7 @@ namespace texture
                 layerBlock.clear();
                 auto layerTargets = targets;
                 layerTargets.sourceFineCents = settings.sourceFineCents[index];
-                engines[index]->renderNextBlock (sample, layerTargets, layerBlock, 0, numSamples);
+                engines[index]->renderNextBlock (sample, layerTargets, layerBlock, 0, numSamples, &schedule);
 
                 for (int ch = 0; ch < 2; ++ch)
                     block.addFrom (ch, 0, layerBlock, ch, 0, numSamples, layerGains[index]);

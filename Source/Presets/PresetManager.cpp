@@ -183,6 +183,27 @@ namespace texture
 
             if (id == params::layer1FreezeSpread || id == params::layer2FreezeSpread)
                 return inRange (params::freezeSpreadMin, params::freezeSpreadMax);
+            // F19 rhythmic grains. Appended; Legacy clock with its defaults reproduces the old grain path.
+            if (id == params::grainClock)
+                return juce::exactlyEqual (numeric, std::floor (numeric))
+                    && numeric >= 0.0 && numeric < static_cast<double> (params::grainClockCount);
+
+            if (id == params::grainDivision)
+                return juce::exactlyEqual (numeric, std::floor (numeric))
+                    && numeric >= 0.0 && numeric < static_cast<double> (params::grainDivisionCount);
+
+            if (id == params::grainSwing)       return inRange (params::grainSwingMin, params::grainSwingMax);
+            if (id == params::grainProbability) return inRange (params::grainProbabilityMin, params::grainProbabilityMax);
+            if (id == params::grainGate)        return inRange (params::grainGateMin, params::grainGateMax);
+
+            if (id == params::grainBurst)
+                return juce::exactlyEqual (numeric, std::floor (numeric))
+                    && numeric >= static_cast<double> (params::grainBurstMin)
+                    && numeric <= static_cast<double> (params::grainBurstMax);
+
+            if (id == params::grainFirstImmediate)
+                return juce::exactlyEqual (numeric, 0.0) || juce::exactlyEqual (numeric, 1.0);
+
             if (id == params::lfoSlewMs)   return inRange (params::lfoSlewMsMin, params::lfoSlewMsMax);
 
             return false;

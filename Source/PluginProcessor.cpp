@@ -597,6 +597,14 @@ namespace texture
             grainParameters.follow[i] = apvts.getRawParameterValue (grainFollowParameterID (static_cast<GrainField> (i)));
         }
 
+        rhythmParameters.clock          = apvts.getRawParameterValue (params::grainClock);
+        rhythmParameters.division       = apvts.getRawParameterValue (params::grainDivision);
+        rhythmParameters.swing          = apvts.getRawParameterValue (params::grainSwing);
+        rhythmParameters.probability    = apvts.getRawParameterValue (params::grainProbability);
+        rhythmParameters.gate           = apvts.getRawParameterValue (params::grainGate);
+        rhythmParameters.burst          = apvts.getRawParameterValue (params::grainBurst);
+        rhythmParameters.firstImmediate = apvts.getRawParameterValue (params::grainFirstImmediate);
+
         const std::array<std::array<const char*, 5>, numLayers> scanIDs {{
             { params::layer1ScanMode, params::layer1ScanPosition, params::layer1ScanSpeed,
               params::layer1Freeze, params::layer1FreezeSpread },
@@ -655,6 +663,26 @@ namespace texture
                 settings.follow[i] = follow->load (std::memory_order_relaxed) > 0.5f;
         }
 
+        return settings;
+    }
+
+    RhythmSettings TextureAudioProcessor::readRhythmSettings() const noexcept
+    {
+        const auto read = [] (const std::atomic<float>* value, float fallback)
+        {
+            return value != nullptr ? value->load (std::memory_order_relaxed) : fallback;
+        };
+
+        RhythmSettings settings;
+        settings.rhythmic = juce::roundToInt (read (rhythmParameters.clock, static_cast<float> (params::grainClockDefault)))
+                            == params::grainClockCount - 1;
+        settings.division = juce::roundToInt (read (rhythmParameters.division, static_cast<float> (params::grainDivisionDefault)));
+        settings.swing = read (rhythmParameters.swing, params::grainSwingDefault);
+        settings.probability = read (rhythmParameters.probability, params::grainProbabilityDefault);
+        settings.gate = read (rhythmParameters.gate, params::grainGateDefault);
+        settings.burst = juce::roundToInt (read (rhythmParameters.burst, static_cast<float> (params::grainBurstDefault)));
+        settings.firstGrainImmediate = read (rhythmParameters.firstImmediate,
+                                             params::grainFirstImmediateDefault ? 1.0f : 0.0f) > 0.5f;
         return settings;
     }
 
@@ -842,6 +870,7 @@ namespace texture
         effects.prepare (currentSampleRate, currentBlockSize, 2);
         morphLfo.prepare (currentSampleRate);
         grainResolver.prepare (currentSampleRate);
+        renderController.prepare (currentSampleRate);
 
         smoothedMorph.reset (currentSampleRate, morphSmoothingSeconds);
         smoothedMorph.setCurrentAndTargetValue (morphParameter != nullptr
@@ -935,11 +964,13 @@ namespace texture
         double hostBpm = 0.0;
         std::optional<double> hostPpq;
         bool hostIsPlaying = false;
+        bool hostHasPlayhead = false;
 
         if (auto* hostPlayHead = getPlayHead())
         {
             if (const auto position = hostPlayHead->getPosition())
             {
+                hostHasPlayhead = true;
                 hostBpm = position->getBpm().orFallback (0.0);
 
                 if (const auto ppq = position->getPpqPosition())
@@ -984,6 +1015,21 @@ namespace texture
         followMorphValues[1].store (currentTargets.chorusDepth, std::memory_order_relaxed);
         followMorphValues[2].store (currentTargets.reverbSend, std::memory_order_relaxed);
         followMorphValues[3].store (currentTargets.highShelfTiltDb, std::memory_order_relaxed);
+
+        // F19: the grid for this block. The transport is the host's, or free-running without one.
+        {
+            TransportSpan transport;
+            transport.hasPlayhead = hostHasPlayhead;
+            transport.hasPpq = hostPpq.has_value();
+            transport.playing = hostIsPlaying;
+            transport.ppq = hostPpq.value_or (0.0);
+            transport.bpm = hostBpm;
+
+            const auto grainSettings = readGrainSettings();
+            renderController.beginBlock (readRhythmSettings(),
+                                         grainSettings.follow[static_cast<std::size_t> (GrainField::size)],
+                                         transport, numSamples);
+        }
 
         // F13: manual grain values and Follow resolve here, once per block, into the targets
         // that every layer and the effects read.
@@ -1057,31 +1103,42 @@ namespace texture
         if (numSamples <= 0 || layerMix.getNumSamples() < numSamples)
             return;
 
-        for (int i = 0; i < numLayers; ++i)
+        // Rhythmic scheduling works in spans of bounded length so its event list is fixed in size.
+        // Legacy renders the segment whole, exactly as before.
+        const auto chunk = renderController.isRhythmic() ? rhythm::maxSpanSamples : numSamples;
+
+        for (int offset = 0; offset < numSamples; offset += chunk)
         {
-            const auto gain = layerGains[static_cast<size_t> (i)];
+            const auto length = juce::jmin (chunk, numSamples - offset);
+            const auto frame = startSample + offset;
+            const auto& schedule = renderController.renderSpan (frame, length);
 
-            if (gain <= 0.0001f)
-                continue;
+            for (int i = 0; i < numLayers; ++i)
+            {
+                const auto gain = layerGains[static_cast<size_t> (i)];
 
-            const auto* source = layers[static_cast<size_t> (i)].live.load (std::memory_order_acquire);
+                if (gain <= 0.0001f)
+                    continue;
 
-            if (source == nullptr || ! source->isValid())
-                continue;
+                const auto* source = layers[static_cast<size_t> (i)].live.load (std::memory_order_acquire);
 
-            layerMix.clear (0, numSamples);
+                if (source == nullptr || ! source->isValid())
+                    continue;
 
-            auto layerTargets = currentTargets;
-            const auto index = static_cast<size_t> (i);
-            layerTargets.sourceFineCents = sourceFineParameters[index] != nullptr
-                                               ? sourceFineParameters[index]->load()
-                                               : params::sourceFineDefaultCents;
+                layerMix.clear (0, length);
 
-            if (engines[index].renderNextBlock (source, layerTargets, layerMix, 0, numSamples) == 0)
-                continue;
+                auto layerTargets = currentTargets;
+                const auto index = static_cast<size_t> (i);
+                layerTargets.sourceFineCents = sourceFineParameters[index] != nullptr
+                                                   ? sourceFineParameters[index]->load()
+                                                   : params::sourceFineDefaultCents;
 
-            for (int ch = 0; ch < 2; ++ch)
-                buffer.addFrom (ch, startSample, layerMix, ch, 0, numSamples, gain);
+                if (engines[index].renderNextBlock (source, layerTargets, layerMix, 0, length, &schedule) == 0)
+                    continue;
+
+                for (int ch = 0; ch < 2; ++ch)
+                    buffer.addFrom (ch, frame, layerMix, ch, 0, length, gain);
+            }
         }
     }
 
@@ -1294,6 +1351,9 @@ namespace texture
 
             for (auto& engine : engines)
                 engine.allSoundOff (message.getChannel());
+
+            // F19: a silenced instrument restarts its grid rather than replaying missed starts.
+            renderController.reset();
 
             effects.clearTails();
         }
@@ -2277,7 +2337,8 @@ namespace texture
                 && juce::String (id) != params::layer2FineCents
                 && ! params::isToneSpaceParameter (id)
                 && ! params::isPerformanceParameter (id)
-                && ! params::isScanParameter (id))
+                && ! params::isScanParameter (id)
+                && ! params::isRhythmParameter (id))
                 write (id, params::defaultValueFor (id));
 
         write (params::morph, random.nextFloat());
@@ -2415,7 +2476,8 @@ namespace texture
             field.id = info.id;
             field.group = info.group;
             field.eligible = info.mutableByDefault && (! info.proOnly || licenseManager.isPro())
-                             && isGrainParameterMutable (info.id, grainSettings);
+                             && isGrainParameterMutable (info.id, grainSettings)
+                             && rhythm::isRhythmParameterMutable (info.id, readRhythmSettings().rhythmic);
 
             const auto* parameter = apvts.getParameter (juce::String (std::string (info.id)));
             if (parameter == nullptr)
@@ -2691,6 +2753,7 @@ namespace texture
         settings.toneSpace = readToneSpaceSettings();
         settings.mono = readPerformanceSettings();
         settings.grain = readGrainSettings();
+        settings.rhythm = readRhythmSettings();
         settings.lfoShape = juce::roundToInt (getParameterValue (params::lfoShape, static_cast<float> (params::lfoShapeDefault)));
         settings.lfoRetrigger = juce::roundToInt (getParameterValue (params::lfoRetrigger, static_cast<float> (params::lfoRetriggerDefault)));
         settings.lfoPhase = getParameterValue (params::lfoPhase, params::lfoPhaseDefault);

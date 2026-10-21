@@ -137,6 +137,10 @@ set(TEXTURE_SOURCES
     Source/Engine/SamplePositionController.cpp
     Source/Engine/SamplePositionController.h
     Source/Engine/AuditionChords.h
+    Source/Engine/GrainClock.cpp
+    Source/Engine/GrainClock.h
+    Source/Engine/GrainRenderController.cpp
+    Source/Engine/GrainRenderController.h
 
     Source/Effects/Chorus.cpp
     Source/Effects/Chorus.h
@@ -237,6 +241,8 @@ set(TEXTURE_SOURCES
     Source/GUI/SoundControlsPanel.h
     Source/GUI/GrainControlsPanel.cpp
     Source/GUI/GrainControlsPanel.h
+    Source/GUI/RhythmControlsPanel.cpp
+    Source/GUI/RhythmControlsPanel.h
     Source/GUI/CurveEditor.cpp
     Source/GUI/CurveEditor.h
     Source/GUI/ModulationPanel.cpp

@@ -637,7 +637,8 @@ namespace texture
                                          const MorphTargets& targets,
                                          juce::AudioBuffer<float>& output,
                                          int startSample,
-                                         int numSamples) noexcept
+                                         int numSamples,
+                                         const RhythmSpan* rhythm) noexcept
     {
         if (numSamples <= 0 || output.getNumChannels() < 2)
             return 0;
@@ -697,7 +698,7 @@ namespace texture
             if (! voice.isActive())
                 continue;
 
-            voice.renderAdding (*source, *effective, scratch, leftOut, rightOut, numSamples);
+            voice.renderAdding (*source, *effective, scratch, leftOut, rightOut, numSamples, rhythm);
             ++rendered;
 
             if (voice.getNoteStamp() > newestStamp)

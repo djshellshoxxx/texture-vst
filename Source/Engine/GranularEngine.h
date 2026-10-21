@@ -1,5 +1,6 @@
 #pragma once
 
+#include "GrainClock.h"
 #include "MonoNoteStack.h"
 #include "SamplePositionController.h"
 #include "Voice.h"
@@ -94,16 +95,18 @@ namespace texture
                              const MorphTargets& targets,
                              juce::AudioBuffer<float>& output,
                              int startSample,
-                             int numSamples) noexcept;
+                             int numSamples,
+                             const RhythmSpan* rhythm = nullptr) noexcept;
 
         /** Convenience for the message-thread callers (offline render, tests). */
         int renderNextBlock (const SampleBufferPtr& source,
                              const MorphTargets& targets,
                              juce::AudioBuffer<float>& output,
                              int startSample,
-                             int numSamples) noexcept
+                             int numSamples,
+                             const RhythmSpan* rhythm = nullptr) noexcept
         {
-            return renderNextBlock (source.get(), targets, output, startSample, numSamples);
+            return renderNextBlock (source.get(), targets, output, startSample, numSamples, rhythm);
         }
 
         // --- Introspection (message thread) ----------------------------------
