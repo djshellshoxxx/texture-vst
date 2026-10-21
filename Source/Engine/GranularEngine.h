@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cstdint>
 
 namespace texture
 {
@@ -92,6 +93,10 @@ namespace texture
 
         // --- Introspection (message thread) ----------------------------------
         int getActiveVoiceCount() const noexcept;
+
+        /** Grains sounding across the pool, and grains started since construction. */
+        int getActiveGrainCount() const noexcept;
+        std::uint64_t getGrainStartCount() const noexcept;
 
         /** Read head of the most recently started voice, in [0, 1). */
         float getDisplayReadPosition() const noexcept { return displayReadPosition.load (std::memory_order_relaxed); }

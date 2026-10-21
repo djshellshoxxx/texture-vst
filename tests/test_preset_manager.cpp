@@ -39,6 +39,16 @@ namespace texture::tests
             data.setParameter (params::toneDrive, 0.7f);
             data.setParameter (params::voiceMode, 2.0f);
             data.setParameter (params::notePriority, 1.0f);
+            data.setParameter (params::grainSizeMs, 212.5f);
+            data.setParameter (params::grainSizeFollow, 0.0f);
+            data.setParameter (params::grainDensityHz, 64.25f);
+            data.setParameter (params::grainDensityFollow, 0.0f);
+            data.setParameter (params::grainJitter, 0.6f);
+            data.setParameter (params::grainJitterFollow, 1.0f);
+            data.setParameter (params::grainDetuneCents, 37.5f);
+            data.setParameter (params::grainDetuneFollow, 0.0f);
+            data.setParameter (params::grainPanSpread, 0.8f);
+            data.setParameter (params::grainPanFollow, 0.0f);
             data.setParameter (params::glideMs, 240.0f);
             data.setParameter (params::glideMode, 0.0f);
             data.setParameter (params::lfoDivision, 3.0f);

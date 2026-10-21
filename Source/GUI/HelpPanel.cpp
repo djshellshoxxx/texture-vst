@@ -132,6 +132,20 @@ namespace texture
         text.add ("  A second sample slot blended with the first. Both share one MORPH.");
         text.add ("");
 
+        text.add ("GRAINS (sliders button, Grains section)");
+        text.add ("  Collapsed by default. MORPH sets grain size, density, jitter, detune and");
+        text.add ("  spread. Each control has a Follow switch. Follow on: MORPH decides, and the");
+        text.add ("  knob is ignored. Follow off: the knob decides. Turning Follow off copies the");
+        text.add ("  current value into the knob first, so the sound does not jump; it is one");
+        text.add ("  undo step. \"Now\" shows the value being used.");
+        text.add ("  SIZE     5 to 500 ms. DENSITY 1 to 200 grains per second per voice.");
+        text.add ("  JITTER   How far each grain's start wanders. DETUNE 0 to 100 cents.");
+        text.add ("  SPREAD   Stereo spread of each grain.");
+        text.add ("  When size and density are both manual, the overlap follows from them.");
+        text.add ("  Each voice holds 8 grains. If the settings ask for more, extra grains are");
+        text.add ("  skipped and the Grains section says the pool is full.");
+        text.add ("");
+
         text.add ("=== RIGHT-CLICK ON ANY CONTROL ===");
         text.add ("  Reset to default");
         text.add ("  Enter value...");

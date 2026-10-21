@@ -47,6 +47,19 @@ namespace texture::params
     inline constexpr const char* glideMs       = "glide_ms";
     inline constexpr const char* glideMode     = "glide_mode";
 
+    // F13 expandable grain controls. Appended. Each manual value has a Follow flag;
+    // while Follow is on the value is ignored and the MORPH mapping applies.
+    inline constexpr const char* grainSizeMs       = "grain_size_ms";
+    inline constexpr const char* grainSizeFollow   = "grain_size_follow";
+    inline constexpr const char* grainDensityHz    = "grain_density_hz";
+    inline constexpr const char* grainDensityFollow = "grain_density_follow";
+    inline constexpr const char* grainJitter       = "grain_jitter";
+    inline constexpr const char* grainJitterFollow = "grain_jitter_follow";
+    inline constexpr const char* grainDetuneCents  = "grain_detune_cents";
+    inline constexpr const char* grainDetuneFollow = "grain_detune_follow";
+    inline constexpr const char* grainPanSpread    = "grain_pan_spread";
+    inline constexpr const char* grainPanFollow    = "grain_pan_follow";
+
     /** Every ID in preset/serialisation order. Append only: positions are part of
         the lock registry's contract and of the preset file layout. */
     inline constexpr const char* allIDs[] = {
@@ -56,7 +69,10 @@ namespace texture::params
         layer1Root, layer2Root, layer1FineCents, layer2FineCents,
         toneSpaceMode, toneHpHz, toneLpHz, toneFilterOn, toneTiltDb,
         spaceWidth, spaceReverb, spaceChorus, toneDrive,
-        voiceMode, notePriority, glideMs, glideMode
+        voiceMode, notePriority, glideMs, glideMode,
+        grainSizeMs, grainSizeFollow, grainDensityHz, grainDensityFollow,
+        grainJitter, grainJitterFollow, grainDetuneCents, grainDetuneFollow,
+        grainPanSpread, grainPanFollow
     };
 
     inline constexpr int numParameters = static_cast<int> (std::size (allIDs));
@@ -105,12 +121,23 @@ namespace texture::params
     inline constexpr int glideModeCount = 2;          // Always, Overlap only
     inline constexpr int glideModeDefault = 1;
 
+    // F13 ranges. Follow is on by default, which reproduces the MORPH mapping exactly.
+    inline constexpr float grainSizeMinMs = 5.0f,       grainSizeMaxMs = 500.0f,  grainSizeDefaultMs = 80.0f;
+    inline constexpr float grainDensityMinHz = 1.0f,    grainDensityMaxHz = 200.0f, grainDensityDefaultHz = 30.0f;
+    inline constexpr float grainJitterMin = 0.0f,       grainJitterMax = 1.0f,    grainJitterDefault = 0.1f;
+    inline constexpr float grainDetuneMinCents = 0.0f,  grainDetuneMaxCents = 100.0f, grainDetuneDefaultCents = 10.0f;
+    inline constexpr float grainPanSpreadMin = 0.0f,    grainPanSpreadMax = 1.0f, grainPanSpreadDefault = 0.5f;
+    inline constexpr bool  grainFollowDefault = true;
+
     /** Tempo divisions offered when LFO sync is engaged. */
     inline constexpr const char* divisionNames[] = { "1/1", "1/2", "1/4", "1/8", "1/16" };
     inline constexpr int numDivisions = static_cast<int> (std::size (divisionNames));
 
     /** Beats per LFO cycle for each division index. */
     inline constexpr double divisionBeats[] = { 4.0, 2.0, 1.0, 0.5, 0.25 };
+
+    /** True for the F13 grain value and Follow controls. */
+    bool isGrainParameter (const juce::String& parameterID);
 
     /** Human-readable name shown in the host's automation list. */
     juce::String displayNameFor (const juce::String& parameterID);
@@ -149,6 +176,11 @@ namespace texture
         float sourceFineCents { 0.0f }; // smoothed, per-layer calibration
         float reverseChance;      // 0 .. 1, probability a grain plays backwards
         float shimmerAmount;      // 0 .. 1, octave-up grains blended into the cloud
+
+        // F13: spawn rate in grains per second per voice, set only when grain density is
+        // manual. Zero keeps the legacy cadence, which derives the hop from duration and
+        // overlap. Written by GrainTargetResolver, never by MORPH.
+        float grainDensityHz { 0.0f };
     };
 
     /** Derives every MORPH-dependent value. `morph` must already be clamped to [0, 1]. */
@@ -172,6 +204,7 @@ namespace texture
         t.sourceFineCents   = 0.0f;
         t.reverseChance     = 0.0f;
         t.shimmerAmount     = 0.0f;
+        t.grainDensityHz    = 0.0f;
         return t;
     }
 }

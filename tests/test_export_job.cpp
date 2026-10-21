@@ -145,6 +145,28 @@ namespace texture::tests
                 expect (readBytes (first) == readBytes (second), "fixed-seed renders must be reproducible");
             }
 
+            beginTest ("manual grain controls reach the offline renderer, and Follow MORPH is the default");
+            {
+                TemporaryDirectory temp;
+                const auto plan = shortPlan();
+                const auto followed = makeSnapshot();
+                auto manual = makeSnapshot();
+                manual.settings.grain.values = { 40.0f, 60.0f, 0.5f, 25.0f, 0.9f };
+                manual.settings.grain.follow = { false, false, false, false, false };
+
+                std::atomic<juce::int64> frames { 0 };
+                const auto a = temp.child ("follow_a.wav");
+                const auto b = temp.child ("follow_b.wav");
+                const auto m = temp.child ("manual.wav");
+
+                expect (ExportJob::run (followed, plan, 48000.0, 24, a, neverCancelled(), frames).succeeded);
+                expect (ExportJob::run (followed, plan, 48000.0, 24, b, neverCancelled(), frames).succeeded);
+                expect (ExportJob::run (manual, plan, 48000.0, 24, m, neverCancelled(), frames).succeeded);
+
+                expect (readBytes (a) == readBytes (b), "Follow MORPH must reproduce the existing render");
+                expect (readBytes (a) != readBytes (m), "manual grain values must change the rendered audio");
+            }
+
             beginTest ("a destination that cannot be created fails without leaving a file");
             {
                 TemporaryDirectory temp;

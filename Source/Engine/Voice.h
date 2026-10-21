@@ -7,6 +7,8 @@
 #include "../Utility/VersionedRandomStreams.h"
 
 #include <array>
+#include <atomic>
+#include <cstdint>
 
 namespace texture
 {
@@ -90,6 +92,12 @@ namespace texture
         /** Pitch bend as a multiplicative ratio, shared by all voices. */
         void setPitchBendRatio (float ratio) noexcept { pitchBendRatio = ratio; }
 
+        /** Grains currently sounding in this voice. Diagnostic and test introspection. */
+        int getActiveGrainCount() const noexcept;
+
+        /** Grains started since construction. Diagnostic; relaxed reads from any thread. */
+        std::uint64_t getGrainStartCount() const noexcept { return grainStarts.load (std::memory_order_relaxed); }
+
         /** Normalised read-head position in [0, 1), for the waveform playhead. */
         float getNormalisedReadPosition() const noexcept { return normalisedReadPosition; }
 
@@ -123,6 +131,7 @@ namespace texture
         void updateGrainPitch (float basePitch, float multiplier) noexcept;
 
         std::array<Grain, maxGrains> grains {};
+        std::atomic<std::uint64_t> grainStarts { 0 };
         /** Each grain's pitch without the note and glide factors, so glide can rescale it. */
         std::array<float, maxGrains> grainPitchFactor {};
         EnvelopeADSR envelope;

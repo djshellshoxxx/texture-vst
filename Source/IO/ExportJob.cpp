@@ -4,6 +4,7 @@
 #include "OfflinePatchMath.h"
 
 #include "../Effects/EffectsChain.h"
+#include "../Engine/GrainTargetResolver.h"
 #include "../Engine/GranularEngine.h"
 #include "../Modulation/MorphLFO.h"
 #include "../Utility/DspHelpers.h"
@@ -98,6 +99,10 @@ namespace texture
         lfo.prepare (sampleRate);
         lfo.setRateHz (settings.lfoRateHz);
         lfo.setDepth (settings.lfoDepth);
+
+        // F13: the same resolver the live processor uses, so manual grain values sound the same.
+        GrainTargetResolver grainResolver;
+        grainResolver.prepare (sampleRate);
 
         effects->prepare (sampleRate, renderBlockSize, 2);
         effects->setReverbEnabled (settings.reverbOn);
@@ -198,6 +203,7 @@ namespace texture
             targets.tuneSemitones = settings.tuneSemitones;
             targets.reverseChance = settings.reverseChance;
             targets.shimmerAmount = settings.shimmerAmount;
+            targets = grainResolver.advance (targets, settings.grain, numSamples).targets;
             effects->setToneSpace (settings.toneSpace);
             effects->setMorphTargets (targets);
 

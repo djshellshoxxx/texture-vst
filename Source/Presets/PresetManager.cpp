@@ -144,6 +144,18 @@ namespace texture
 
             if (id == params::glideMs)     return inRange (params::glideMsMin, params::glideMsMax);
 
+            // F13 grain controls. Follow flags are switches.
+            if (id == params::grainSizeFollow || id == params::grainDensityFollow
+                || id == params::grainJitterFollow || id == params::grainDetuneFollow
+                || id == params::grainPanFollow)
+                return juce::exactlyEqual (numeric, 0.0) || juce::exactlyEqual (numeric, 1.0);
+
+            if (id == params::grainSizeMs)     return inRange (params::grainSizeMinMs, params::grainSizeMaxMs);
+            if (id == params::grainDensityHz)  return inRange (params::grainDensityMinHz, params::grainDensityMaxHz);
+            if (id == params::grainJitter)     return inRange (params::grainJitterMin, params::grainJitterMax);
+            if (id == params::grainDetuneCents) return inRange (params::grainDetuneMinCents, params::grainDetuneMaxCents);
+            if (id == params::grainPanSpread)  return inRange (params::grainPanSpreadMin, params::grainPanSpreadMax);
+
             return false;
         }
     }

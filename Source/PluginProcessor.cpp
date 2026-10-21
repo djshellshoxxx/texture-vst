@@ -316,6 +316,68 @@ namespace texture
             juce::ParameterID { params::glideMode, 1 }, params::displayNameFor (params::glideMode),
             juce::StringArray { "Always", "Overlap only" }, params::glideModeDefault));
 
+        // --- F13 expandable grain controls. Appended: older states read Follow MORPH.
+        // Times are skewed like ADSR so the knob's travel favours short grains.
+        Range grainSizeRange { params::grainSizeMinMs, params::grainSizeMaxMs, 0.0001f };
+        grainSizeRange.setSkewForCentre (params::grainSizeDefaultMs);
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::grainSizeMs, 1 }, params::displayNameFor (params::grainSizeMs),
+            grainSizeRange, params::grainSizeDefaultMs,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction ([] (float value, int)
+            {
+                return juce::String (juce::roundToInt (value)) + " ms";
+            })));
+
+        layout.add (std::make_unique<juce::AudioParameterBool> (
+            juce::ParameterID { params::grainSizeFollow, 1 }, params::displayNameFor (params::grainSizeFollow),
+            params::grainFollowDefault));
+
+        Range grainDensityRange { params::grainDensityMinHz, params::grainDensityMaxHz, 0.0001f };
+        grainDensityRange.setSkewForCentre (params::grainDensityDefaultHz);
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::grainDensityHz, 1 }, params::displayNameFor (params::grainDensityHz),
+            grainDensityRange, params::grainDensityDefaultHz,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction ([] (float value, int)
+            {
+                return juce::String (value, 1) + " Hz";
+            })));
+
+        layout.add (std::make_unique<juce::AudioParameterBool> (
+            juce::ParameterID { params::grainDensityFollow, 1 }, params::displayNameFor (params::grainDensityFollow),
+            params::grainFollowDefault));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::grainJitter, 1 }, params::displayNameFor (params::grainJitter),
+            Range { params::grainJitterMin, params::grainJitterMax, 0.0001f }, params::grainJitterDefault,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentFormatter)));
+
+        layout.add (std::make_unique<juce::AudioParameterBool> (
+            juce::ParameterID { params::grainJitterFollow, 1 }, params::displayNameFor (params::grainJitterFollow),
+            params::grainFollowDefault));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::grainDetuneCents, 1 }, params::displayNameFor (params::grainDetuneCents),
+            Range { params::grainDetuneMinCents, params::grainDetuneMaxCents, 0.0001f }, params::grainDetuneDefaultCents,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction ([] (float value, int)
+            {
+                return juce::String (juce::roundToInt (value)) + " cents";
+            })));
+
+        layout.add (std::make_unique<juce::AudioParameterBool> (
+            juce::ParameterID { params::grainDetuneFollow, 1 }, params::displayNameFor (params::grainDetuneFollow),
+            params::grainFollowDefault));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::grainPanSpread, 1 }, params::displayNameFor (params::grainPanSpread),
+            Range { params::grainPanSpreadMin, params::grainPanSpreadMax, 0.0001f }, params::grainPanSpreadDefault,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentFormatter)));
+
+        layout.add (std::make_unique<juce::AudioParameterBool> (
+            juce::ParameterID { params::grainPanFollow, 1 }, params::displayNameFor (params::grainPanFollow),
+            params::grainFollowDefault));
+
         return layout;
     }
 
@@ -471,6 +533,62 @@ namespace texture
         performanceParameters.priority     = apvts.getRawParameterValue (params::notePriority);
         performanceParameters.glideMs      = apvts.getRawParameterValue (params::glideMs);
         performanceParameters.glideMode    = apvts.getRawParameterValue (params::glideMode);
+
+        for (size_t i = 0; i < numGrainFields; ++i)
+        {
+            grainParameters.values[i] = apvts.getRawParameterValue (grainValueParameterID (static_cast<GrainField> (i)));
+            grainParameters.follow[i] = apvts.getRawParameterValue (grainFollowParameterID (static_cast<GrainField> (i)));
+        }
+    }
+
+    GrainControlSettings TextureAudioProcessor::getGrainControlSettings() const
+    {
+        GrainControlSettings settings;
+
+        for (size_t i = 0; i < numGrainFields; ++i)
+        {
+            if (const auto* value = grainParameters.values[i])
+                settings.values[i] = value->load (std::memory_order_relaxed);
+
+            if (const auto* follow = grainParameters.follow[i])
+                settings.follow[i] = follow->load (std::memory_order_relaxed) > 0.5f;
+        }
+
+        return settings;
+    }
+
+    float TextureAudioProcessor::getGrainEffectiveValue (GrainField field) const
+    {
+        const auto index = static_cast<size_t> (field);
+
+        if (grainEffectivePublished.load (std::memory_order_relaxed))
+            return grainEffective[index].load (std::memory_order_relaxed);
+
+        // No block has rendered yet (no audio device, or a plugin that is not running). The
+        // value is what the next block will show for the current MORPH setting.
+        const auto morph = getParameterValue (params::morph, params::morphDefault);
+        return GrainTargetResolver::resolve (deriveMorphTargets (morph), getGrainControlSettings())
+            .effective[index];
+    }
+
+    void TextureAudioProcessor::setGrainFollow (GrainField field, bool shouldFollow)
+    {
+        // Captured before the transaction: the value the sound is using right now.
+        const auto change = planGrainFollowChange (field, shouldFollow, getGrainEffectiveValue (field));
+
+        undoManager.beginNewTransaction (shouldFollow ? "Follow MORPH for grain control"
+                                                      : "Set grain control manually");
+
+        for (int i = 0; i < change.count; ++i)
+            setParameterValue (change.writes[static_cast<size_t> (i)].parameterID,
+                               change.writes[static_cast<size_t> (i)].value);
+
+        markPresetDirty();
+    }
+
+    GrainControlSettings TextureAudioProcessor::readGrainSettings() const noexcept
+    {
+        return getGrainControlSettings();
     }
 
     MonoConfig TextureAudioProcessor::readPerformanceSettings() const noexcept
@@ -570,6 +688,7 @@ namespace texture
 
         effects.prepare (currentSampleRate, currentBlockSize, 2);
         morphLfo.prepare (currentSampleRate);
+        grainResolver.prepare (currentSampleRate);
 
         smoothedMorph.reset (currentSampleRate, morphSmoothingSeconds);
         smoothedMorph.setCurrentAndTargetValue (morphParameter != nullptr
@@ -689,6 +808,17 @@ namespace texture
         followMorphValues[1].store (currentTargets.chorusDepth, std::memory_order_relaxed);
         followMorphValues[2].store (currentTargets.reverbSend, std::memory_order_relaxed);
         followMorphValues[3].store (currentTargets.highShelfTiltDb, std::memory_order_relaxed);
+
+        // F13: manual grain values and Follow resolve here, once per block, into the targets
+        // that every layer and the effects read.
+        const auto grain = grainResolver.advance (currentTargets, readGrainSettings(), numSamples);
+        currentTargets = grain.targets;
+
+        for (size_t i = 0; i < numGrainFields; ++i)
+            grainEffective[i].store (grain.effective[i], std::memory_order_relaxed);
+
+        grainOversubscribedFlag.store (grain.oversubscribed, std::memory_order_relaxed);
+        grainEffectivePublished.store (true, std::memory_order_relaxed);
 
         for (int layer = 0; layer < numLayers; ++layer)
         {
@@ -2063,13 +2193,15 @@ namespace texture
         std::vector<MutationField> fields;
         const auto& registry = LockPolicy::fields();
         fields.reserve (registry.size());
+        const auto grainSettings = getGrainControlSettings();
 
         for (const auto& info : registry)
         {
             MutationField field;
             field.id = info.id;
             field.group = info.group;
-            field.eligible = info.mutableByDefault && (! info.proOnly || licenseManager.isPro());
+            field.eligible = info.mutableByDefault && (! info.proOnly || licenseManager.isPro())
+                             && isGrainParameterMutable (info.id, grainSettings);
 
             const auto* parameter = apvts.getParameter (juce::String (std::string (info.id)));
             if (parameter == nullptr)
@@ -2327,6 +2459,7 @@ namespace texture
         settings.randomAlgorithmVersion = VersionedRandomStreams::algorithmVersion;
         settings.toneSpace = readToneSpaceSettings();
         settings.mono = readPerformanceSettings();
+        settings.grain = readGrainSettings();
 
         const auto secret = getSecretSettings();
         settings.gritBits = secret.bitDepth;

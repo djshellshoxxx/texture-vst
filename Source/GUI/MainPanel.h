@@ -116,7 +116,7 @@ namespace texture
         IconButton helpButton { IconButton::Icon::help, "Help: the full manual, troubleshooting and debug tools" };
         IconButton randomiseButton { IconButton::Icon::dice, "Randomize every unlocked control. Each press starts from defaults first; locked controls are kept." };
         IconButton lockButton { IconButton::Icon::lock, "Edit locks and Gentle Mutate: protect controls from Randomize and Mutate" };
-        IconButton soundButton { IconButton::Icon::sliders, "Tone and space: independent tone filter, stereo width, reverb, chorus and drive" };
+        IconButton soundButton { IconButton::Icon::sliders, "Tone, space, grains and performance: tone filter, width, reverb, chorus, grain overrides, voice and glide" };
         IconButton resetButton { IconButton::Icon::reset, "Reset every control to its default value. Locks do not protect against Reset." };
         IconButton fileMenuButton { IconButton::Icon::folder, "File: open, save, export audio and options" };
         juce::TextButton presetNameButton;

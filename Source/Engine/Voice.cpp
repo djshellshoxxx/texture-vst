@@ -317,6 +317,18 @@ namespace texture
                              / std::sqrt (static_cast<float> (juce::jmax (1, targets.grainsPerVoice)));
 
         grains[static_cast<size_t> (slot)].start (start, grainDurationSamples, ratio, pan, amplitude, taper, reversed);
+        grainStarts.fetch_add (1, std::memory_order_relaxed);
+    }
+
+    int Voice::getActiveGrainCount() const noexcept
+    {
+        int count = 0;
+
+        for (const auto& grain : grains)
+            if (grain.isActive())
+                ++count;
+
+        return count;
     }
 
     void Voice::updateGrainPitch (float basePitch, float multiplier) noexcept
@@ -391,8 +403,13 @@ namespace texture
         const auto durationSamples = juce::jmax (
             8, juce::roundToInt (targets.grainDurationMs * 0.001f * preparedSampleRate));
 
+        // Legacy cadence: the hop follows duration and overlap. A manual grain density (F13)
+        // spawns at a fixed interval instead, and its overlap was already derived from it.
         const auto overlap = dsp::clamp (targets.grainOverlap, 0.0f, 0.95f);
-        const auto hop = juce::jmax (1.0, static_cast<double> (durationSamples) * (1.0 - overlap));
+        const auto densityManual = std::isfinite (targets.grainDensityHz) && targets.grainDensityHz > 0.0f;
+        const auto hop = densityManual
+            ? juce::jmax (1.0, preparedSampleRate / static_cast<double> (targets.grainDensityHz))
+            : juce::jmax (1.0, static_cast<double> (durationSamples) * (1.0 - overlap));
 
         // The taper tracks the overlap: a lone grain gets a near-rectangular window
         // (clean playback), a fully overlapped swarm gets a true Hann.

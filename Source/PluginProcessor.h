@@ -7,6 +7,7 @@
 
 #include "Effects/EffectsChain.h"
 #include "Effects/ToneSpace.h"
+#include "Engine/GrainTargetResolver.h"
 #include "Engine/MonoNoteStack.h"
 #include "Engine/GranularEngine.h"
 #include "IO/FactoryContent.h"
@@ -313,6 +314,21 @@ namespace texture
             independent controls, so the sound does not jump. One undo step. Message thread. */
         void startIndependentFromCurrentSound();
 
+        // --- Grain controls (F13) ---------------------------------------------
+        /** The grain values and Follow flags as the parameters hold them. Message thread. */
+        GrainControlSettings getGrainControlSettings() const;
+
+        /** The effective value of a grain field in the last rendered block. Before the first
+            block, the value is computed from the current MORPH setting. Message thread. */
+        float getGrainEffectiveValue (GrainField field) const;
+
+        /** True when the last block asked for more grains than a voice can hold. */
+        bool isGrainOversubscribed() const noexcept { return grainOversubscribedFlag.load (std::memory_order_relaxed); }
+
+        /** Turns Follow on or off for one grain field as one undo step. Turning it off copies
+            the effective value into the manual control first, so the sound does not jump. */
+        void setGrainFollow (GrainField field, bool shouldFollow);
+
         /** Deletes preferences, mappings, license and cached presets. Destructive. */
         void hardResetAllSettings();
 
@@ -597,8 +613,26 @@ namespace texture
             std::atomic<float>* glideMode { nullptr };
         } performanceParameters;
 
+        /** Reads the F13 parameters. Audio thread. */
+        GrainControlSettings readGrainSettings() const noexcept;
+
         /** Reads the F11 parameters into a validated mono configuration. Audio thread. */
         MonoConfig readPerformanceSettings() const noexcept;
+
+        /** F13 grain values and Follow flags, cached like every other parameter. */
+        struct GrainParameters
+        {
+            std::array<std::atomic<float>*, numGrainFields> values {};
+            std::array<std::atomic<float>*, numGrainFields> follow {};
+        } grainParameters;
+
+        /** Resolves Follow and manual grain values once per block. Audio thread only. */
+        GrainTargetResolver grainResolver;
+
+        /** Effective grain values of the last rendered block, for the panel's readouts. */
+        std::array<std::atomic<float>, numGrainFields> grainEffective {};
+        std::atomic<bool> grainEffectivePublished { false };
+        std::atomic<bool> grainOversubscribedFlag { false };
         std::atomic<std::uint64_t> randomSeed { VersionedRandomStreams::defaultSeed };
         std::atomic<bool> randomEvolutionResetRequested { false };
 

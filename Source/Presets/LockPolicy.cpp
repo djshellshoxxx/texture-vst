@@ -48,6 +48,19 @@ namespace texture
             { params::notePriority,    LockGroup::performance,       false, false },
             { params::glideMs,         LockGroup::performance,       false, false },
             { params::glideMode,       LockGroup::performance,       false, false },
+            // F13 grain controls. Manual values are sound-design values Gentle Mutate may move,
+            // but only while their Follow flag is off (see the processor's eligibility check).
+            // Follow flags are switches and are never mutated.
+            { params::grainSizeMs,         LockGroup::grain,           true,  false },
+            { params::grainSizeFollow,     LockGroup::grain,           false, false },
+            { params::grainDensityHz,      LockGroup::grain,           true,  false },
+            { params::grainDensityFollow,  LockGroup::grain,           false, false },
+            { params::grainJitter,         LockGroup::grain,           true,  false },
+            { params::grainJitterFollow,   LockGroup::grain,           false, false },
+            { params::grainDetuneCents,    LockGroup::grain,           true,  false },
+            { params::grainDetuneFollow,   LockGroup::grain,           false, false },
+            { params::grainPanSpread,      LockGroup::grain,           true,  false },
+            { params::grainPanFollow,      LockGroup::grain,           false, false },
         } };
 
         static_assert (LockPolicy::numFields == static_cast<std::size_t> (params::numParameters),

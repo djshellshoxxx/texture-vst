@@ -37,6 +37,16 @@ namespace texture::params
         if (parameterID == notePriority) return "Note Priority";
         if (parameterID == glideMs)     return "Glide";
         if (parameterID == glideMode)   return "Glide Mode";
+        if (parameterID == grainSizeMs) return "Grain Size";
+        if (parameterID == grainSizeFollow) return "Grain Size Follow MORPH";
+        if (parameterID == grainDensityHz) return "Grain Density";
+        if (parameterID == grainDensityFollow) return "Grain Density Follow MORPH";
+        if (parameterID == grainJitter) return "Grain Jitter";
+        if (parameterID == grainJitterFollow) return "Grain Jitter Follow MORPH";
+        if (parameterID == grainDetuneCents) return "Grain Detune";
+        if (parameterID == grainDetuneFollow) return "Grain Detune Follow MORPH";
+        if (parameterID == grainPanSpread) return "Grain Pan Spread";
+        if (parameterID == grainPanFollow) return "Grain Pan Follow MORPH";
 
         return parameterID;
     }
@@ -54,6 +64,17 @@ namespace texture::params
     bool isPerformanceParameter (const juce::String& parameterID)
     {
         for (const auto* id : { voiceMode, notePriority, glideMs, glideMode })
+            if (parameterID == id)
+                return true;
+
+        return false;
+    }
+
+    bool isGrainParameter (const juce::String& parameterID)
+    {
+        for (const auto* id : { grainSizeMs, grainSizeFollow, grainDensityHz, grainDensityFollow,
+                                grainJitter, grainJitterFollow, grainDetuneCents, grainDetuneFollow,
+                                grainPanSpread, grainPanFollow })
             if (parameterID == id)
                 return true;
 
@@ -93,6 +114,16 @@ namespace texture::params
         if (parameterID == notePriority) return static_cast<float> (notePriorityDefault);
         if (parameterID == glideMs)     return glideMsDefault;
         if (parameterID == glideMode)   return static_cast<float> (glideModeDefault);
+        if (parameterID == grainSizeMs) return grainSizeDefaultMs;
+        if (parameterID == grainSizeFollow) return grainFollowDefault ? 1.0f : 0.0f;
+        if (parameterID == grainDensityHz) return grainDensityDefaultHz;
+        if (parameterID == grainDensityFollow) return grainFollowDefault ? 1.0f : 0.0f;
+        if (parameterID == grainJitter) return grainJitterDefault;
+        if (parameterID == grainJitterFollow) return grainFollowDefault ? 1.0f : 0.0f;
+        if (parameterID == grainDetuneCents) return grainDetuneDefaultCents;
+        if (parameterID == grainDetuneFollow) return grainFollowDefault ? 1.0f : 0.0f;
+        if (parameterID == grainPanSpread) return grainPanSpreadDefault;
+        if (parameterID == grainPanFollow) return grainFollowDefault ? 1.0f : 0.0f;
 
         return 0.0f;
     }

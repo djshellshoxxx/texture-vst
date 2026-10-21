@@ -344,3 +344,19 @@ Gaps:
 - A crash during a render can leave a `.partial` file; no startup sweep exists yet.
 - The Help panel does not describe drag renders.
 - Processor-level dispatch is not automated (the test binary does not link the processor).
+
+## 2026-10-21: F13 expandable grain controls
+
+Implemented F13 core. Five manual grain controls (`grain_size_ms`, `grain_density_hz`, `grain_jitter`, `grain_detune_cents`, `grain_pan_spread`), each with a `*_follow` switch, appended as ten parameters. Follow defaults to on, so every patch renders as before. `GrainTargetResolver` (pure) turns the Follow flags and manual values into the `MorphTargets` the voices and export use, once per block. A manual density spawns at `1 / density` and derives the overlap from duration. A manual duration keeps the legacy cadence. Jitter, detune and spread ramp over 20 ms; size and density apply from the next block. Turning Follow off copies the effective value into the manual control first, as one undo step. Gentle Mutate may move a manual grain value only while its Follow flag is off. The grain controls sit in a collapsed "Grains" section of the sound overlay, which reports the pool status. The grain fields are in the lock registry as group Grain. The Help panel describes them.
+
+Evidence: `texture_unit_tests` passes 125,272 checks. `test_grain_controls` covers Follow-all equal to the MORPH targets across the whole range, every Follow combination, duration-only and density-only cadence, clamping and non-finite input, the pool limit, the 20 ms ramp and its settling, block-partition invariance of the follow path, the follow-change plan and the continuity of taking a field from Follow to manual, Mutate eligibility, lock groups, preset ranges, the migration default, measured spawn counts (10 Hz gives exactly 20 spawns in two seconds; 200 Hz with 500 ms grains never exceeds 8 active grains), and a pinned manual-path render. The legacy render fixtures are unchanged. The preset round-trip fixture gained the F13 values. The export test shows Follow renders are reproducible and manual values change the file. In a standalone build under Xvfb, the Grains section expands, the readouts match the MORPH values, and turning Size's Follow off keeps the readout at 66 ms.
+
+Deviations and gaps:
+- The pinned fixture and the spawn-count tests come from this build. They pin the implementation, not an independent reference.
+- Smoothing is per block, so a manual value that is ramping can render slightly differently at a different host block size or in export. Follow-all is exact.
+- The pool is still 8 grains per voice. Oversubscription skips spawns deterministically and never steals; no larger pool was added.
+- Processor glue (`setGrainFollow`, effective-value publication, the mutation gate in `buildMutationFields`) is reviewed and checked in the standalone, not in an automated test, because the test binary does not link the processor.
+- A/B and variation history capture these parameters through the existing all-parameter paths. Those paths are not separately tested for grain values.
+- Presets stay at schema 2: the controls are ordinary parameters, as with F07.
+- No DAW, listening, CPU, keyboard or accessibility pass yet. Commercial tier assignment is unchanged; these controls are on both tiers pending the release decision.
+

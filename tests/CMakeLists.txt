@@ -25,6 +25,7 @@ set(TEXTURE_TEST_SOURCES
     test_legacy_render_fixtures.cpp
     test_tone_space.cpp
     test_mono_legato.cpp
+    test_grain_controls.cpp
     test_variation_history.cpp
     test_media_manifest.cpp
     test_bundle_archive.cpp
@@ -35,6 +36,7 @@ set(TEXTURE_TEST_SOURCES
     TestHelpers.h
 
     ../Source/Engine/Grain.cpp
+    ../Source/Engine/GrainTargetResolver.cpp
     ../Source/Engine/GranularEngine.cpp
     ../Source/Engine/MonoNoteStack.cpp
     ../Source/Engine/SampleBuffer.cpp

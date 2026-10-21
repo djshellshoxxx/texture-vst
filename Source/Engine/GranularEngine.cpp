@@ -681,4 +681,24 @@ namespace texture
     {
         return activeVoiceCount.load (std::memory_order_relaxed);
     }
+
+    int GranularEngine::getActiveGrainCount() const noexcept
+    {
+        int total = 0;
+
+        for (const auto& voice : voices)
+            total += voice.getActiveGrainCount();
+
+        return total;
+    }
+
+    std::uint64_t GranularEngine::getGrainStartCount() const noexcept
+    {
+        std::uint64_t total = 0;
+
+        for (const auto& voice : voices)
+            total += voice.getGrainStartCount();
+
+        return total;
+    }
 }
