@@ -92,6 +92,7 @@ jobs:
           retention-days: 14
           path: |
             build/${{ matrix.preset }}/**/Texture_artefacts/**/*.vst3
+            build/${{ matrix.preset }}/**/Texture_artefacts/**/*.vst3/**
             build/${{ matrix.preset }}/**/Texture_artefacts/**/*.component
             build/${{ matrix.preset }}/**/Texture_artefacts/**/Texture.exe
             build/${{ matrix.preset }}/**/Texture_artefacts/**/Texture.app
