@@ -108,6 +108,8 @@ namespace texture
         lfo.setDepth (settings.lfoDepth);
 
         effects->prepare (sampleRate, renderBlockSize, 2);
+        effects->setToneFilter (settings.toneFilterOn, settings.toneHpHz, settings.toneLpHz);
+        effects->setStereoWidth (settings.stereoWidth);
         effects->setReverbEnabled (settings.reverbOn);
         effects->setOutputGainDb (settings.gainDb);
         effects->getSecretEffect().setBitDepth (settings.gritBits);

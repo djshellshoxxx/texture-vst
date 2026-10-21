@@ -15,6 +15,8 @@ set(TEXTURE_TEST_SOURCES
     test_control_value_parser.cpp
     test_control_value_clipboard.cpp
     test_midi_learn.cpp
+    test_mono_glide.cpp
+    test_tone_space.cpp
     test_offline_render_timeline.cpp
     test_granular_engine.cpp
     test_sample_loader.cpp
@@ -24,11 +26,13 @@ set(TEXTURE_TEST_SOURCES
     TestHelpers.h
 
     ../Source/Engine/Grain.cpp
+    ../Source/Engine/MonoNoteStack.cpp
     ../Source/Engine/GranularEngine.cpp
     ../Source/Engine/SampleBuffer.cpp
     ../Source/Engine/Voice.cpp
 
     ../Source/Effects/Chorus.cpp
+    ../Source/Effects/ToneFilter.cpp
     ../Source/Effects/EffectsChain.cpp
     ../Source/Effects/Reverb.cpp
     ../Source/Effects/Saturator.cpp

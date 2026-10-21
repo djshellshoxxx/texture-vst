@@ -65,6 +65,12 @@ namespace texture
 
         void setAdsrParameters (float attackMs, float decayMs, float sustainLevel, float releaseMs);
 
+        /** Legato: re-pitches a sounding voice without restarting its envelope. */
+        void changeNote (int midiNote) noexcept { currentNote = midiNote; }
+
+        /** Extra pitch in semitones (mono glide); zero leaves the sound untouched. */
+        void setGlideOffsetSemitones (float semitones) noexcept { glideOffsetSemitones = semitones; }
+
         /** Pitch bend as a multiplicative ratio, shared by all voices. */
         void setPitchBendRatio (float ratio) noexcept { pitchBendRatio = ratio; }
 
@@ -107,6 +113,7 @@ namespace texture
 
         float velocityGain { 1.0f };
         float pitchBendRatio { 1.0f };
+        float glideOffsetSemitones { 0.0f };
         float currentTuneSemitones { 0.0f };
         float fineTuneForCurrentBlock { 0.0f };
         float lastEnvelopeLevel { 0.0f };

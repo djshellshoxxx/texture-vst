@@ -9,6 +9,8 @@ namespace texture
         preparedSampleRate = sampleRate > 0.0 ? sampleRate : 44100.0;
         preparedChannels = juce::jlimit (1, maxSupportedChannels, numChannels);
 
+        tone.prepare (preparedSampleRate, maximumBlockSize);
+        stereoWidth.prepare (preparedSampleRate);
         saturator.prepare (preparedSampleRate, maximumBlockSize);
         chorus.prepare (preparedSampleRate, maximumBlockSize, preparedChannels);
         reverb.prepare (preparedSampleRate, maximumBlockSize, preparedChannels);
@@ -49,6 +51,8 @@ namespace texture
 
     void EffectsChain::reset()
     {
+        tone.reset();
+        stereoWidth.reset();
         saturator.reset();
         chorus.reset();
         reverb.reset();
@@ -120,6 +124,11 @@ namespace texture
         if (numChannels <= 0)
             return;
 
+        // 0. Tone filter (stereo only; bypassed bit-exactly when off).
+        if (numChannels >= 2)
+            tone.process (buffer.getWritePointer (0, startSample),
+                          buffer.getWritePointer (1, startSample), numSamples);
+
         // 1. Saturator
         saturator.process (buffer, startSample, numSamples);
 
@@ -131,6 +140,10 @@ namespace texture
 
         // 4. The hidden effect, if it has been found.
         secret.process (buffer, startSample, numSamples);
+
+        if (numChannels >= 2)
+            stereoWidth.process (buffer.getWritePointer (0, startSample),
+                                 buffer.getWritePointer (1, startSample), numSamples);
 
         // 5. High shelf air + 6. DC blocker, fused into one pass over the samples.
         for (int ch = 0; ch < numChannels; ++ch)

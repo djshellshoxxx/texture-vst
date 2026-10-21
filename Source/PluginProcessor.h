@@ -383,6 +383,28 @@ namespace texture
         std::atomic<float>* reverseParameter { nullptr };
         std::atomic<float>* shimmerParameter { nullptr };
         std::atomic<float>* randomModeParameter { nullptr };
+        std::atomic<float>* voiceModeParameter { nullptr };
+        std::atomic<float>* notePriorityParameter { nullptr };
+        std::atomic<float>* glideParameter { nullptr };
+        std::atomic<float>* toneFilterOnParameter { nullptr };
+        std::atomic<float>* toneHpParameter { nullptr };
+        std::atomic<float>* toneLpParameter { nullptr };
+        std::atomic<float>* widthParameter { nullptr };
+
+        static GranularEngine::VoiceMode voiceModeFrom (const std::atomic<float>* p) noexcept
+        {
+            const auto v = p != nullptr ? juce::roundToInt (p->load()) : 0;
+            return v == 1 ? GranularEngine::VoiceMode::monoRetrigger
+                 : v == 2 ? GranularEngine::VoiceMode::monoLegato
+                          : GranularEngine::VoiceMode::poly;
+        }
+        static MonoNoteStack::Priority priorityFrom (const std::atomic<float>* p) noexcept
+        {
+            const auto v = p != nullptr ? juce::roundToInt (p->load()) : 0;
+            return v == 1 ? MonoNoteStack::Priority::high
+                 : v == 2 ? MonoNoteStack::Priority::low
+                          : MonoNoteStack::Priority::last;
+        }
         std::atomic<std::uint64_t> randomSeed { VersionedRandomStreams::defaultSeed };
         std::atomic<bool> randomEvolutionResetRequested { false };
 

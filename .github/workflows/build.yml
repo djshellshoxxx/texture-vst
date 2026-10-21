@@ -9,6 +9,11 @@ on:
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Publish a GitHub pre-release with this version (e.g. 0.1.0). Leave empty to only build."
+        required: false
+        default: ""
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -117,7 +122,7 @@ jobs:
 
   release:
     name: Package and publish release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_version != '')
     needs: [build, clap]
     runs-on: ubuntu-latest
     permissions:
@@ -133,12 +138,18 @@ jobs:
           merge-multiple: false
 
       - name: Package standalone apps and plug-in bundles (Windows, macOS, Linux)
-        run: packaging/package_platform_release.sh "${GITHUB_REF_NAME#v}" release-input release-assets
+        env:
+          DISPATCH_VERSION: ${{ inputs.release_version }}
+        run: |
+          version="${DISPATCH_VERSION:-${GITHUB_REF_NAME#v}}"
+          packaging/package_platform_release.sh "$version" release-input release-assets
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: TEXTURE ${{ github.ref_name }}
+          tag_name: ${{ inputs.release_version != '' && format('v{0}', inputs.release_version) || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: TEXTURE ${{ inputs.release_version != '' && format('v{0}', inputs.release_version) || github.ref_name }}
           prerelease: true
           generate_release_notes: true
           files: release-assets/*

@@ -38,6 +38,13 @@ namespace texture::tests
             data.setParameter (params::reverse, 0.375f);
             data.setParameter (params::shimmer, 0.625f);
             data.setParameter (params::randomMode, 1.0f);
+            data.setParameter (params::voiceMode, 2.0f);
+            data.setParameter (params::notePriority, 1.0f);
+            data.setParameter (params::glideMs, 125.0f);
+            data.setParameter (params::toneFilterOn, 1.0f);
+            data.setParameter (params::toneHpHz, 120.0f);
+            data.setParameter (params::toneLpHz, 9000.0f);
+            data.setParameter (params::spaceWidth, 1.5f);
 
             return data;
         }

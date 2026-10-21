@@ -110,6 +110,25 @@ namespace texture
                     && numeric >= 0.0
                     && numeric < static_cast<double> (params::numDivisions);
 
+            if (id == params::voiceMode || id == params::notePriority)
+                return juce::exactlyEqual (numeric, std::floor (numeric))
+                    && numeric >= 0.0 && numeric <= (id == params::voiceMode ? 2.0 : 2.0);
+
+            if (id == params::toneFilterOn)
+                return juce::exactlyEqual (numeric, 0.0) || juce::exactlyEqual (numeric, 1.0);
+
+            if (id == params::toneHpHz)
+                return inRange (params::toneHpMinHz, params::toneHpMaxHz);
+
+            if (id == params::toneLpHz)
+                return inRange (params::toneLpMinHz, params::toneLpMaxHz);
+
+            if (id == params::spaceWidth)
+                return inRange (params::widthMin, params::widthMax);
+
+            if (id == params::glideMs)
+                return inRange (params::glideMinMs, params::glideMaxMs);
+
             if (id == params::randomMode)
                 return juce::exactlyEqual (numeric, std::floor (numeric))
                     && numeric >= 0.0 && numeric <= 2.0;

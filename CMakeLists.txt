@@ -124,6 +124,9 @@ set(TEXTURE_SOURCES
 
     Source/Engine/GranularEngine.cpp
     Source/Engine/GranularEngine.h
+    Source/Engine/MonoNoteStack.cpp
+    Source/Engine/MonoNoteStack.h
+    Source/Engine/GlideEnvelope.h
     Source/Engine/Grain.cpp
     Source/Engine/Grain.h
     Source/Engine/SampleBuffer.cpp
@@ -131,6 +134,9 @@ set(TEXTURE_SOURCES
     Source/Engine/Voice.cpp
     Source/Engine/Voice.h
 
+    Source/Effects/ToneFilter.cpp
+    Source/Effects/ToneFilter.h
+    Source/Effects/StereoWidth.h
     Source/Effects/Chorus.cpp
     Source/Effects/Chorus.h
     Source/Effects/EffectsChain.cpp
