@@ -83,11 +83,6 @@ jobs:
       - name: Test
         run: ctest --test-dir build/${{ matrix.preset }} -C Release --output-on-failure
 
-      - name: List VST3 bundle contents (diagnostic)
-        if: runner.os == 'Windows' && always()
-        shell: pwsh
-        run: Get-ChildItem -Recurse -Force -Path build/${{ matrix.preset }} -Filter *.vst3 | ForEach-Object { $_.FullName + ' ' + $_.Attributes }; Get-ChildItem -Recurse -Force -File -Path build/${{ matrix.preset }}/Texture_artefacts -ErrorAction SilentlyContinue | Where-Object { $_.FullName -like '*vst3*' } | ForEach-Object { $_.FullName + ' ' + $_.Length }
-
       - name: Upload artefacts
         if: always()
         uses: actions/upload-artifact@v4

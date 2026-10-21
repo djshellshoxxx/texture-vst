@@ -15,10 +15,17 @@ find_one() {
     [[ -n "$result" ]] || fail "could not find $name under $root"
     printf '%s\n' "$result"
 }
+# Multi-config generators (MSVC) leave empty skeleton bundles for every
+# configuration; prefer a non-empty Release bundle, then any non-empty one.
 find_bundle() {
-    local root="$1" name="$2" result
-    result="$(find "$root" -type d -name "$name" -print -quit)"
-    [[ -n "$result" ]] || fail "could not find $name under $root"
+    local root="$1" name="$2" result="" candidate
+    while IFS= read -r candidate; do
+        if [[ -n "$(find "$candidate" -type f ! -name desktop.ini ! -name Plugin.ico -print -quit)" ]]; then
+            result="$candidate"
+            break
+        fi
+    done < <(find "$root" -type d -name "$name" -print | awk '/\/Release\// {print "0 " $0; next} {print "1 " $0}' | sort -s -k1,1 | cut -d' ' -f2-)
+    [[ -n "$result" ]] || fail "could not find a non-empty $name under $root"
     printf '%s\n' "$result"
 }
 
