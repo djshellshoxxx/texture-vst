@@ -6,13 +6,30 @@
 #pragma once
 
 #include "Effects/EffectsChain.h"
+#include "Effects/ToneSpace.h"
+#include "Engine/GrainRenderController.h"
+#include "Engine/GrainTargetResolver.h"
+#include "Engine/MonoNoteStack.h"
+#include "Engine/SamplePositionController.h"
+#include "Modulation/CurveMailbox.h"
+#include "Modulation/HeldNoteCounter.h"
+#include "Modulation/ModulationCurve.h"
 #include "Engine/GranularEngine.h"
 #include "IO/FactoryContent.h"
+#include "IO/ExportController.h"
+#include "IO/MediaStore.h"
+#include "IO/RenderedAudioCache.h"
+#include "IO/PortableMediaWorker.h"
 #include "IO/SampleLoader.h"
 #include "IO/WavExporter.h"
 #include "License/LicenseManager.h"
 #include "Modulation/MorphLFO.h"
+#include "Presets/LockPolicy.h"
+#include "Presets/MutationPlanner.h"
 #include "Presets/PresetManager.h"
+#include "Presets/SoundSnapshot.h"
+#include "Presets/VariationHistory.h"
+#include "Presets/VariationPreview.h"
 #include "Utility/AtomicHelpers.h"
 #include "Utility/Logging.h"
 #include "Utility/MidiLearn.h"
@@ -23,6 +40,7 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace texture
@@ -64,6 +82,14 @@ namespace texture
 
             /** The current preset name or the Pro/Free state changed. */
             virtual void pluginStateChanged() {}
+
+            /** A preset's sample could not be found. The hash is empty when the preset
+                predates sound bundles (F05). */
+            virtual void sampleMissing (int layerIndex, const juce::String& expectedSha256,
+                                        const juce::String& fileName)
+            {
+                juce::ignoreUnused (layerIndex, expectedSha256, fileName);
+            }
         };
 
         TextureAudioProcessor();
@@ -184,15 +210,188 @@ namespace texture
         void markPresetDirty();
         bool isPresetDirty() const noexcept { return presetDirty; }
 
+        /** Everything a sound bundle needs, captured on the message thread. */
+        struct BundleSource
+        {
+            PresetManager::PresetData preset;
+            std::array<juce::File, numLayers> files;
+        };
+
+        BundleSource captureBundleSource (const juce::String& name,
+                                          const juce::String& category,
+                                          const juce::StringArray& tags) const;
+
+        /** Points a layer at a file the user chose to replace a missing sample (F05).
+            Loads asynchronously; the preset is marked dirty because its path changes. */
+        void relinkLayer (int layerIndex, const juce::File& file);
+
+        /** The patch as the offline renderer will hear it, copied on the message thread (F06). */
+        std::shared_ptr<const PatchSnapshot> captureExportSnapshot() const;
+
+        ExportController& getExportController() noexcept { return exportController; }
+
+        /** Starts a render. `forDrag` makes the finished file the drag tile's render. The
+            processor owns that bookkeeping, so it completes even when no window is open. */
+        bool startExportJob (ExportController::Request request, bool forDrag);
+
+        /** Collects a finished render and updates the drag tile. Message thread only. */
+        bool collectFinishedExport (WavExporter::Result& result);
+
+        /** The last collected render result, and a counter that changes with each one. */
+        const WavExporter::Result& getLastExportResult() const noexcept { return lastExportResult; }
+        int getExportSerial() const noexcept { return exportSerial; }
+
+        /** A finished render kept for the drag tile (F15). The file is complete and named. */
+        struct RenderedAudio
+        {
+            juce::File file;
+            juce::String name;
+            double lengthSeconds { 0.0 };
+            double sampleRate { 48000.0 };
+            int bitDepth { 24 };
+            juce::int64 bytes { 0 };
+            std::vector<float> peaks;
+        };
+
+        const RenderedAudio* getLastRenderedAudio() const noexcept { return lastRender.has_value() ? &*lastRender : nullptr; }
+
+        RenderedAudioCache& getRenderedAudioCache() noexcept { return renderedAudioCache; }
+
+        /** The user's persistent render folder, or the default when none is chosen. */
+        juce::File getRenderedAudioDirectory();
+
+        /** Saves the choice in user settings. Refused while a render is running, because a
+            job may be writing into the current folder. */
+        bool setRenderedAudioDirectory (const juce::File& directory);
+        PortableMediaWorker& getPortableMediaWorker() noexcept { return portableMediaWorker; }
+        MediaStore& getMediaStore() noexcept { return mediaStore; }
+        juce::File getPortableStagingDirectory() const;
+
         // --- Bulk parameter actions ------------------------------------------
         /** Restores every parameter to its documented default. */
         void resetToDefaults();
 
-        /** Randomises every parameter into a musically sensible range. */
+        /** Randomises every parameter into a musically sensible range. Locked
+            parameters are left exactly as they are (F02). */
         void randomiseParameters();
+
+        // --- Editing locks and Gentle Mutate (F02, F03) -----------------------
+        // Locks are per-instance host state. They are read only by Randomize and
+        // Gentle Mutate; reset, automation, MIDI, project restore and undo ignore
+        // them. Message thread only: the audio thread never reads them.
+
+        bool isFieldLocked (const juce::String& parameterID) const;
+        void setFieldLocked (const juce::String& parameterID, bool shouldLock);
+        void setGroupLocked (LockGroup group, bool shouldLock);
+        LockPolicy::GroupState getGroupLockState (LockGroup group) const;
+        int getLockedFieldCount() const;
+        void unlockAllFields();
+        bool canUndoLockChange() const { return lockHistory.canUndo(); }
+        bool undoLockChange();
+
+        /** Gentle Mutate settings. Session-only: they are a tool setting, not sound. */
+        struct MutateOptions
+        {
+            float strength { 0.15f };
+            std::uint32_t groupMask { MutationPlanner::groupBit (LockGroup::grain)
+                                    | MutationPlanner::groupBit (LockGroup::motion) };
+            bool allowCategorical { false };
+        };
+
+        MutateOptions getMutateOptions() const { return mutateOptions; }
+        void setMutateOptions (const MutateOptions& options);
+
+        struct MutateResult
+        {
+            PlanStatus status { PlanStatus::noOp };
+            int changed { 0 };
+            int locked { 0 };
+            juce::String message;
+        };
+
+        /** One Mutate press: one validated change set, one undo transaction. */
+        MutateResult mutateParameters();
+
+        /** The MORPH-derived effect values in force on the last block: 0 drive, 1 chorus
+            depth, 2 reverb send, 3 shelf tilt in dB. For "Start from current sound". */
+        float getFollowMorphValueForGui (int index) const noexcept;
+        /** Switches to Independent and copies the current MORPH-derived values into the
+            independent controls, so the sound does not jump. One undo step. Message thread. */
+        void startIndependentFromCurrentSound();
+
+        // --- Grain controls (F13) ---------------------------------------------
+        /** The grain values and Follow flags as the parameters hold them. Message thread. */
+        GrainControlSettings getGrainControlSettings() const;
+
+        /** The effective value of a grain field in the last rendered block. Before the first
+            block, the value is computed from the current MORPH setting. Message thread. */
+        float getGrainEffectiveValue (GrainField field) const;
+
+        /** The F16 personality style index and intensity as the parameters hold them. Message thread. */
+        int getPersonalityStyle() const noexcept
+        {
+            return personalityParameters.style != nullptr
+                       ? juce::roundToInt (personalityParameters.style->load (std::memory_order_relaxed))
+                       : params::personalityDefault;
+        }
+
+        /** The F19 rhythmic grain settings as the parameters hold them. Message thread. */
+        RhythmSettings getRhythmSettings() const noexcept { return readRhythmSettings(); }
+
+        /** Tempo the grid is using: the host's, or the last valid one (120 BPM at start). Read from
+            the atomic host tempo, which the audio thread writes only when the host sends a valid one,
+            so the message thread never touches the clock's own state. */
+        double getRhythmTempoForGui() const noexcept { return lastHostBpm.load (std::memory_order_relaxed); }
+
+        /** True when the last block asked for more grains than a voice can hold. */
+        bool isGrainOversubscribed() const noexcept { return grainOversubscribedFlag.load (std::memory_order_relaxed); }
+
+        // --- Freeze and scan (F10) --------------------------------------------
+        /** The scan and freeze settings a layer renders with, read from the parameters. */
+        ScanSettings getScanSettings (int layerIndex) const;
+
+        // --- Modulation shapes (F14) -----------------------------------------
+        /** The user curve for the MORPH LFO's Curve shape. Message thread. */
+        ModulationCurve getModulationCurve() const { return lfoCurve; }
+
+        /** Replaces the curve as one undo step. A curve the rules refuse changes nothing and
+            returns false. A dragged edit should call this once, on release. */
+        bool setModulationCurve (const ModulationCurve& curve, const juce::String& undoName);
+
+        /** Turns Follow on or off for one grain field as one undo step. Turning it off copies
+            the effective value into the manual control first, so the sound does not jump. */
+        void setGrainFollow (GrainField field, bool shouldFollow);
 
         /** Deletes preferences, mappings, license and cached presets. Destructive. */
         void hardResetAllSettings();
+
+        // --- Variation history (F09) ------------------------------------------
+        // Session-local: not saved with the host state or presets, and cleared by a
+        // project restore. Message thread only. Previews are ordinary undo steps, so
+        // undo and redo always see the sound the user heard.
+
+        using VariationList = VariationHistory<SoundSnapshot>;
+
+        /** Cap on sample audio the history may keep alive, counting each buffer once. */
+        static constexpr std::size_t variationMediaBudgetBytes = 256u * 1024u * 1024u;
+
+        const VariationList& getVariations() const noexcept { return variations; }
+        std::uint64_t getVariationRevision() const noexcept { return variations.revision(); }
+        std::size_t getRetainedMediaBytes() const;
+        bool isPreviewingVariation() const noexcept { return variationPreview.isActive(); }
+        std::size_t getPreviewingVariationIndex() const noexcept { return variationPreview.getActiveIndex(); }
+
+        /** Records the sound as it is now, after a successful Randomize or Mutate. */
+        void recordVariation (const juce::String& operation);
+
+        /** Previous and Next walk the history and preview the entry they land on. */
+        bool previousVariation();
+        bool nextVariation();
+        void previewVariation (std::size_t index);
+        void acceptVariation();
+        void cancelVariation();
+        bool setVariationPinned (std::size_t index, bool shouldPin);
+        void clearVariations();
 
         // --- A/B compare ------------------------------------------------------
         void storeCompareSlot (int slotIndex);
@@ -312,11 +511,30 @@ namespace texture
         void onSampleLoaded (const SampleLoader::LoadResult& result, int layerIndex);
         void reloadSamplesForNewSampleRate();
         void notifyListeners (void (Listener::*callback)(int), int argument);
+        void notifySampleMissing (int layerIndex, const juce::String& expectedSha256, const juce::String& fileName);
         void notifyPluginStateChanged();
         float getParameterValue (const juce::String& id, float fallback) const;
         void setParameterValue (const juce::String& id, float value);
         juce::ValueTree captureParameterTree() const;
         void applyParameterTree (const juce::ValueTree& tree);
+        std::vector<MutationField> buildMutationFields() const;
+
+        // --- Variation history (F09) ------------------------------------------
+        SoundSnapshot captureSoundSnapshot() const;
+
+        /** Applies a complete sound. Refused as a whole if any value is out of range, the
+            same rule preset loading uses. Message thread only. */
+        bool applySoundSnapshot (const SoundSnapshot& snapshot);
+
+        class SoundSnapshotAction;
+        class ModulationCurveAction;
+        struct VariationPreviewHost;
+        friend class SoundSnapshotAction;
+        friend class ModulationCurveAction;
+        friend struct VariationPreviewHost;
+
+        VariationList variations;
+        VariationPreview<SoundSnapshot> variationPreview;
 
         /** Configures the properties file before any service reads from it.
 
@@ -338,6 +556,25 @@ namespace texture
         juce::AudioProcessorValueTreeState apvts;
         LicenseManager licenseManager;
         PresetManager presetManager;
+        // Declared after presetManager so it is destroyed first: queued jobs finish
+        // while the preset manager they read from is still alive.
+        PortableMediaWorker portableMediaWorker;
+        MediaStore mediaStore { MediaStore::defaultDirectory() };
+        // Declared before the export controller, so any render job is joined before the
+        // cache it finalises into is destroyed.
+        RenderedAudioCache renderedAudioCache { RenderedAudioCache::defaultDirectory() };
+        ExportController exportController;
+        std::optional<RenderedAudio> lastRender;
+
+        struct DragRender
+        {
+            double sampleRate { 48000.0 };
+            int bitDepth { 24 };
+        };
+
+        std::optional<DragRender> dragRender;
+        WavExporter::Result lastExportResult;
+        int exportSerial { 0 };
         MidiLearn midiLearn;
         SampleLoader sampleLoader;
         std::array<std::atomic<bool>, numLayers> sampleLoadMarksDirty {};
@@ -383,8 +620,146 @@ namespace texture
         std::atomic<float>* reverseParameter { nullptr };
         std::atomic<float>* shimmerParameter { nullptr };
         std::atomic<float>* randomModeParameter { nullptr };
+        std::array<std::atomic<float>, 4> followMorphValues {};
+
+        /** F07 tone and space controls, cached like every other parameter. */
+        struct ToneSpaceParameters
+        {
+            std::atomic<float>* mode { nullptr };
+            std::atomic<float>* hp { nullptr };
+            std::atomic<float>* lp { nullptr };
+            std::atomic<float>* filterOn { nullptr };
+            std::atomic<float>* tilt { nullptr };
+            std::atomic<float>* width { nullptr };
+            std::atomic<float>* reverb { nullptr };
+            std::atomic<float>* chorus { nullptr };
+            std::atomic<float>* drive { nullptr };
+        } toneSpaceParameters;
+
+        /** Reads the F07 parameters into the DSP settings struct. Audio thread. */
+        ToneSpaceSettings readToneSpaceSettings() const noexcept;
+
+        /** F11 voice and glide parameters, cached like every other parameter. */
+        struct PerformanceParameters
+        {
+            std::atomic<float>* voiceMode { nullptr };
+            std::atomic<float>* priority { nullptr };
+            std::atomic<float>* glideMs { nullptr };
+            std::atomic<float>* glideMode { nullptr };
+        } performanceParameters;
+
+        /** Reads the F13 parameters. Audio thread. */
+        GrainControlSettings readGrainSettings() const noexcept;
+
+        /** F19 rhythmic grain parameters, cached like every other parameter. */
+        struct RhythmParameters
+        {
+            std::atomic<float>* clock { nullptr };
+            std::atomic<float>* division { nullptr };
+            std::atomic<float>* swing { nullptr };
+            std::atomic<float>* probability { nullptr };
+            std::atomic<float>* gate { nullptr };
+            std::atomic<float>* burst { nullptr };
+            std::atomic<float>* firstImmediate { nullptr };
+        } rhythmParameters;
+
+        /** Reads the F19 parameters. Audio thread. */
+        RhythmSettings readRhythmSettings() const noexcept;
+
+        /** F16 personality parameters, cached like every other parameter. */
+        struct PersonalityParameters
+        {
+            std::atomic<float>* style { nullptr };
+            std::atomic<float>* intensity { nullptr };
+        } personalityParameters;
+
+        /** F17 attack-to-cloud parameters, cached like every other parameter. */
+        struct AttackCloudParameters
+        {
+            std::atomic<float>* on { nullptr };
+            std::atomic<float>* hold { nullptr };
+            std::atomic<float>* transition { nullptr };
+            std::atomic<float>* original { nullptr };
+        } attackCloudParameters;
+
+        /** Reads the F17 parameters. Audio thread. */
+        AttackCloudSettings readAttackCloudSettings() const noexcept;
+
+        /** Reads the grain-level inputs for one block: rhythm, personality and MORPH. Audio thread. */
+        GrainRenderInputs readGrainRenderInputs (float morph) const noexcept;
+
+        /** Per-block composition of the grain features (F19). Audio thread only. */
+        GrainRenderController renderController;
+
+        /** F10 scan and freeze parameters for one layer, cached like every other parameter. */
+        struct ScanParameters
+        {
+            std::atomic<float>* mode { nullptr };
+            std::atomic<float>* position { nullptr };
+            std::atomic<float>* speed { nullptr };
+            std::atomic<float>* freeze { nullptr };
+            std::atomic<float>* spread { nullptr };
+        };
+
+        std::array<ScanParameters, numLayers> scanParameters {};
+
+        /** Reads one layer's scan settings. Audio thread. */
+        ScanSettings readScanSettings (int layerIndex) const noexcept;
+
+        /** F14 modulation parameters, cached like every other parameter. */
+        struct ModulationParameters
+        {
+            std::atomic<float>* shape { nullptr };
+            std::atomic<float>* retrigger { nullptr };
+            std::atomic<float>* phase { nullptr };
+            std::atomic<float>* slewMs { nullptr };
+        } modulationParameters;
+
+        /** The curve as the message thread last set it, which undo restores, and the
+            mailbox that carries it to the audio thread. The audio thread's own copy is
+            touched by nothing else. */
+        ModulationCurve lfoCurve;
+        CurveMailbox lfoCurveMailbox;
+        ModulationCurve lfoCurveAudio;
+
+        /** Keys held across all channels, for First note retrigger. Audio thread only. */
+        HeldNoteCounter heldNotes;
+
+        /** Host tempo for the offline renderer's Host retrigger. Written each block. */
+        std::atomic<double> lastHostBpm { 120.0 };
+
+        /** Applies a curve without an undo step: undo, redo and A/B recall use it. */
+        bool applyModulationCurve (const ModulationCurve& curve);
+
+        /** Reads the F11 parameters into a validated mono configuration. Audio thread. */
+        MonoConfig readPerformanceSettings() const noexcept;
+
+        /** F13 grain values and Follow flags, cached like every other parameter. */
+        struct GrainParameters
+        {
+            std::array<std::atomic<float>*, numGrainFields> values {};
+            std::array<std::atomic<float>*, numGrainFields> follow {};
+        } grainParameters;
+
+        /** Resolves Follow and manual grain values once per block. Audio thread only. */
+        GrainTargetResolver grainResolver;
+
+        /** Effective grain values of the last rendered block, for the panel's readouts. */
+        std::array<std::atomic<float>, numGrainFields> grainEffective {};
+        std::atomic<bool> grainEffectivePublished { false };
+        std::atomic<bool> grainOversubscribedFlag { false };
         std::atomic<std::uint64_t> randomSeed { VersionedRandomStreams::defaultSeed };
         std::atomic<bool> randomEvolutionResetRequested { false };
+
+        /** Bumped by every parameter notification. Gentle Mutate compares it between
+            planning and writing so a concurrent edit is rejected, not overwritten. */
+        std::atomic<std::uint64_t> parameterRevision { 0 };
+
+        // Editing locks and Gentle Mutate state (message thread only).
+        LockPolicy::LockSet editLocks;
+        LockHistory lockHistory;
+        MutateOptions mutateOptions;
+        std::uint64_t mutationOperationCount { 0 };
 
         // --- Host state -------------------------------------------------------
         double currentSampleRate { 44100.0 };
@@ -408,6 +783,7 @@ namespace texture
 
         // --- A/B --------------------------------------------------------------
         std::array<juce::ValueTree, numCompareSlots> compareSlots;
+        std::array<ModulationCurve, numCompareSlots> compareCurves;
         int activeCompareSlot { 0 };
 
         // --- Metering ---------------------------------------------------------

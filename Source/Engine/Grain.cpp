@@ -55,6 +55,13 @@ namespace texture
         active = true;
     }
 
+    void Grain::setPlaybackRatio (float playbackRatio) noexcept
+    {
+        // A reversed grain has a negative increment; the magnitude is the ratio.
+        const auto direction = increment < 0.0 ? -1.0 : 1.0;
+        increment = direction * static_cast<double> (juce::jmax (0.0001f, playbackRatio));
+    }
+
     float Grain::getProgress() const noexcept
     {
         if (! active || totalDuration <= 0)

@@ -124,12 +124,24 @@ set(TEXTURE_SOURCES
 
     Source/Engine/GranularEngine.cpp
     Source/Engine/GranularEngine.h
+    Source/Engine/MonoNoteStack.cpp
+    Source/Engine/MonoNoteStack.h
     Source/Engine/Grain.cpp
     Source/Engine/Grain.h
     Source/Engine/SampleBuffer.cpp
     Source/Engine/SampleBuffer.h
     Source/Engine/Voice.cpp
     Source/Engine/Voice.h
+    Source/Engine/GrainTargetResolver.cpp
+    Source/Engine/GrainTargetResolver.h
+    Source/Engine/SamplePositionController.cpp
+    Source/Engine/SamplePositionController.h
+    Source/Engine/AuditionChords.h
+    Source/Engine/GrainClock.cpp
+    Source/Engine/GrainClock.h
+    Source/Engine/GrainRenderController.cpp
+    Source/Engine/GrainRenderController.h
+    Source/Engine/AttackCloud.h
 
     Source/Effects/Chorus.cpp
     Source/Effects/Chorus.h
@@ -141,11 +153,24 @@ set(TEXTURE_SOURCES
     Source/Effects/Saturator.h
     Source/Effects/SecretEffect.cpp
     Source/Effects/SecretEffect.h
+    Source/Effects/Biquad.h
+    Source/Effects/ToneSpace.cpp
+    Source/Effects/ToneSpace.h
 
     Source/Modulation/EnvelopeADSR.cpp
     Source/Modulation/EnvelopeADSR.h
     Source/Modulation/MorphLFO.cpp
     Source/Modulation/MorphLFO.h
+    Source/Modulation/ModulationCurve.cpp
+    Source/Modulation/ModulationCurve.h
+    Source/Modulation/CurveMailbox.h
+    Source/Modulation/ModulationOscillator.cpp
+    Source/Modulation/ModulationOscillator.h
+    Source/Modulation/PersonalityMap.cpp
+    Source/Modulation/PersonalityMap.h
+    Source/Modulation/HeldNoteCounter.h
+    Source/Modulation/CurveEdit.h
+    Source/Modulation/CurveMailbox.h
 
     Source/IO/FactoryContent.cpp
     Source/IO/FactoryContent.h
@@ -155,11 +180,37 @@ set(TEXTURE_SOURCES
     Source/IO/WavExporter.h
     Source/IO/OfflineRenderTimeline.h
     Source/IO/OfflinePatchMath.h
+    Source/IO/AtomicFileWriter.cpp
+    Source/IO/AtomicFileWriter.h
+    Source/IO/BundleArchive.cpp
+    Source/IO/BundleArchive.h
+    Source/IO/BundleImportPlanner.cpp
+    Source/IO/BundleImportPlanner.h
+    Source/IO/MediaManifest.cpp
+    Source/IO/MediaManifest.h
+    Source/IO/MediaRelinker.cpp
+    Source/IO/MediaRelinker.h
+    Source/IO/MediaStore.cpp
+    Source/IO/MediaStore.h
+    Source/IO/PortableMediaWorker.cpp
+    Source/IO/PortableMediaWorker.h
+    Source/IO/ExportPlanner.cpp
+    Source/IO/ExportPlanner.h
+    Source/IO/ExportJob.cpp
+    Source/IO/ExportJob.h
+    Source/IO/ExportController.cpp
+    Source/IO/ExportController.h
+    Source/IO/RenderedAudioCache.cpp
+    Source/IO/RenderedAudioCache.h
 
     Source/Presets/PresetManager.cpp
     Source/Presets/PresetManager.h
     Source/Presets/PresetBrowser.cpp
     Source/Presets/PresetBrowser.h
+    Source/Presets/LockPolicy.cpp
+    Source/Presets/LockPolicy.h
+    Source/Presets/MutationPlanner.cpp
+    Source/Presets/MutationPlanner.h
 
     Source/License/LicenseManager.cpp
     Source/License/LicenseManager.h
@@ -169,11 +220,19 @@ set(TEXTURE_SOURCES
     Source/GUI/DebugWindow.h
     Source/GUI/DropZone.cpp
     Source/GUI/DropZone.h
+    Source/GUI/EditToolsPanel.cpp
+    Source/GUI/EditToolsPanel.h
     Source/GUI/HelpPanel.cpp
     Source/GUI/HelpPanel.h
     Source/GUI/LookAndFeel.cpp
     Source/GUI/LookAndFeel.h
     Source/GUI/MainPanel.cpp
+    Source/GUI/PortableMediaDialogs.cpp
+    Source/GUI/PortableMediaDialogs.h
+    Source/GUI/ExportDialog.cpp
+    Source/GUI/ExportDialog.h
+    Source/GUI/RenderedAudioTile.cpp
+    Source/GUI/RenderedAudioTile.h
     Source/GUI/MainPanel.h
     Source/GUI/MorphKnob.cpp
     Source/GUI/MorphKnob.h
@@ -181,6 +240,22 @@ set(TEXTURE_SOURCES
     Source/GUI/SecretPanel.h
     Source/GUI/SettingsPanel.cpp
     Source/GUI/SettingsPanel.h
+    Source/GUI/SoundControlsPanel.cpp
+    Source/GUI/SoundControlsPanel.h
+    Source/GUI/GrainControlsPanel.cpp
+    Source/GUI/GrainControlsPanel.h
+    Source/GUI/RhythmControlsPanel.cpp
+    Source/GUI/RhythmControlsPanel.h
+    Source/GUI/PersonalityControlsPanel.cpp
+    Source/GUI/PersonalityControlsPanel.h
+    Source/GUI/AttackCloudControlsPanel.cpp
+    Source/GUI/AttackCloudControlsPanel.h
+    Source/GUI/CurveEditor.cpp
+    Source/GUI/CurveEditor.h
+    Source/GUI/ModulationPanel.cpp
+    Source/GUI/ModulationPanel.h
+    Source/GUI/ScanPanel.cpp
+    Source/GUI/ScanPanel.h
     Source/GUI/WaveformDisplay.cpp
     Source/GUI/WaveformDisplay.h
     Source/GUI/Widgets.cpp

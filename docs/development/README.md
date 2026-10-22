@@ -2,7 +2,7 @@
 
 26 feature specifications plus shared contracts and delivery guidance. Created 2026-10-20 from repository review at `38d9aec4556fc3b6594fe53888ea15d36698e43e`.
 
-**Status: F01, F04 core, and F12 are implemented in the current development branch.** Their automated checks are included in the test suite; manual DAW and standalone validation remains in `../MANUAL_TEST_PLAN.md`. F04's optional layer-linking preference and note-detection worker remain deferred. The other 23 specifications remain proposals. F24 is explicitly research-gated; implementation must satisfy its prototype criteria before product integration.
+**Status: F01, F02, F03, F04 core, F05 core, F06 core, F07 core, F13 core, F14 core, F10 core, F15 core, F09 core, F11 core, F12, F16 core, F17 core and F19 core are implemented in the current development branch.** Their automated checks are included in the test suite; manual DAW and standalone validation remains in `../MANUAL_TEST_PLAN.md`. F02 covers Randomize and Gentle Mutate; preset-browse locking and media locks are deferred. F04's optional layer-linking preference and note-detection worker remain deferred. The other 22 specifications remain proposals. F24 is explicitly research-gated; implementation must satisfy its prototype criteria before product integration.
 
 ## Start here
 1. Read [Shared contracts](00_SHARED_CONTRACTS.md) for parameter precedence, backward compatibility, bounded DSP, state ownership and release gates.
@@ -17,24 +17,24 @@ Every recommendation from the preceding feature review has exactly one specifica
 | ID | Feature specification | Benefit | Effort | Phase |
 |---|---|---|---|---|
 | F01 | [Audition button and Hold](F01_AUDITION_HOLD.md) | Usability | Easy–medium | Implemented |
-| F02 | [Parameter locks](F02_PARAMETER_LOCKS.md) | Usability | Easy–medium | 1 |
-| F03 | [Gentle Mutate](F03_GENTLE_MUTATE.md) | Exploration | Easy–medium | 1 |
+| F02 | [Parameter locks](F02_PARAMETER_LOCKS.md) | Usability | Easy–medium | Core implemented |
+| F03 | [Gentle Mutate](F03_GENTLE_MUTATE.md) | Exploration | Easy–medium | Implemented |
 | F04 | [Fine tuning and source-note controls](F04_FINE_TUNING_SOURCE_NOTE.md) | Musical accuracy | Medium | Core implemented |
-| F05 | [Portable sample bundles and relinking](F05_PORTABLE_MEDIA.md) | Portability | Medium | 2 |
-| F06 | [Configurable background WAV export](F06_BACKGROUND_EXPORT.md) | Export | Medium | 2 |
-| F07 | [Independent tone and space controls](F07_TONE_SPACE.md) | Mix control | Medium | 2 |
+| F05 | [Portable sample bundles and relinking](F05_PORTABLE_MEDIA.md) | Portability | Medium | Core implemented |
+| F06 | [Configurable background WAV export](F06_BACKGROUND_EXPORT.md) | Export | Medium | Core implemented |
+| F07 | [Independent tone and space controls](F07_TONE_SPACE.md) | Mix control | Medium | Core implemented |
 | F08 | [Curated factory library](F08_CURATED_LIBRARY.md) | Content | Easy engineering; substantial sound design | 2 |
-| F09 | [Variation history](F09_VARIATION_HISTORY.md) | Exploration | Medium | 2 |
-| F10 | [Freeze and scan](F10_FREEZE_SCAN.md) | Sound design | Medium | 3 |
-| F11 | [Mono, legato and glide](F11_MONO_LEGATO_GLIDE.md) | Performance | Medium | 2 |
+| F09 | [Variation history](F09_VARIATION_HISTORY.md) | Exploration | Medium | Core implemented |
+| F10 | [Freeze and scan](F10_FREEZE_SCAN.md) | Sound design | Medium | Core implemented |
+| F11 | [Mono, legato and glide](F11_MONO_LEGATO_GLIDE.md) | Performance | Medium | Core implemented |
 | F12 | [Saved seed variation](F12_SAVED_SEED.md) | Reproducibility | Medium | Implemented |
-| F13 | [Expandable grain controls](F13_GRAIN_PANEL.md) | Sound design | Medium | 3 |
-| F14 | [Additional modulation shapes](F14_MODULATION_SHAPES.md) | Modulation | Medium | 3 |
-| F15 | [Drag rendered audio to the DAW](F15_DRAG_AUDIO.md) | Workflow | Medium | 2 |
-| F16 | [MORPH personalities](F16_MORPH_PERSONALITIES.md) | Product identity | Medium | 3 |
-| F17 | [Attack-to-cloud](F17_ATTACK_TO_CLOUD.md) | Product identity | Medium–hard | 3 |
+| F13 | [Expandable grain controls](F13_GRAIN_PANEL.md) | Sound design | Medium | Core implemented |
+| F14 | [Additional modulation shapes](F14_MODULATION_SHAPES.md) | Modulation | Medium | Core implemented |
+| F15 | [Drag rendered audio to the DAW](F15_DRAG_AUDIO.md) | Workflow | Medium | Core implemented |
+| F16 | [MORPH personalities](F16_MORPH_PERSONALITIES.md) | Product identity | Medium | Core implemented |
+| F17 | [Attack-to-cloud](F17_ATTACK_TO_CLOUD.md) | Product identity | Medium–hard | Core implemented |
 | F18 | [Sample journeys](F18_SAMPLE_JOURNEYS.md) | Movement | Medium–hard | 3 |
-| F19 | [Rhythmic grain mode](F19_RHYTHMIC_GRAINS.md) | Rhythm | Medium–hard | 3 |
+| F19 | [Rhythmic grain mode](F19_RHYTHMIC_GRAINS.md) | Rhythm | Medium–hard | Core implemented |
 | F20 | [Texture family generator](F20_TEXTURE_FAMILY.md) | Exploration | Medium–hard | 3 |
 | F21 | [Morph between sound snapshots](F21_SNAPSHOT_MORPH.md) | Performance | Hard | 4 |
 | F22 | [Live audio capture](F22_LIVE_CAPTURE.md) | Capture | Hard | 4 |

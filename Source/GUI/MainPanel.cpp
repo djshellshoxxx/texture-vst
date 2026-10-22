@@ -1,4 +1,5 @@
 #include "MainPanel.h"
+#include "ExportDialog.h"
 
 #include "../PluginProcessor.h"
 
@@ -75,6 +76,10 @@ namespace texture
         removeMouseListener (&undoGestureListener);
         processor.removeListener (this);
         debugWindow.reset();
+
+        // A render keeps running in the processor; only the window goes.
+        if (exportDialogWindow != nullptr)
+            delete exportDialogWindow.getComponent();
     }
 
     // =========================================================================
@@ -125,6 +130,12 @@ namespace texture
 
         randomiseButton.onClick = [this] { processor.randomiseParameters(); };
         addAndMakeVisible (randomiseButton);
+
+        lockButton.onClick = [this] { openEditTools(); };
+        addAndMakeVisible (lockButton);
+
+        soundButton.onClick = [this] { openSoundControls(); };
+        addAndMakeVisible (soundButton);
 
         resetButton.onClick = [this] { processor.resetToDefaults(); };
         addAndMakeVisible (resetButton);
@@ -339,6 +350,27 @@ namespace texture
         helpPanel->onOpenDebugWindow = [this] { openDebugWindow(); };
         addChildComponent (*helpPanel);
 
+        editToolsPanel = std::make_unique<EditToolsPanel> (processor);
+        editToolsPanel->onClose = [this] { editToolsPanel->setVisible (false); };
+        addChildComponent (*editToolsPanel);
+
+        soundPanel = std::make_unique<SoundControlsPanel> (processor);
+        soundPanel->onClose = [this] { soundPanel->setVisible (false); };
+        soundPanel->onStarVariation = [this] (std::size_t index)
+        {
+            // Star exports a normal preset: preview the variation, then use the Save dialog.
+            processor.previewVariation (index);
+            saveCurrentPreset (true);
+        };
+        addChildComponent (*soundPanel);
+
+        envelopeHeader.onMenuRequested = [this] { showGroupLockMenu (LockGroup::envelope, envelopeHeader); };
+        grainHeader.onMenuRequested = [this] { showGroupLockMenu (LockGroup::grain, grainHeader); };
+        lfoHeader.onMenuRequested = [this] { showGroupLockMenu (LockGroup::motion, lfoHeader); };
+        outputHeader.onMenuRequested = [this] { showGroupLockMenu (LockGroup::toneSpace, outputHeader); };
+        layerHeader.onMenuRequested = [this] { showGroupLockMenu (LockGroup::layers, layerHeader); };
+        updateLockIndicators();
+
         secretPanel = std::make_unique<SecretPanel> (processor);
         secretPanel->onClose = [this]
         {
@@ -391,6 +423,8 @@ namespace texture
         place (&compareBButton);
         place (&fileMenuButton);
         place (&randomiseButton);
+        place (&soundButton);
+        place (&lockButton);
         place (&resetButton);
         place (&helpButton);
         place (&gearButton);
@@ -433,6 +467,10 @@ namespace texture
         helpButton.setBounds (headerContent.removeFromRight (22));
         headerContent.removeFromRight (4);
         resetButton.setBounds (headerContent.removeFromRight (22));
+        headerContent.removeFromRight (4);
+        soundButton.setBounds (headerContent.removeFromRight (22));
+        headerContent.removeFromRight (4);
+        lockButton.setBounds (headerContent.removeFromRight (22));
         headerContent.removeFromRight (4);
         randomiseButton.setBounds (headerContent.removeFromRight (22));
         headerContent.removeFromRight (4);
@@ -750,6 +788,12 @@ namespace texture
             return true;
         }
 
+        if (key == juce::KeyPress ('m', juce::ModifierKeys::commandModifier, 0))
+        {
+            runGentleMutate();
+            return true;
+        }
+
         if (key == juce::KeyPress::F1Key)
         {
             openHelp();
@@ -787,6 +831,12 @@ namespace texture
         if (presetBrowser != nullptr)
             presetBrowser->setVisible (false);
 
+        if (editToolsPanel != nullptr)
+            editToolsPanel->setVisible (false);
+
+        if (soundPanel != nullptr)
+            soundPanel->setVisible (false);
+
         if (helpPanel != nullptr)
             helpPanel->setVisible (false);
 
@@ -804,6 +854,96 @@ namespace texture
         helpPanel->setBounds (getLocalBounds());
         helpPanel->setVisible (true);
         helpPanel->toFront (true);
+    }
+
+    void MainPanel::openEditTools()
+    {
+        closeOverlays();
+
+        if (editToolsPanel == nullptr)
+            return;
+
+        editToolsPanel->setBounds (getLocalBounds());
+        editToolsPanel->refresh();
+        editToolsPanel->setVisible (true);
+        editToolsPanel->toFront (true);
+        editToolsPanel->grabKeyboardFocus();
+    }
+
+    void MainPanel::openSoundControls()
+    {
+        closeOverlays();
+
+        if (soundPanel == nullptr)
+            return;
+
+        soundPanel->setBounds (getLocalBounds());
+        soundPanel->refresh();
+        soundPanel->setVisible (true);
+        soundPanel->toFront (true);
+        soundPanel->grabKeyboardFocus();
+    }
+
+    void MainPanel::runGentleMutate()
+    {
+        // Mutate reports its own result as a toast, and writes nothing when it is refused.
+        processor.mutateParameters();
+        updateLockIndicators();
+    }
+
+    void MainPanel::showGroupLockMenu (LockGroup group, juce::Component& target)
+    {
+        const auto allLocked = processor.getGroupLockState (group) == LockPolicy::GroupState::all;
+
+        juce::PopupMenu menu;
+        menu.setLookAndFeel (&getLookAndFeel());
+        menu.addItem (1, juce::String (allLocked ? "Unlock all " : "Lock all ")
+                             + LockPolicy::groupName (group));
+        menu.addItem (2, "Open edit locks and Mutate...");
+
+        juce::Component::SafePointer<MainPanel> safeThis (this);
+
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (target),
+                            [safeThis, group] (int result)
+        {
+            if (safeThis == nullptr || result == 0)
+                return;
+
+            if (result == 1)
+            {
+                const auto shouldLock = safeThis->processor.getGroupLockState (group)
+                                        != LockPolicy::GroupState::all;
+                safeThis->processor.setGroupLocked (group, shouldLock);
+                safeThis->updateLockIndicators();
+            }
+            else if (result == 2)
+            {
+                safeThis->openEditTools();
+            }
+        });
+    }
+
+    void MainPanel::updateLockIndicators()
+    {
+        const auto refresh = [this] (SectionHeader& header, LockGroup group)
+        {
+            int locked = 0;
+
+            for (const auto& field : LockPolicy::fields())
+                if (field.group == group && processor.isFieldLocked (juce::String (std::string (field.id))))
+                    ++locked;
+
+            header.setLockCount (locked, LockPolicy::countFieldsIn (group));
+        };
+
+        refresh (envelopeHeader, LockGroup::envelope);
+        refresh (grainHeader, LockGroup::grain);
+        refresh (lfoHeader, LockGroup::motion);
+        refresh (outputHeader, LockGroup::toneSpace);
+        refresh (layerHeader, LockGroup::layers);
+
+        if (auto* lockPanel = editToolsPanel.get(); lockPanel != nullptr && lockPanel->isVisible())
+            lockPanel->refresh();
     }
 
     void MainPanel::openDebugWindow()
@@ -893,6 +1033,8 @@ namespace texture
 
         menu.addSectionHeader ("Audio");
         addItem (5, processor.isPro() ? "Export audio..." : "Export audio...  (PRO)");
+        addItem (40, processor.isPro() ? "Export sound bundle..." : "Export sound bundle...  (PRO)");
+        addItem (41, "Import sound bundle...");
         menu.addSeparator();
 
         menu.addSectionHeader ("Snapshots");
@@ -910,6 +1052,7 @@ namespace texture
         addItem (15, "Undo", "Ctrl+Z", processor.getUndoManager().canUndo());
         addItem (16, "Redo", "Ctrl+Shift+Z", processor.getUndoManager().canRedo());
         addItem (8, "Randomize", "Ctrl+R");
+        addItem (17, "Gentle Mutate", "Ctrl+M");
         addItem (9, "Reset all controls");
         addItem (10, "Options...");
         menu.addSubMenu ("Interface size", sizeMenu);
@@ -938,6 +1081,13 @@ namespace texture
                 case 3:  safeThis->saveCurrentPreset (true); break;
                 case 4:  safeThis->openPresetBrowser(); break;
                 case 5:  safeThis->exportAudio(); break;
+                case 40:
+                    if (safeThis->processor.isPro())
+                        safeThis->portableMedia.exportBundle();
+                    else
+                        safeThis->showProUpsell ("Sound bundle export");
+                    break;
+                case 41: safeThis->portableMedia.importBundle(); break;
 
                 case 6:
                     safeThis->processor.copyCompareSlot (0, 1);
@@ -950,6 +1100,7 @@ namespace texture
                     break;
 
                 case 8:  safeThis->processor.randomiseParameters(); break;
+                case 17: safeThis->runGentleMutate(); break;
                 case 9:  safeThis->processor.resetToDefaults(); break;
 
                 case 10:
@@ -1183,116 +1334,29 @@ namespace texture
             return;
         }
 
-        const auto sample = processor.getSampleForLayer (0);
-
-        if (sample == nullptr || ! sample->isValid())
+        if (processor.getSampleForLayer (0) == nullptr && processor.getSampleForLayer (1) == nullptr)
         {
             processor.postToast ("Load a sample before exporting.", SampleLoader::Severity::warning);
             return;
         }
 
-        auto* window = new juce::AlertWindow ("Export audio",
-                                              "Renders a C3 hit, then a second C3 hit with a four "
-                                              "second tail, into one stereo WAV file.",
-                                              juce::MessageBoxIconType::NoIcon);
-
-        juce::StringArray rates;
-
-        for (const auto rate : WavExporter::getSupportedSampleRates())
-            rates.add (juce::String (rate / 1000.0, 1) + " kHz");
-
-        juce::StringArray depths;
-
-        for (const auto depth : WavExporter::getSupportedBitDepths())
-            depths.add (juce::String (depth) + "-bit");
-
-        window->addComboBox ("rate", rates, "Sample rate");
-        window->addComboBox ("depth", depths, "Bit depth");
-        window->addButton ("Choose file...", 1, juce::KeyPress (juce::KeyPress::returnKey));
-        window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
-
-        if (auto* rateBox = window->getComboBoxComponent ("rate"))
-            rateBox->setSelectedItemIndex (1, juce::dontSendNotification);   // 48 kHz
-
-        if (auto* depthBox = window->getComboBoxComponent ("depth"))
-            depthBox->setSelectedItemIndex (1, juce::dontSendNotification);  // 24-bit
-
-        juce::Component::SafePointer<MainPanel> safeThis (this);
-
-        window->enterModalState (true, juce::ModalCallbackFunction::create ([safeThis, window] (int result)
+        // Non-modal: the render keeps running in the processor if this window is closed.
+        if (exportDialogWindow != nullptr)
         {
-            std::unique_ptr<juce::AlertWindow> owned (window);
+            exportDialogWindow->toFront (true);
+            return;
+        }
 
-            if (safeThis == nullptr || result != 1)
-                return;
+        juce::DialogWindow::LaunchOptions options;
+        options.content.setOwned (new ExportDialog (processor));
+        options.dialogTitle = "Export audio";
+        options.dialogBackgroundColour = findColour (juce::ResizableWindow::backgroundColourId);
+        options.escapeKeyTriggersCloseButton = true;
+        options.useNativeTitleBar = true;
+        options.resizable = false;
+        options.componentToCentreAround = this;
 
-            WavExporter::Options options;
-
-            if (auto* rateBox = window->getComboBoxComponent ("rate"))
-                options.sampleRate = WavExporter::getSupportedSampleRates()[
-                    juce::jmax (0, rateBox->getSelectedItemIndex())];
-
-            if (auto* depthBox = window->getComboBoxComponent ("depth"))
-                options.bitDepth = WavExporter::getSupportedBitDepths()[
-                    juce::jmax (0, depthBox->getSelectedItemIndex())];
-
-            const auto suggestedName = juce::File::createLegalFileName (
-                safeThis->processor.getCurrentPresetName()) + ".wav";
-
-            safeThis->fileChooser = std::make_unique<juce::FileChooser> (
-                "Export WAV",
-                juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile (suggestedName),
-                "*.wav");
-
-            safeThis->fileChooser->launchAsync (juce::FileBrowserComponent::saveMode
-                                                    | juce::FileBrowserComponent::canSelectFiles
-                                                    | juce::FileBrowserComponent::warnAboutOverwriting,
-                                                [safeThis, options] (const juce::FileChooser& chooser)
-            {
-                if (safeThis == nullptr)
-                    return;
-
-                const auto destination = chooser.getResult();
-
-                if (destination == juce::File())
-                    return;
-
-                const std::array<SampleBufferPtr, 2> samples {
-                    safeThis->processor.getSampleForLayer (0),
-                    safeThis->processor.getSampleForLayer (1)
-                };
-
-                const auto renderResult = WavExporter::render (samples,
-                                                               safeThis->processor.captureRenderSettings(),
-                                                               options,
-                                                               destination);
-
-                if (! renderResult.succeeded)
-                {
-                    safeThis->processor.postToast (renderResult.message, SampleLoader::Severity::error);
-                    return;
-                }
-
-                safeThis->processor.postToast (renderResult.message, SampleLoader::Severity::info);
-
-                juce::AlertWindow::showAsync (
-                    juce::MessageBoxOptions()
-                        .withIconType (juce::MessageBoxIconType::InfoIcon)
-                        .withTitle ("Export complete")
-                        .withMessage ("File:     " + renderResult.file.getFileName() + "\n"
-                                      + "Location: " + renderResult.file.getParentDirectory().getFullPathName() + "\n"
-                                      + "Length:   " + juce::String (renderResult.lengthSeconds, 2) + " seconds\n"
-                                      + "Quality:  " + WavExporter::describeQuality (options) + "\n"
-                                      + "Size:     " + juce::File::descriptionOfSizeInBytes (renderResult.fileSizeBytes))
-                        .withButton ("Show file")
-                        .withButton ("Done"),
-                    [file = renderResult.file] (int choice)
-                    {
-                        if (choice == 1)
-                            file.revealToUser();
-                    });
-            });
-        }), false);
+        exportDialogWindow = options.launchAsync();
     }
 
     // =========================================================================
@@ -1307,6 +1371,11 @@ namespace texture
             dropZoneB->refreshFromProcessor();
 
         updateAuditionAvailability();
+    }
+
+    void MainPanel::sampleMissing (int layerIndex, const juce::String& expectedSha256, const juce::String& fileName)
+    {
+        portableMedia.offerRelink (layerIndex, expectedSha256, fileName);
     }
 
     void MainPanel::toastRequested (const juce::String& message, SampleLoader::Severity severity)
@@ -1329,6 +1398,7 @@ namespace texture
         if (! processor.isAuditionRequested())
             auditionHoldButton.setToggleState (false, juce::dontSendNotification);
         updateAuditionAvailability();
+        updateLockIndicators();
         repaint();
     }
 

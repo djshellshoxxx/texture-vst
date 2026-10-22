@@ -16,6 +16,10 @@ namespace texture
             (04_SYNTH_ENGINE.md: no new grains once the voice falls under -60 dB).
         */
         constexpr float grainCutoffLevel = dsp::minusSixtyDb;
+
+        /** Glide pitch is updated at this granularity. 16 samples is 0.3 ms at 48 kHz, and
+            the pitch steps inside it are far below audibility for any glide time. */
+        constexpr int glideChunkSamples = 16;
     }
 
     void Voice::prepare (double sampleRate)
@@ -41,6 +45,24 @@ namespace texture
         currentSourceRootMidiNote = sourcePitch::defaultRootMidiNote;
         stamp = 0;
         velocityGain = 1.0f;
+        velocityTarget = 1.0f;
+        velocityStep = 0.0f;
+        velocityRampRemaining = 0;
+        startVelocity = 0.0f;
+        glideOffset = 0.0f;
+        glideStartOffset = 0.0f;
+        glideTotal = 0;
+        glideRemaining = 0;
+        grainPitchDirty = false;
+        rhythmFirstPending = false;
+        attackArmed = false;
+        attackFinished = true;
+        attackReaderDone = true;
+        attackPositionPending = false;
+        attackElapsed = 0;
+        attackEarlyShift = 0;
+        retireTotal = 0;
+        retireRemaining = 0;
         currentTuneSemitones = 0.0f;
         fineTuneForCurrentBlock = 0.0f;
         lastEnvelopeLevel = 0.0f;
@@ -53,7 +75,8 @@ namespace texture
                            float startNormalised, bool isAuditionOwned,
                            int newRandomMode, std::uint64_t newRandomSeed,
                            std::uint64_t randomNoteEvent,
-                           int sourceRootMidiNote, float sourceFineCents)
+                           int sourceRootMidiNote, float sourceFineCents,
+                           float glideFromSemitones, int glideSamples)
     {
         for (auto& grain : grains)
             grain.stop();
@@ -68,8 +91,25 @@ namespace texture
         randomEvent = randomMode == 2 ? randomNoteEvent : 0;
         randomDrawCounts.fill (0);
 
-        velocityGain = juce::jmap (juce::jlimit (0.0f, 1.0f, velocity),
-                                   velocityFloor, velocityCeiling);
+        const auto clampedVelocity = juce::jlimit (0.0f, 1.0f, velocity);
+        velocityGain = juce::jmap (clampedVelocity, velocityFloor, velocityCeiling);
+        velocityTarget = velocityGain;
+        velocityStep = 0.0f;
+        velocityRampRemaining = 0;
+        startVelocity = clampedVelocity;
+
+        // Glide starts at the previous pitch; without a glide the offset is zero.
+        glideTotal = glideSamples > 0 ? glideSamples : 0;
+        glideRemaining = glideTotal;
+        glideOffset = glideTotal > 0 ? glideFromSemitones - static_cast<float> (midiNote) : 0.0f;
+        glideStartOffset = glideOffset;
+        grainPitchDirty = false;
+        rhythmFirstPending = true;
+        attackArmed = false;
+        attackFinished = true;
+
+        retireTotal = 0;
+        retireRemaining = 0;
 
         currentSourceRootMidiNote = sourcePitch::clampRootNote (sourceRootMidiNote);
         currentTuneSemitones = 0.0f;
@@ -91,6 +131,148 @@ namespace texture
         active = true;
     }
 
+    void Voice::retarget (int midiNote, float velocity, int midiChannel, juce::int64 noteStamp,
+                          int glideSamples, int velocityRampSamples)
+    {
+        if (! active)
+            return;
+
+        // The pitch the listener hears right now is the starting point of any glide.
+        const auto pitchNow = getPitchSemitones();
+
+        currentNote = midiNote;
+        currentChannel = midiChannel;
+        stamp = noteStamp;
+        sustainHeld = false;
+
+        const auto clampedVelocity = juce::jlimit (0.0f, 1.0f, velocity);
+        startVelocity = clampedVelocity;
+        velocityTarget = juce::jmap (clampedVelocity, velocityFloor, velocityCeiling);
+
+        if (velocityRampSamples > 0)
+        {
+            velocityRampRemaining = velocityRampSamples;
+            velocityStep = (velocityTarget - velocityGain) / static_cast<float> (velocityRampSamples);
+        }
+        else
+        {
+            velocityGain = velocityTarget;
+            velocityRampRemaining = 0;
+        }
+
+        if (glideSamples > 0)
+        {
+            glideOffset = pitchNow - static_cast<float> (midiNote);
+            glideStartOffset = glideOffset;
+            glideTotal = glideSamples;
+            glideRemaining = glideSamples;
+        }
+        else
+        {
+            glideOffset = 0.0f;
+            glideStartOffset = 0.0f;
+            glideTotal = 0;
+            glideRemaining = 0;
+        }
+
+        // Grains already sounding must follow the new note, with or without a glide.
+        grainPitchDirty = true;
+    }
+
+    void Voice::armAttackCloud (const AttackCloudSettings& settings) noexcept
+    {
+        attackPlan.latch (settings, preparedSampleRate);
+        attackArmed = attackPlan.isOn();
+        attackFinished = ! attackArmed;
+        attackReaderDone = ! attackArmed;
+        attackPositionPending = attackArmed;
+        attackElapsed = 0;
+        attackEarlyShift = 0;
+
+        const auto amount = std::isfinite (settings.original)
+                                ? juce::jlimit (0.0f, 1.0f, settings.original)
+                                : params::attackCloudOriginalDefault;
+        attackAmount.reset (preparedSampleRate, 0.02);
+        attackAmount.setCurrentAndTargetValue (amount);
+    }
+
+    void Voice::setAttackOriginal (float amount) noexcept
+    {
+        if (std::isfinite (amount))
+            attackAmount.setTargetValue (juce::jlimit (0.0f, 1.0f, amount));
+    }
+
+    void Voice::applyAttackCloud (const SampleBuffer& source, float* scratchLeft, float* scratchRight,
+                                  int numSamples, double readIncrement) noexcept
+    {
+        const auto sourceLength = source.getNumSamples();
+        const auto* left = source.getChannel (0);
+        const auto* right = source.getChannel (1);
+
+        if (sourceLength <= 0 || left == nullptr || right == nullptr)
+        {
+            attackReaderDone = true;
+            return;
+        }
+
+        if (attackPositionPending)
+        {
+            attackPositionPending = false;
+            attackPosition = static_cast<double> (pendingStart) * static_cast<double> (sourceLength - 1);
+        }
+
+        const auto lastFrame = static_cast<double> (sourceLength - 1);
+        const auto fadeFrames = static_cast<double> (juce::jmax (1, juce::jmin (AttackCloudPlan::endFadeFrames, sourceLength)));
+
+        for (int i = 0; i < numSamples; ++i)
+        {
+            float cloud = 1.0f;
+            float direct = 0.0f;
+            const auto elapsed = attackElapsed + attackEarlyShift + i;
+            attackPlan.gainsAt (elapsed, cloud, direct);
+            const auto amount = attackAmount.getNextValue();
+
+            float directLeft = 0.0f;
+            float directRight = 0.0f;
+
+            if (! attackReaderDone && direct > 0.0f)
+            {
+                if (attackPosition >= lastFrame)
+                {
+                    // The sample ended inside the hold. The cloud takes over now, rather than
+                    // waiting out a hold with nothing playing.
+                    attackReaderDone = true;
+
+                    if (elapsed < attackPlan.getHoldSamples())
+                        attackEarlyShift += attackPlan.getHoldSamples() - elapsed;
+                }
+                else
+                {
+                    // The direct read fades out over the last frames of the sample; it never loops.
+                    const auto remaining = lastFrame - attackPosition;
+                    const auto fade = static_cast<float> (juce::jmin (1.0, remaining / fadeFrames));
+                    const auto gain = direct * amount * fade;
+                    const auto position = static_cast<float> (attackPosition);
+
+                    directLeft = dsp::readLinear (left, sourceLength, position) * gain;
+                    directRight = dsp::readLinear (right, sourceLength, position) * gain;
+                    attackPosition += readIncrement;
+                }
+            }
+
+            scratchLeft[i] = scratchLeft[i] * cloud + directLeft;
+            scratchRight[i] = scratchRight[i] * cloud + directRight;
+        }
+
+        attackElapsed += numSamples;
+
+        if (attackElapsed + attackEarlyShift >= attackPlan.getTotalSamples())
+        {
+            attackFinished = true;
+            attackReaderDone = true;
+        }
+    }
+
     void Voice::stopNote()
     {
         if (! active)
@@ -109,6 +291,26 @@ namespace texture
         sustainHeld = false;
         currentNote = -1;
         lastEnvelopeLevel = 0.0f;
+        glideOffset = 0.0f;
+        glideStartOffset = 0.0f;
+        glideTotal = 0;
+        glideRemaining = 0;
+        grainPitchDirty = false;
+        velocityRampRemaining = 0;
+        retireTotal = 0;
+        retireRemaining = 0;
+        attackArmed = false;
+        attackFinished = true;
+        attackReaderDone = true;
+    }
+
+    void Voice::beginRetire (int fadeSamples) noexcept
+    {
+        if (! active)
+            return;
+
+        retireTotal = juce::jmax (1, fadeSamples);
+        retireRemaining = retireTotal;
     }
 
     void Voice::setAdsrParameters (float attackMs, float decayMs, float sustainLevel, float releaseMs)
@@ -140,6 +342,11 @@ namespace texture
             case VersionedRandomStreams::Lane::pan:           laneIndex = 4; break;
             case VersionedRandomStreams::Lane::modulation:    laneIndex = 5; break;
             case VersionedRandomStreams::Lane::effects:        laneIndex = 6; break;
+
+            // Gentle Mutate's lane belongs to the planner. A voice never draws from it.
+            case VersionedRandomStreams::Lane::mutation:       return voiceRandom.nextFloat();
+            // Rhythm draws use rhythmDraw(); this lane is never taken through nextRandom.
+            case VersionedRandomStreams::Lane::rhythm:         return voiceRandom.nextFloat();
         }
 
         const auto draw = randomDrawCounts[laneIndex]++;
@@ -149,7 +356,9 @@ namespace texture
     void Voice::spawnGrain (const SampleBuffer& source,
                             const MorphTargets& targets,
                             int grainDurationSamples,
-                            float taper) noexcept
+                            float taper,
+                            float glideMultiplier,
+                            float amplitudeOverride) noexcept
     {
         const auto slot = findFreeGrainSlot();
 
@@ -161,8 +370,11 @@ namespace texture
         if (sourceLength <= 0 || grainDurationSamples <= 0)
             return;
 
-        // 1. Start position: voice read head plus jitter proportional to MORPH.
-        auto start = readPosition;
+        // 1. Start position: the layer's scan centre when one is active (F10), otherwise the
+        //    voice read head. Jitter is proportional to the target's jitter either way.
+        auto start = targets.scanCentre >= 0.0f
+                         ? static_cast<double> (targets.scanCentre) * static_cast<double> (sourceLength - 1)
+                         : readPosition;
 
         if (targets.positionJitter > 0.0f)
         {
@@ -175,10 +387,10 @@ namespace texture
         }
 
         // 2. Pitch: voice pitch plus a per-grain detune of +/- MORPH * 30 cents.
-        auto ratio = static_cast<float> (sourcePitch::playbackRatio (
-                         currentNote, currentSourceRootMidiNote, currentTuneSemitones,
-                         fineTuneForCurrentBlock, source.getSampleRate(), preparedSampleRate))
-                   * pitchBendRatio;
+        const auto basePitch = static_cast<float> (sourcePitch::playbackRatio (
+            currentNote, currentSourceRootMidiNote, currentTuneSemitones,
+            fineTuneForCurrentBlock, source.getSampleRate(), preparedSampleRate));
+        auto ratio = basePitch * pitchBendRatio;
         auto amplitudeScale = 1.0f;
 
         // The random draws below are only taken when their feature is on, so a
@@ -201,6 +413,12 @@ namespace texture
             ratio *= dsp::centsToRatio (cents);
         }
 
+        // Glide: only a voice that is gliding carries a multiplier other than one.
+        if (! juce::exactlyEqual (glideMultiplier, 1.0f))
+            ratio *= glideMultiplier;
+
+        grainPitchFactor[static_cast<size_t> (slot)] = ratio / (basePitch * glideMultiplier);
+
         // 3. Pan: centred at MORPH=0, widening to +/- 0.8 at MORPH=1.
         const auto pan = targets.panSpread > 0.0f
             ? (nextRandom (VersionedRandomStreams::Lane::pan) * 2.0f - 1.0f) * targets.panSpread
@@ -208,10 +426,128 @@ namespace texture
 
         // Overlapping grains sum, so scale back by the incoherent-summation factor
         // to keep perceived loudness steady as MORPH opens the grain count up.
-        const auto amplitude = amplitudeScale
-                             / std::sqrt (static_cast<float> (juce::jmax (1, targets.grainsPerVoice)));
+        // A rhythmic grain carries its own level from the grid overlap; legacy grains use MORPH's count.
+        const auto amplitude = amplitudeOverride > 0.0f
+            ? amplitudeScale * amplitudeOverride
+            : amplitudeScale / std::sqrt (static_cast<float> (juce::jmax (1, targets.grainsPerVoice)));
 
         grains[static_cast<size_t> (slot)].start (start, grainDurationSamples, ratio, pan, amplitude, taper, reversed);
+        grainStarts.fetch_add (1, std::memory_order_relaxed);
+    }
+
+    int Voice::getActiveGrainCount() const noexcept
+    {
+        int count = 0;
+
+        for (const auto& grain : grains)
+            if (grain.isActive())
+                ++count;
+
+        return count;
+    }
+
+    void Voice::updateGrainPitch (float basePitch, float multiplier) noexcept
+    {
+        for (size_t i = 0; i < grains.size(); ++i)
+            if (grains[i].isActive())
+                grains[i].setPlaybackRatio (grainPitchFactor[i] * basePitch * multiplier);
+    }
+
+    void Voice::renderSpan (const SampleBuffer& source, const MorphTargets& targets,
+                            int durationSamples, float taper, double hop, bool canSpawn,
+                            float* scratchLeft, float* scratchRight,
+                            int begin, int end, float multiplier) noexcept
+    {
+        int offset = begin;
+
+        while (offset < end)
+        {
+            if (samplesUntilNextGrain <= 0.0)
+            {
+                if (canSpawn)
+                    spawnGrain (source, targets, durationSamples, taper, multiplier);
+
+                samplesUntilNextGrain += hop;
+
+                // Guard against a pathological hop that would not advance the loop.
+                if (samplesUntilNextGrain <= 0.0)
+                    samplesUntilNextGrain = hop;
+            }
+
+            const auto remaining = end - offset;
+            const auto untilSpawn = juce::jmax (1, static_cast<int> (std::ceil (samplesUntilNextGrain)));
+            const auto segment = juce::jmin (remaining, untilSpawn);
+
+            for (auto& grain : grains)
+                if (grain.isActive())
+                    grain.renderAdding (source, scratchLeft + offset, scratchRight + offset, segment);
+
+            samplesUntilNextGrain -= static_cast<double> (segment);
+            offset += segment;
+        }
+    }
+
+    void Voice::renderGrainsOnly (const SampleBuffer& source, float* scratchLeft, float* scratchRight,
+                                  int from, int to) noexcept
+    {
+        if (to <= from)
+            return;
+
+        for (auto& grain : grains)
+            if (grain.isActive())
+                grain.renderAdding (source, scratchLeft + from, scratchRight + from, to - from);
+    }
+
+    float Voice::rhythmDraw (std::int64_t gridIndex) const noexcept
+    {
+        return VersionedRandomStreams::unitFloat (randomSeed, VersionedRandomStreams::Lane::rhythm,
+                                                  static_cast<std::uint64_t> (gridIndex), 0);
+    }
+
+    void Voice::spawnRhythmGrain (const SampleBuffer& source, const MorphTargets& targets,
+                                  int durationSamples, float intervalSamples, float multiplier) noexcept
+    {
+        const auto length = juce::jmax (1, durationSamples);
+        const auto interval = intervalSamples > 0.0f ? intervalSamples : static_cast<float> (length);
+        const auto overlap = static_cast<float> (length) / interval;
+
+        // Overlap sets both the taper (a lone grain stays near-rectangular) and the level
+        // (overlapping grains are scaled back by the incoherent-sum factor).
+        const auto taper = juce::jlimit (Grain::minimumTaper, 1.0f, overlap);
+        const auto level = 1.0f / std::sqrt (juce::jmax (1.0f, overlap));
+        spawnGrain (source, targets, length, taper, multiplier, level);
+    }
+
+    void Voice::renderRhythmicSpan (const SampleBuffer& source, const MorphTargets& targets,
+                                    const RhythmSpan& rhythm, int manualDurationSamples, bool canSpawn,
+                                    float* scratchLeft, float* scratchRight,
+                                    int begin, int end, float multiplier, int& eventIndex) noexcept
+    {
+        const auto& list = *rhythm.events;
+        int offset = begin;
+
+        while (eventIndex < list.count)
+        {
+            const auto& event = list.events[static_cast<std::size_t> (eventIndex)];
+
+            if (event.offset >= end)
+                break;
+
+            const auto at = juce::jmax (begin, event.offset);
+            renderGrainsOnly (source, scratchLeft, scratchRight, offset, at);
+            offset = at;
+
+            if (canSpawn && rhythmDraw (event.gridIndex) < rhythm.probability)
+            {
+                // Follow size: the gate sets the length. A manual size overrides it (F13).
+                const auto length = rhythm.gateSetsDuration ? event.durationSamples : manualDurationSamples;
+                spawnRhythmGrain (source, targets, length, event.intervalSamples, multiplier);
+            }
+
+            ++eventIndex;
+        }
+
+        renderGrainsOnly (source, scratchLeft, scratchRight, offset, end);
     }
 
     void Voice::renderAdding (const SampleBuffer& source,
@@ -219,7 +555,8 @@ namespace texture
                               juce::AudioBuffer<float>& scratch,
                               float* leftOut,
                               float* rightOut,
-                              int numSamples) noexcept
+                              int numSamples,
+                              const RhythmSpan* rhythm) noexcept
     {
         if (! active || numSamples <= 0 || leftOut == nullptr || rightOut == nullptr)
             return;
@@ -245,8 +582,13 @@ namespace texture
         const auto durationSamples = juce::jmax (
             8, juce::roundToInt (targets.grainDurationMs * 0.001f * preparedSampleRate));
 
+        // Legacy cadence: the hop follows duration and overlap. A manual grain density (F13)
+        // spawns at a fixed interval instead, and its overlap was already derived from it.
         const auto overlap = dsp::clamp (targets.grainOverlap, 0.0f, 0.95f);
-        const auto hop = juce::jmax (1.0, static_cast<double> (durationSamples) * (1.0 - overlap));
+        const auto densityManual = std::isfinite (targets.grainDensityHz) && targets.grainDensityHz > 0.0f;
+        const auto hop = densityManual
+            ? juce::jmax (1.0, preparedSampleRate / static_cast<double> (targets.grainDensityHz))
+            : juce::jmax (1.0, static_cast<double> (durationSamples) * (1.0 - overlap));
 
         // The taper tracks the overlap: a lone grain gets a near-rectangular window
         // (clean playback), a fully overlapped swarm gets a true Hann.
@@ -275,57 +617,137 @@ namespace texture
         const auto canSpawn = envelope.isActive()
                               && (! envelope.isInReleasePhase() || lastEnvelopeLevel > grainCutoffLevel);
 
-        int offset = 0;
+        // A glide or a retarget needs the grains updated, so the block is cut into short
+        // chunks while that happens. A steady voice is one chunk, exactly as before.
+        const auto glideOrJump = glideRemaining > 0 || grainPitchDirty;
+        int chunkStart = 0;
 
-        while (offset < numSamples)
+        const auto rhythmic = rhythm != nullptr && rhythm->active && rhythm->events != nullptr;
+        int rhythmEventIndex = 0;
+
+        // A note's first grain may start at once. It does not use up a grid event, so the
+        // regular grid continues unchanged.
+        if (rhythmic && rhythmFirstPending && rhythm->clockRunning)
         {
-            if (samplesUntilNextGrain <= 0.0)
+            rhythmFirstPending = false;
+
+            if (rhythm->firstGrainImmediate && canSpawn)
             {
-                if (canSpawn)
-                    spawnGrain (source, targets, durationSamples, taper);
-
-                samplesUntilNextGrain += hop;
-
-                // Guard against a pathological hop that would not advance the loop.
-                if (samplesUntilNextGrain <= 0.0)
-                    samplesUntilNextGrain = hop;
+                const auto startMultiplier = glideRemaining > 0 ? dsp::semitonesToRatio (glideOffset) : 1.0f;
+                const auto length = rhythm->gateSetsDuration ? rhythm->immediateDurationSamples : durationSamples;
+                spawnRhythmGrain (source, targets, length, rhythm->immediateIntervalSamples, startMultiplier);
             }
-
-            const auto remaining = numSamples - offset;
-            const auto untilSpawn = juce::jmax (1, static_cast<int> (std::ceil (samplesUntilNextGrain)));
-            const auto segment = juce::jmin (remaining, untilSpawn);
-
-            for (auto& grain : grains)
-                if (grain.isActive())
-                    grain.renderAdding (source, scratchLeft + offset, scratchRight + offset, segment);
-
-            samplesUntilNextGrain -= static_cast<double> (segment);
-            offset += segment;
         }
 
-        // Advance the voice read head at the playback rate so that at MORPH=0 each
-        // grain picks up exactly where the previous one ended.
-        readPosition += readIncrement * static_cast<double> (numSamples);
+        while (chunkStart < numSamples)
+        {
+            const auto gliding = glideRemaining > 0;
+            const auto chunkEnd = (glideOrJump && gliding)
+                                      ? juce::jmin (numSamples, chunkStart + glideChunkSamples)
+                                      : numSamples;
 
-        if (readPosition >= sourceLengthAsDouble || readPosition < 0.0)
-            readPosition -= sourceLengthAsDouble * std::floor (readPosition / sourceLengthAsDouble);
+            const auto multiplier = gliding ? dsp::semitonesToRatio (glideOffset) : 1.0f;
 
-        normalisedReadPosition = static_cast<float> (readPosition / sourceLengthAsDouble);
+            if (glideOrJump)
+            {
+                updateGrainPitch (readPitchRatio, multiplier);
+                grainPitchDirty = false;
+            }
+
+            if (rhythmic)
+                renderRhythmicSpan (source, targets, *rhythm, durationSamples, canSpawn,
+                                    scratchLeft, scratchRight, chunkStart, chunkEnd, multiplier,
+                                    rhythmEventIndex);
+            else
+                renderSpan (source, targets, durationSamples, taper, hop, canSpawn,
+                            scratchLeft, scratchRight, chunkStart, chunkEnd, multiplier);
+
+            const auto chunkLength = chunkEnd - chunkStart;
+
+            // Advance the voice read head at the playback rate so that at MORPH=0 each
+            // grain picks up exactly where the previous one ended.
+            const auto chunkIncrement = juce::exactlyEqual (multiplier, 1.0f)
+                                            ? readIncrement
+                                            : readIncrement * static_cast<double> (multiplier);
+            readPosition += chunkIncrement * static_cast<double> (chunkLength);
+
+            if (readPosition >= sourceLengthAsDouble || readPosition < 0.0)
+                readPosition -= sourceLengthAsDouble * std::floor (readPosition / sourceLengthAsDouble);
+
+            if (gliding)
+            {
+                glideRemaining = juce::jmax (0, glideRemaining - chunkLength);
+                glideOffset = glideRemaining > 0
+                                  ? glideStartOffset * static_cast<float> (glideRemaining) / static_cast<float> (glideTotal)
+                                  : 0.0f;
+            }
+
+            chunkStart = chunkEnd;
+        }
+
+        normalisedReadPosition = targets.scanCentre >= 0.0f
+                                     ? targets.scanCentre
+                                     : static_cast<float> (readPosition / sourceLengthAsDouble);
+
+        // Attack to cloud (F17): the direct attack mixes in before the envelope, so the ADSR and
+        // velocity apply to the combined result exactly once. Off, this branch is never taken.
+        if (attackArmed && ! attackFinished)
+            applyAttackCloud (source, scratchLeft, scratchRight, numSamples, readIncrement);
 
         // Apply the amplitude envelope and mix into the engine output.
-        const auto voiceGain = velocityGain;
         float envelopeLevel = lastEnvelopeLevel;
 
-        for (int i = 0; i < numSamples; ++i)
+        if (velocityRampRemaining == 0 && retireTotal == 0)
         {
-            envelopeLevel = envelope.getNextSample();
-            const auto gain = envelopeLevel * voiceGain;
+            const auto voiceGain = velocityGain;
 
-            leftOut[i]  += scratchLeft[i] * gain;
-            rightOut[i] += scratchRight[i] * gain;
+            for (int i = 0; i < numSamples; ++i)
+            {
+                envelopeLevel = envelope.getNextSample();
+                const auto gain = envelopeLevel * voiceGain;
+
+                leftOut[i]  += scratchLeft[i] * gain;
+                rightOut[i] += scratchRight[i] * gain;
+            }
+        }
+        else
+        {
+            for (int i = 0; i < numSamples; ++i)
+            {
+                envelopeLevel = envelope.getNextSample();
+
+                if (velocityRampRemaining > 0)
+                {
+                    velocityGain += velocityStep;
+
+                    if (--velocityRampRemaining == 0)
+                        velocityGain = velocityTarget;
+                }
+
+                float retireLevel = 1.0f;
+
+                if (retireTotal > 0)
+                {
+                    retireLevel = static_cast<float> (retireRemaining) / static_cast<float> (retireTotal);
+
+                    if (retireRemaining > 0)
+                        --retireRemaining;
+                }
+
+                const auto gain = envelopeLevel * velocityGain * retireLevel;
+
+                leftOut[i]  += scratchLeft[i] * gain;
+                rightOut[i] += scratchRight[i] * gain;
+            }
         }
 
         lastEnvelopeLevel = envelopeLevel;
+
+        if (retireTotal > 0 && retireRemaining <= 0)
+        {
+            hardStop();
+            return;
+        }
 
         if (! envelope.isActive())
         {

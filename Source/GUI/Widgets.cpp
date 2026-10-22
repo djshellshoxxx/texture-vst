@@ -106,6 +106,11 @@ namespace texture
                 menu.addSeparator();
             }
 
+            // Lock is an editing protection (F02), not a value: it sits above MIDI items.
+            menu.addItem (8, processor.isFieldLocked (parameterID) ? "Unlock value"
+                                                                    : "Lock value (keep out of Randomize and Mutate)");
+            menu.addSeparator();
+
             const auto mappedCc = processor.getMidiLearn().getControllerForParameter (parameterID);
 
             if (mappedCc >= 0)
@@ -195,6 +200,10 @@ namespace texture
                     processor.postToast ("MIDI learn cancelled.", SampleLoader::Severity::info);
                     break;
 
+                case 8:
+                    processor.setFieldLocked (parameterID, ! processor.isFieldLocked (parameterID));
+                    break;
+
                 default:
                     break;
             }
@@ -244,6 +253,10 @@ namespace texture
                     processor.postToast ("MIDI learn cancelled.", SampleLoader::Severity::info);
                     break;
 
+                case 8:
+                    processor.setFieldLocked (parameterID, ! processor.isFieldLocked (parameterID));
+                    break;
+
                 default:
                     break;
             }
@@ -289,6 +302,10 @@ namespace texture
                 case 7:
                     processor.getMidiLearn().cancelLearning();
                     processor.postToast ("MIDI learn cancelled.", SampleLoader::Severity::info);
+                    break;
+
+                case 8:
+                    processor.setFieldLocked (parameterID, ! processor.isFieldLocked (parameterID));
                     break;
 
                 default:
@@ -382,6 +399,25 @@ namespace texture
         isLearning = learningThis;
     }
 
+    void drawPadlock (juce::Graphics& g, juce::Rectangle<float> area, juce::Colour colour)
+    {
+        const auto side = juce::jmin (area.getWidth(), area.getHeight());
+        const auto body = juce::Rectangle<float> (side * 0.62f, side * 0.48f)
+                              .withBottomY (area.getCentreY() + side * 0.42f)
+                              .withCentre ({ area.getCentreX(), area.getCentreY() + side * 0.2f });
+        const auto radius = side * 0.2f;
+        const auto stroke = juce::jmax (1.1f, side * 0.09f);
+
+        juce::Path shackle;
+        shackle.addCentredArc (body.getCentreX(), body.getY(), radius, radius,
+                               0.0f, juce::MathConstants<float>::pi,
+                               juce::MathConstants<float>::twoPi, true);
+
+        g.setColour (colour);
+        g.strokePath (shackle, juce::PathStrokeType (stroke));
+        g.fillRoundedRectangle (body, side * 0.1f);
+    }
+
     void ParameterKnob::paintLearnRing (juce::Graphics& g, juce::Rectangle<float> area) const
     {
         if (! isLearning)
@@ -473,6 +509,14 @@ namespace texture
                                            *this);
 
         paintLearnRing (g, knobArea.toFloat());
+
+        if (processor.isFieldLocked (parameterID))
+        {
+            const auto side = static_cast<float> (juce::jmin (knobArea.getWidth(), knobArea.getHeight())) * 0.34f;
+            drawPadlock (g, juce::Rectangle<float> (static_cast<float> (knobArea.getRight()) - side,
+                                                    static_cast<float> (knobArea.getY()), side, side),
+                         colours::accentPrimary);
+        }
 
         if (! showsLabel)
             return;
@@ -1058,9 +1102,37 @@ namespace texture
 
         bounds.removeFromLeft (6);
 
+        if (lockedCount > 0)
+        {
+            const auto glyph = bounds.removeFromRight (12).toFloat().withSizeKeepingCentre (9.0f, 10.0f);
+            drawPadlock (g, glyph, colours::accentPrimary);
+            bounds.removeFromRight (4);
+
+            g.setColour (colours::textMuted);
+            g.setFont (TextureLookAndFeel::labelFont());
+            g.drawText (juce::String (lockedCount) + " of " + juce::String (totalCount) + " locked",
+                        bounds, juce::Justification::centredRight, false);
+        }
+
         g.setColour (colours::textPrimary);
         g.setFont (TextureLookAndFeel::labelFont());
         g.drawText (title.toUpperCase(), bounds, juce::Justification::centredLeft, false);
+    }
+
+    void SectionHeader::setLockCount (int locked, int total)
+    {
+        if (locked == lockedCount && total == totalCount)
+            return;
+
+        lockedCount = locked;
+        totalCount = total;
+        repaint();
+    }
+
+    void SectionHeader::mouseDown (const juce::MouseEvent& event)
+    {
+        if (event.mods.isPopupMenu() && onMenuRequested != nullptr)
+            onMenuRequested();
     }
 
     // =========================================================================
@@ -1233,6 +1305,26 @@ namespace texture
             }
 
             case Icon::chevronLeft:
+            case Icon::lock:
+                drawPadlock (g, bounds.reduced (radius * 0.2f), colour);
+                break;
+
+            case Icon::sliders:
+            {
+                // Three horizontal faders, each with a knob at a different position.
+                const auto faders = bounds.reduced (radius * 0.25f);
+                const std::array<float, 3> knobAt { 0.3f, 0.7f, 0.45f };
+
+                for (int i = 0; i < 3; ++i)
+                {
+                    const auto y = faders.getY() + faders.getHeight() * (0.2f + 0.3f * static_cast<float> (i));
+                    g.drawLine (faders.getX(), y, faders.getRight(), y, 1.2f);
+                    g.fillEllipse (faders.getX() + faders.getWidth() * knobAt[static_cast<size_t> (i)] - 2.0f,
+                                   y - 2.0f, 4.0f, 4.0f);
+                }
+                break;
+            }
+
             case Icon::chevronRight:
             {
                 const auto direction = iconToDraw == Icon::chevronLeft ? -1.0f : 1.0f;

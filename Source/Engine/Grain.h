@@ -43,6 +43,10 @@ namespace texture
                     float windowTaper,
                     bool playReversed = false) noexcept;
 
+        /** Changes the playback ratio of an armed grain, keeping its direction. Used by
+            glide, so pitch can move while the grain plays. Real-time safe. */
+        void setPlaybackRatio (float playbackRatio) noexcept;
+
         /** Silences the grain immediately. */
         void stop() noexcept { active = false; }
 
