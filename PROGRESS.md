@@ -253,3 +253,185 @@ Randomize fixes, focused test evidence, and current CI/release discrepancies.
 Created [26 feature specifications](docs/development/README.md) covering the feature roadmap and workflow/performance controls, including Afterimage Loom and Resonant Drift effect designs. Implemented F01 Audition and Hold, F04 per-layer source pitch calibration, and F12 deterministic seeded variation. F04's optional layer-link preference and automatic note detector remain deferred; the other 23 specifications remain proposals.
 
 The source audit also fixed channel-specific MIDI note/sustain ownership, random-mode preset validation, truncated RIFF/WAV acceptance, source-pitch measurement coverage, and compile issues in random-stream defaults, state serialization, and export tests. The Linux Release configuration completed for VST3 and Standalone. CTest passed all three entries (109,332 unit assertions, the 60-second fuzz run, and waveform math). Native Windows and universal macOS release builds remain pending GitHub Actions/tag validation.
+
+## 2026-10-21: F02 parameter locks and F03 Gentle Mutate
+
+Implemented F02 editing locks and F03 Gentle Mutate as one feature branch. `LockPolicy` (lock registry, bounded lock set, action table, lock undo) and `MutationPlanner` (pure triangular mutation on a captured baseline, with a dedicated mutation lane in `VersionedRandomStreams`) live under `Source/Presets/`. Locks are per-instance host state in an optional `FeatureState` schema 1 block, validated by `StateSchema`; older states load with no locks. Randomize and Mutate honour locks; reset, automation, MIDI, restore and undo do not. Gentle Mutate defaults to 15% on Grain and Motion. A separate `EditToolsPanel` overlay holds Mutate, strength, group checkboxes and the lock list; locks are also set from control menus, group headers and a padlock glyph.
+
+Evidence: the Linux Release build passes and `texture_unit_tests` reports 0 failures, including the new lock, planner and FeatureState suites. Not yet done: a manual DAW or standalone GUI pass, the 60-second fuzz run for this branch, processor-level undo and state round-trip checks (the test binary does not link the processor), preset-browse locking, and media locks.
+
+## 2026-10-21: F07 independent tone and space
+
+Implemented F07 core. Nine appended parameters (`tone_space_mode`, `tone_hp_hz`, `tone_lp_hz`, `tone_filter_on`, `tone_tilt_db`, `space_width`, `space_reverb`, `space_chorus`, `tone_drive`) default to Follow MORPH, so older presets and sessions sound as before. `ToneSpaceRouter` (pure) resolves the MORPH or independent targets and ramps between them; `Biquad` (allocation-free RBJ sections) provides the 12 dB/oct tone filter and the high shelf. `EffectsChain` runs filter, then saturator/chorus/reverb/GRIT, then width, then shelf. Controls live in a new "Tone and space" overlay with collapsible Tone and Space sections and "Start from current sound". Randomize leaves these controls alone; Gentle Mutate does not change them. Export renders the same settings.
+
+Evidence: `texture_unit_tests` passes 120,819 checks. New suites: `test_tone_space` (routing, transitions, filter response, width, parity with Follow MORPH, stability across sample rates and block sizes, state migration, preset validation) and `test_legacy_render_fixtures` (archived poly and Follow MORPH renders, tolerance 1e-5).
+
+Deviations and gaps:
+- The 20 ms mode transition ramps the control values and the filter and width mix linearly. It is not a dual-path output crossfade, which would need a second effects chain.
+- The high shelf was rewritten as an allocation-free biquad. The previous `makeHighShelf` call allocated on the audio thread whenever tilt changed. Its output matches the archived fixture within 1e-5 but is not bit-identical.
+- Presets stay at schema 2: the new controls are ordinary parameters. The schema-3 features object is not needed for F07.
+- No DAW, listening, CPU or 24-hour soak evidence yet. Tone and space are available on both tiers pending the release decision.
+- Processor-level state migration is covered through the `StateSchema::missingParameterIDs` seam, not through a live processor test.
+
+## 2026-10-21: F11 mono, legato and glide
+
+Implemented F11 core. Four appended parameters: `voice_mode` (Poly default, Mono retrigger, Mono legato), `note_priority` (Last default, High, Low), `glide_ms` (0 to 2000 ms, logarithmic above zero, off by default) and `glide_mode` (Always, Overlap only default). Poly with zero glide is the default and keeps the golden fixtures within 1e-5.
+
+`MonoNoteStack` (pure, 32 keys) tracks held keys by channel and note, counts repeated presses with a saturating count, retains released keys under the sustain pedal, and selects by priority. `decideMonoLine` (pure) chooses between release, retarget under the same envelope, and restart. `GranularEngine` owns the line. Glide, a 5 ms velocity ramp and a 10 ms retire fade are in `Voice`. Mode changes adopt the sounding key's voice rather than striking it again, and leave held keys sounding as poly notes. Glide is pitch-stepped every 16 samples, and grains follow the pitch. Export uses the same configuration. The performance section is in the Tone, space and performance overlay. The lock registry gains a Performance group (appended as group 6). Randomize leaves these controls alone.
+
+Evidence: `texture_unit_tests` passes 121,854 checks. `test_mono_legato` covers the stack, the decision rules, glide arithmetic, all release orders of three keys, priorities, repeated keys, channel ownership, sustain, zero-velocity note-ons, glide endpoints and duration, mode transitions, panic, audition isolation, and a seeded 4000-event stream that must end with no sounding note.
+
+Gaps:
+- Overlap only glides a press that lands on a held key. A fallback to a held key after release does not glide in that mode. This is a reading of the spec's "overlap" and is recorded here, not decided with the user.
+- Glide is applied to grains in 16-sample steps, not per sample.
+- No MPE interaction (F23). Audition uses the polyphonic pool in every mode.
+- The stack holds 32 keys per engine; beyond that the oldest released key, then the oldest held key, is evicted.
+- No DAW, listening or CPU evidence. Performance controls are available on both tiers pending the release decision.
+
+## 2026-10-21: F09 variation history
+
+Implemented F09 core. Randomize and Mutate record the sound they produce. `VariationHistory` (pure, 32 entries, eight pins, cursor walking) evicts the oldest unpinned entry first, and keeps retained sample audio within 256 MiB, counting each buffer once. Entries hold a `SoundSnapshot`: every parameter, both sample references with starts and file identities, and the seed. Media is shared by immutable reference. `VariationPreview` (pure) applies a variation as one undo step named "Preview variation". Cancel undoes that step exactly; accept keeps the sound. Moving between variations cancels the earlier preview first. Snapshots are validated with the preset load rules (`PresetManager::isValidParameterValue`). History is session-local: a project restore clears it. The overlay gains a Variations section with previous and next, accept and cancel, clear, a retained-media readout and a list with Star (preview, then the normal Save dialog) and Pin.
+
+Evidence: `texture_unit_tests` covers the history, pins, cursor, the preview state machine with a fake host, shared-media accounting and the range rules (`test_variation_history`). The plugin target builds.
+
+Gaps:
+- The processor glue (apply, restore, budget eviction, processor destruction while previewing, and host restore) has no automated test: the test binary does not link the processor. Those paths were reviewed, not run.
+- If the user edits after a preview, Cancel keeps the preview rather than reverting the edit, and says so.
+- Undoing a preview leaves it on the redo stack, so redo can bring it back. A later edit clears that.
+- Accepted Family candidates (F20) are not implemented, so they do not record variations.
+- No DAW or keyboard/accessibility pass for the new controls yet.
+
+
+## 2026-10-21: F05 portable sample bundles and relinking
+
+Implemented F05 core. A `.texturepack` is a ZIP of `manifest.json`, `preset.texture` and `media/<sha256>.<ext>`, written through `AtomicFileWriter` (temp file, size check, then rename). `BundleFormat`/`MediaManifest` (pure) define the fixed entry names, the path policy and strict manifest validation. `BundleArchive` reads with hard limits: 256 MiB archive, 512 MiB expanded, 16 entries, 64 KiB manifest, 8 KiB preset, 100 MiB per audio file, 30 s per layer. Sizes are enforced while streaming; every audio file is hashed and its decoded header compared with the manifest; output goes only into a fresh staging folder under names the reader generates. `BundleImportPlanner` validates preset against manifest and computes library paths before anything is committed; `MediaStore` is content-addressed and never deletes. `MediaRelinker` searches one user-chosen folder (depth 4, 5000 files, 64 hashes, no links, no roots), with content matches ranked above filename-only matches. Presets gain an optional per-layer `sha256` key (schema 2, additive; older readers ignore it). `PortableMediaWorker` runs jobs off the message thread, one at a time. Export of bundles is Pro-gated, matching WAV export; import is open to all tiers. This tier split is a provisional release decision.
+
+Evidence: `texture_unit_tests` covers path policy, malformed manifests, traversal and absolute names, duplicate and unexpected entries, hash and size and format mismatches, every limit, truncated and non-zip files, staging cleanup, planner disagreement, write and round-trip, a two-layer shared file, dedupe, collision-free presets, atomic replace and abandon, content store, and relink ranking and depth.
+
+Gaps:
+- Processor glue (`relinkLayer`, `captureBundleSource`, and the missing-sample hook) and the dialogs are not automated: the test binary does not link the processor. The plugin target builds.
+- Negative-path tests were not mutation-checked against a deliberately broken guard.
+- Relink shows no audition for a filename-only match, and it takes the first candidate without a picker.
+- Symlink rejection relies on JUCE's `ZipEntry::isSymbolicLink`; no test archive exercises it.
+- Stale staging folders from a crash are not swept at startup.
+- Bundle preset limit is still the schema-2 8 KiB; the 256 KiB schema-3 ceiling is not implemented.
+- Normal user presets carry no content hash, so relinking them is by chosen file or filename only.
+- No Windows, macOS or DAW verification of bundle round trips, and no help-panel text yet.
+
+## 2026-10-21: F06 configurable background WAV export
+
+Implemented F06 core. The export window offers Legacy two hits (the original schedule, unchanged), Single note, Chord (F01 shapes, now shared through `Engine/AuditionChords.h`) and Repeated phrase, with note, velocity, hold, tail, repeats and gap controls. `ExportPlanner` (pure) computes exact sample boundaries and rejects, rather than clamps, out-of-range values and renders over 120 s. `PatchSnapshot` is copied on the message thread. `ExportJob` renders with private engines and effects, checks cancellation before every 512-sample block, writes through `AtomicFileWriter`, reads the header back, and publishes only a complete file. `ExportController` (owned by the processor) runs one job at a time, exposes an atomic progress counter, keeps the result until collected, and cancels and joins on destruction, so closing the window or removing the plugin does not leave a partial file. Clipping is counted and reported; no limiter is added. The legacy `WavExporter::render` now delegates to the same job.
+
+Evidence: `test_export_planner` covers legacy boundaries (exact integers), the 60 s legacy cap, single-note and phrase timing, exact hit positions, rate scaling, retrigger ordering, the 120 s rejection, and every range check. `test_export_job` covers planned length and peaks, byte-identical fixed-seed renders, failure to create a destination, cancellation before and during a render with no partial file and an existing destination kept, clip counting, controller single-job behaviour, cancel-then-restart, destruction during a render, and refused requests. Legacy output is byte-identical to the pre-F06 build (9ee9f55) for a stereo 48 kHz/24-bit render and a mono 44.1 kHz/16-bit render. The golden comparison was run against that build and is not committed, because a stored hash would depend on the toolchain.
+
+Gaps:
+- The dialog, progress polling and processor wiring are not automated (the test binary does not link the processor or GUI).
+- The Help panel still describes only the legacy export.
+- Live versus offline DSP comparison on identical timelines is not done.
+- Rendering on a worker is not measured against the 250 ms cancel budget on slow storage; the per-block check is the only bound.
+- No DAW or platform verification; no 24-hour or callback-budget measurement.
+
+## 2026-10-21: F15 drag rendered audio to the DAW
+
+Implemented F15 core. `RenderedAudioCache` (pure) owns the application-managed folder, the leases and the 2 GiB cap. Names are sanitised and carry a content ID (the first 8 hex of SHA-256); a finished render that duplicates stored audio is reused, and a different file is never overwritten. The only deletion path is `clearUnleased()`, a user action that skips leased files and touches only `.wav` files in the cache folder. The export folder is a user setting. `RenderedAudioTile` shows the last finished render with a waveform, starts an operating-system file drag only from a complete, existing file, and holds a lease until the drag ends. "Render for drag" in the export window renders the current configuration into the cache. The naming and hashing run on the worker through the controller's post-success hook. The processor collects every finished render on its own timer, so the drag tile updates even when the window is closed. Clearing and folder changes are refused while a render runs.
+
+Evidence: `test_rendered_audio_cache` covers unique and sanitised reservations, Unicode folders, content-ID naming, reuse of identical audio, leases and their release, the cap and its message, the rule that nothing is deleted implicitly, the deletion boundary, folder changes, and missing files. `test_export_job` covers the post-success hook ordering. The plugin target builds.
+
+Gaps:
+- No drag has been verified in any DAW or on Windows, macOS or Linux desktop environments. Manual host checks with screenshots and imported duration and channel count are still required.
+- Cancelled drags, dropped drags and editor closure during a drag are not automated.
+- The cache cap is fixed at 2 GiB; it is not a user setting.
+- A crash during a render can leave a `.partial` file; no startup sweep exists yet.
+- The Help panel does not describe drag renders.
+- Processor-level dispatch is not automated (the test binary does not link the processor).
+
+## 2026-10-21: F13 expandable grain controls
+
+Implemented F13 core. Five manual grain controls (`grain_size_ms`, `grain_density_hz`, `grain_jitter`, `grain_detune_cents`, `grain_pan_spread`), each with a `*_follow` switch, appended as ten parameters. Follow defaults to on, so every patch renders as before. `GrainTargetResolver` (pure) turns the Follow flags and manual values into the `MorphTargets` the voices and export use, once per block. A manual density spawns at `1 / density` and derives the overlap from duration. A manual duration keeps the legacy cadence. Jitter, detune and spread ramp over 20 ms; size and density apply from the next block. Turning Follow off copies the effective value into the manual control first, as one undo step. Gentle Mutate may move a manual grain value only while its Follow flag is off. The grain controls sit in a collapsed "Grains" section of the sound overlay, which reports the pool status. The grain fields are in the lock registry as group Grain. The Help panel describes them.
+
+Evidence: `texture_unit_tests` passes 125,272 checks. `test_grain_controls` covers Follow-all equal to the MORPH targets across the whole range, every Follow combination, duration-only and density-only cadence, clamping and non-finite input, the pool limit, the 20 ms ramp and its settling, block-partition invariance of the follow path, the follow-change plan and the continuity of taking a field from Follow to manual, Mutate eligibility, lock groups, preset ranges, the migration default, measured spawn counts (10 Hz gives exactly 20 spawns in two seconds; 200 Hz with 500 ms grains never exceeds 8 active grains), and a pinned manual-path render. The legacy render fixtures are unchanged. The preset round-trip fixture gained the F13 values. The export test shows Follow renders are reproducible and manual values change the file. In a standalone build under Xvfb, the Grains section expands, the readouts match the MORPH values, and turning Size's Follow off keeps the readout at 66 ms.
+
+Deviations and gaps:
+- The pinned fixture and the spawn-count tests come from this build. They pin the implementation, not an independent reference.
+- Smoothing is per block, so a manual value that is ramping can render slightly differently at a different host block size or in export. Follow-all is exact.
+- The pool is still 8 grains per voice. Oversubscription skips spawns deterministically and never steals; no larger pool was added.
+- Processor glue (`setGrainFollow`, effective-value publication, the mutation gate in `buildMutationFields`) is reviewed and checked in the standalone, not in an automated test, because the test binary does not link the processor.
+- A/B and variation history capture these parameters through the existing all-parameter paths. Those paths are not separately tested for grain values.
+- Presets stay at schema 2: the controls are ordinary parameters, as with F07.
+- No DAW, listening, CPU, keyboard or accessibility pass yet. Commercial tier assignment is unchanged; these controls are on both tiers pending the release decision.
+
+## 2026-10-21: F14 modulation shapes
+
+Implemented F14 core. Four appended parameters: `lfo_shape` (Sine default, Triangle, Step random, Smooth random, Curve), `lfo_retrigger` (Legacy default, Free, First note, Host), `lfo_phase` (0 to 1) and `lfo_slew_ms` (0 to 100 ms). The curve is bounded feature data: 2 to 32 points, x strictly increasing from 0 to 1, values in range. `ModulationCurve` and `curveEdit` are pure. `ModulationOscillator` (`evaluateWaveform`) is pure and holds no state between calls. Random shapes draw from the modulation lane of the patch seed, one draw per cycle. `CurveMailbox` is a seqlock, so the audio thread reads curves without locks. `HeldNoteCounter` counts physically held keys for First note. The MORPH LFO keeps the legacy arithmetic for Sine, Legacy and zero phase.
+
+Persistence: the curve lives in host state under FeatureState (written only when it is not the default) and in each A/B slot. Schema 3 presets carry it in a `features` object, written only when the curve is not the default. Schema 2 files load the default curve. Undo, redo, A/B recall, preset load and variation snapshots include the curve. Offline export takes every setting through `RenderSettings`. The lock registry gets four motion entries: the choices are not mutable, while phase and slew are. The overlay gets a collapsed "Motion shapes (Pro)" section with a curve editor.
+
+Evidence: `texture_unit_tests` passes 126,629 checks. `test_modulation_shapes` covers the curve rules, the mailbox, the sine legacy identity, triangle continuity, step and smooth random continuity, the slew and wrap crossfades, pinned golden random values, the period at each rate and division, host pre-roll, stopped and missing-position holds, First note only on the first key, block-partition invariance, the held-note counter, lock and preset ranges, state validation, schema 3 round trips, and rejected corrupt files. The legacy render fixtures are unchanged. The export test shows the shape reaches the file. In the standalone under Xvfb, the Motion section expands and lays out correctly.
+
+Deviations and gaps:
+- First note restarts at the next block in the live plugin, because MIDI is handled mid-block and the morph targets are fixed per block. The offline render restarts exactly at the event. The two differ by up to one block.
+- Host retrigger ignores the Sync switch and always uses the tempo division. In export, Host runs as a transport that is playing, at the last live tempo.
+- Randomize resets the shape controls to their defaults and does not randomize them. Gentle Mutate does not change the curve.
+- The curve is not a parameter and has no lock entry. Randomize and Mutate leave it alone.
+- The bundle preset limit stays at 8 KiB. A curve is far below that, so this has no effect in practice.
+- Curve drags, keyboard editing and undo of a drag were not driven in the standalone. Only the layout was checked.
+- The processor glue (retrigger wiring, curve mailbox publication, A/B recall undo) is reviewed, not automated, because the test binary does not link the processor.
+- No DAW, listening or CPU evidence. The shapes are on the Pro tier as the LFO is.
+
+## 2026-10-21: F10 freeze and scan
+
+Implemented F10 core. Ten appended parameters, one set per layer: `layer_N_scan_mode` (Legacy default, Manual, Scan), `layer_N_scan_position`, `layer_N_scan_speed` (source lengths per second, -4 to 4), `layer_N_freeze` and `layer_N_freeze_spread`. `SamplePositionController` (pure) owns the centre for one layer. Legacy with Freeze off is inactive, so the default path is untouched. Manual glides to the position over 20 ms. Scan advances and wraps. Freeze latches the centre at the block boundary. Until the processor's write of the position arrives, the centre holds, so a freeze never jumps. A later edit moves a frozen centre over 20 ms. Freeze jitter is the spread times a quarter of the source. Ending a freeze in Legacy moves the voices to the frozen centre. A new sample releases any freeze. Grains start at the centre through `MorphTargets::scanCentre`; the voices' own read heads are used when it is negative. The processor writes the latched centre into scan_position on the message thread, from the 60 Hz timer. Export takes the same settings through `RenderSettings`. Randomize leaves these controls alone, and they sit in the grain lock group, none of them mutable by Gentle Mutate. A collapsed "Scan and freeze" section in the overlay has one row per layer.
+
+Evidence: `texture_unit_tests` passes 129,170 checks. `test_scan_position` covers the default inactivity, the 20 ms glide, scan advance and wrap, direct moves while scanning, the latch once, the acknowledgment and user edits, the Legacy unfreeze jump, a new sample resetting a freeze, empty and non-finite input, and extreme speed. At the engine level it checks that a manual position reads a sounding region and not a silent one, that a Legacy freeze keeps sounding after the read head has passed the sound while the unfrozen engine goes silent, that note-off with a freeze on retires every voice, and that positions 0 and 1 on a one-frame sample stay finite. The legacy render fixtures are unchanged. The preset round trip gained the F10 values. Both the Linux and clang builds pass. In the standalone under Xvfb the section lays out correctly.
+
+Deviations and gaps:
+- The frozen position reaches scan_position on the message thread, within one 60 Hz timer tick, and a saved patch captures it. Before that, the audio thread holds the centre.
+- Jitter outside a freeze is the MORPH jitter, not the spread. The spread applies only while frozen.
+- Scan speed is in normalised centre per second. It does not follow tempo.
+- Journey (F18) is not implemented, so Freeze does not yet interact with it.
+- Layer 2 scan controls are not gated by the Pro layer-blend rule. The layer is inaudible without Pro, so nothing plays.
+- The processor glue (the latch write, the Randomize exclusion, the export settings) is reviewed and checked in the standalone, not automated, because the test binary does not link the processor.
+- Freeze was checked for layout only in the standalone. Its effect on sound has not been listened to, and no DAW or CPU evidence exists.
+
+## 2026-10-21: F19 rhythmic grains
+
+Implemented F19 core. Seven appended parameters: `grain_clock` (Legacy default, Rhythmic), `grain_division` (1/4, 1/8, 1/16, 1/32, 1/8T, 1/16T; default 1/16), `grain_swing` (0 to 0.75), `grain_probability` (0 to 1), `grain_gate` (0.05 to 1), `grain_burst` (1 to 4) and `grain_first_immediate` (default on). `GrainClock` (pure) turns a transport position into sample-accurate grain starts: grid point n sits at n x D beats with odd points delayed by swing x D, bursts subdivide the interval after a point, and the gate sets length within 5 to 500 ms. A position jump, a loop, a stop or a grid change realigns to the next point, so nothing is replayed. Without a host transport the grid free-runs at the last valid tempo (120 BPM at start). A division change is held for 20 ms. `GrainRenderController` composes the grid for each block and is shared by the live processor and the offline renderer. The probability draw is keyed by the voice seed (layer and note) and the grid index, so it repeats. Randomize leaves the rhythm controls alone. Gentle Mutate may move swing, chance, gate and burst only while the grid is on. Legacy adds no starts and renders through the unchanged path.
+
+Evidence: 508 rhythm checks in `texture-rhythm` pass under Linux gcc and clang. They cover grid math, timing within one sample at five tempos, straight and swung grids, burst bounds, gate clamping, negative pre-roll, tempo changes, seeks, loops, stops, free-run, overflow counting, the 20 ms hold, chunk independence, the first-grain toggle, probability repeatability, bit-identity of the default engine path, and a self-generated golden render for the rhythmic path. The full existing suite passes (130,633 checks). The Linux and clang builds are warning-free.
+
+Deviations and gaps:
+- Offline export free-runs at the last live tempo. It does not reproduce the host's transport position, so an exported rhythmic patch can place its grid differently from a live render that starts mid-song.
+- In Rhythmic mode the grid sets timing, so Grain Density is not applied. Overlap follows the gate.
+- Probability and burst draws are keyed by the voice seed, not by an absolute note counter, so live and offline renders of the same note agree.
+- Gentle Mutate and Randomize are reviewed, not automated, because the test binary does not link the processor.
+- Rhythmic panel: layout checked by build only; not run in the standalone. No DAW, listening or CPU evidence yet.
+
+## 2026-10-21: F16 MORPH personalities
+
+Implemented F16 core. Two appended parameters: `morph_personality` (Legacy default, Cloud, Pulse, Fracture, Swarm) and `personality_intensity` (0 to 1, default 0.5). `PersonalityMap` (pure) gives each style's grain targets at a MORPH position, blended toward the MORPH-derived values by intensity. Cloud sets duration, jitter, detune and spread. Pulse sets jitter and the gate and engages the F19 grid, with its division chosen by four MORPH regions (1/4, 1/8, 1/16, 1/32). Fracture adds to the reverse chance and clamps. Swarm sets duration, detune, jitter and spread. Legacy, and zero intensity, return an identity flag that leaves the targets untouched, so the default path does no arithmetic. `PersonalityRamp` crossfades continuous targets over 20 ms on a style change, and holds the previous scheduler choice for the same 20 ms. The mapping runs in `GrainRenderController` before the F13 manual overrides, so an explicit grain value wins. Both the live processor and the offline renderer use it. Randomize leaves the style alone. Gentle Mutate may move the intensity only while a style other than Legacy is selected.
+
+Evidence: 11,070 personality checks in `texture-personality` pass under Linux and clang. They cover the identity at 1,001 MORPH positions for every style at zero intensity, finite and bounded targets at five intensities, the Cloud, Fracture and Swarm endpoints, the linear intensity blend, the four Pulse regions, the Pulse gate, reverse clamping, the override precedence, the 20 ms crossfade and scheduler hold, the absence of a jump between blocks, a sample-exact equivalence between the controller and a hand-applied mapping, and bit-identical default rendering through the controller. The full existing suite passes (131,051 checks). `LockPolicy::maxLocks` now equals the field count (66), because the registry outgrew the old 64 bound.
+
+Deviations and gaps:
+- No factory presets yet. The specification asks for at least two per implemented personality; these need listening work and are not delivered.
+- Endpoints are proposals from the specification. They have not been auditioned or gain-matched, so their musical balance is unverified.
+- Personalities change grain targets only. Tone, space and the effect chain are untouched, as the specification allows.
+- The 20 ms transition is a crossfade of continuous targets and a hold of the scheduler. It is not an audio crossfade of two grain sets.
+- Style switching under host automation, undo and export parity are reviewed through the shared controller, not driven in a host or the standalone.
+- Randomize leaves the personality alone, a decision recorded here rather than in the specification.
+- The Character panel is laid out by build only; not run in the standalone. No DAW, listening or CPU evidence.
+
+## 2026-10-21: F17 attack-to-cloud
+
+Implemented F17 core. Four appended parameters: `attack_cloud_on` (off by default), `attack_cloud_hold_ms` (0 to 500, default 40), `attack_cloud_transition_ms` (5 to 2000, default 250) and `attack_cloud_original` (0 to 1, default 1). `AttackCloudPlan` (pure) latches the hold and transition in samples at note-on and gives the gains: the direct read holds at the requested level, then a smoothstep crossfade gives cloud = t and direct = (1 - t) x level, with no equal-power boost. Each voice has a direct read head at the sample start, at the note's calibrated pitch, which reads forward once and fades over the last 256 frames of the sample. It mixes in before the ADSR and velocity, so both apply once. Mono Legato keeps a crossfade that is running, and Mono Retrigger restarts it. If the sample ends during the hold, the cloud starts at once. With the feature off no branch is taken, so the default path is unchanged. The times and the level sit in the Envelope lock group, and the times and level move under Gentle Mutate only while the feature is on.
+
+Evidence: 150 attack checks in `texture-attack` pass under Linux gcc and clang. The central check is an exact identity: with unit envelope and root-pitched playback, the attack-on output minus t times the attack-off output equals (1 - t) x level x source, sample for sample, through the hold and the crossfade. After the crossfade the output is bit-identical to the attack-off render. Other checks cover the smoothstep, the gains, latching and clamping (including non-finite input), zero hold, a disabled feature matching a default engine exactly, an edit during a sounding note not moving its crossfade, a sample shorter than the hold, a release during the crossfade, and a rapid stream of attacks. A mutation that ignored the level was caught by both identity checks, then reverted. The full existing suite passes (131,887 checks). The Linux and clang builds are warning-free.
+
+Deviations and gaps:
+- The hold is an explicit time, not transient detection, as the specification requires for this version.
+- The direct read ignores Freeze and scan (F10), Reverse and Shimmer, by design. It plays at the note's pitch and does not follow Glide.
+- Mono Legato and Retrigger behaviour is checked by code review, not by a host or a standalone run.
+- The Lock group membership changed the Envelope group's count from 4 to 8. Locking the group now also locks the attack-to-cloud controls.
+- No factory presets use the feature, and no listening or CPU evidence exists. The specification's audition clips and CPU overhead measurement are not done.
+- The Attack panel is laid out by build only; not run in the standalone.
+

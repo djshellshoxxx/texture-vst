@@ -1,5 +1,6 @@
 #include "PresetManager.h"
 
+#include "../IO/MediaManifest.h"
 #include "../Utility/ParameterIDs.h"
 
 #include <algorithm>
@@ -114,8 +115,124 @@ namespace texture
                 return juce::exactlyEqual (numeric, std::floor (numeric))
                     && numeric >= 0.0 && numeric <= 2.0;
 
+            // F07 tone and space. Any value outside its range rejects the preset, as for every
+            // other parameter; readers that predate these IDs ignore them.
+            if (id == params::toneSpaceMode)
+                return juce::exactlyEqual (numeric, std::floor (numeric))
+                    && numeric >= 0.0 && numeric <= static_cast<double> (params::toneSpaceModeIndependent);
+
+            if (id == params::toneFilterOn)
+                return juce::exactlyEqual (numeric, 0.0) || juce::exactlyEqual (numeric, 1.0);
+
+            if (id == params::toneHpHz)    return inRange (params::toneHpMinHz, params::toneHpMaxHz);
+            if (id == params::toneLpHz)    return inRange (params::toneLpMinHz, params::toneLpMaxHz);
+            if (id == params::toneTiltDb)  return inRange (params::toneTiltMinDb, params::toneTiltMaxDb);
+            if (id == params::spaceWidth)  return inRange (params::spaceWidthMin, params::spaceWidthMax);
+            if (id == params::spaceReverb) return inRange (params::spaceReverbMin, params::spaceReverbMax);
+            if (id == params::spaceChorus) return inRange (params::spaceChorusMin, params::spaceChorusMax);
+            if (id == params::toneDrive)   return inRange (params::toneDriveMin, params::toneDriveMax);
+
+            // F11 voice and glide.
+            if (id == params::voiceMode || id == params::notePriority || id == params::glideMode)
+            {
+                const auto count = id == params::voiceMode ? params::voiceModeCount
+                                 : id == params::notePriority ? params::notePriorityCount
+                                                              : params::glideModeCount;
+                return juce::exactlyEqual (numeric, std::floor (numeric))
+                    && numeric >= 0.0 && numeric < static_cast<double> (count);
+            }
+
+            if (id == params::glideMs)     return inRange (params::glideMsMin, params::glideMsMax);
+
+            // F13 grain controls. Follow flags are switches.
+            if (id == params::grainSizeFollow || id == params::grainDensityFollow
+                || id == params::grainJitterFollow || id == params::grainDetuneFollow
+                || id == params::grainPanFollow)
+                return juce::exactlyEqual (numeric, 0.0) || juce::exactlyEqual (numeric, 1.0);
+
+            if (id == params::grainSizeMs)     return inRange (params::grainSizeMinMs, params::grainSizeMaxMs);
+            if (id == params::grainDensityHz)  return inRange (params::grainDensityMinHz, params::grainDensityMaxHz);
+            if (id == params::grainJitter)     return inRange (params::grainJitterMin, params::grainJitterMax);
+            if (id == params::grainDetuneCents) return inRange (params::grainDetuneMinCents, params::grainDetuneMaxCents);
+            if (id == params::grainPanSpread)  return inRange (params::grainPanSpreadMin, params::grainPanSpreadMax);
+
+            // F14 modulation shapes.
+            if (id == params::lfoShape)
+                return juce::exactlyEqual (numeric, std::floor (numeric))
+                    && numeric >= 0.0 && numeric < static_cast<double> (params::lfoShapeCount);
+
+            if (id == params::lfoRetrigger)
+                return juce::exactlyEqual (numeric, std::floor (numeric))
+                    && numeric >= 0.0 && numeric < static_cast<double> (params::lfoRetriggerCount);
+
+            if (id == params::lfoPhase)    return inRange (params::lfoPhaseMin, params::lfoPhaseMax);
+
+            // F10 freeze and scan, per layer.
+            if (id == params::layer1ScanMode || id == params::layer2ScanMode)
+                return juce::exactlyEqual (numeric, std::floor (numeric))
+                    && numeric >= 0.0 && numeric < static_cast<double> (params::scanModeCount);
+
+            if (id == params::layer1ScanPosition || id == params::layer2ScanPosition)
+                return inRange (params::scanPositionMin, params::scanPositionMax);
+
+            if (id == params::layer1ScanSpeed || id == params::layer2ScanSpeed)
+                return inRange (params::scanSpeedMin, params::scanSpeedMax);
+
+            if (id == params::layer1Freeze || id == params::layer2Freeze)
+                return juce::exactlyEqual (numeric, 0.0) || juce::exactlyEqual (numeric, 1.0);
+
+            if (id == params::layer1FreezeSpread || id == params::layer2FreezeSpread)
+                return inRange (params::freezeSpreadMin, params::freezeSpreadMax);
+            // F19 rhythmic grains. Appended; Legacy clock with its defaults reproduces the old grain path.
+            if (id == params::grainClock)
+                return juce::exactlyEqual (numeric, std::floor (numeric))
+                    && numeric >= 0.0 && numeric < static_cast<double> (params::grainClockCount);
+
+            if (id == params::grainDivision)
+                return juce::exactlyEqual (numeric, std::floor (numeric))
+                    && numeric >= 0.0 && numeric < static_cast<double> (params::grainDivisionCount);
+
+            if (id == params::grainSwing)       return inRange (params::grainSwingMin, params::grainSwingMax);
+            if (id == params::grainProbability) return inRange (params::grainProbabilityMin, params::grainProbabilityMax);
+            if (id == params::grainGate)        return inRange (params::grainGateMin, params::grainGateMax);
+
+            if (id == params::grainBurst)
+                return juce::exactlyEqual (numeric, std::floor (numeric))
+                    && numeric >= static_cast<double> (params::grainBurstMin)
+                    && numeric <= static_cast<double> (params::grainBurstMax);
+
+            if (id == params::grainFirstImmediate)
+                return juce::exactlyEqual (numeric, 0.0) || juce::exactlyEqual (numeric, 1.0);
+
+            // F16 MORPH personalities. Legacy with any intensity is the original mapping.
+            if (id == params::morphPersonality)
+                return juce::exactlyEqual (numeric, std::floor (numeric))
+                    && numeric >= 0.0 && numeric < static_cast<double> (params::personalityCount);
+
+            if (id == params::personalityIntensity) return inRange (params::personalityIntensityMin, params::personalityIntensityMax);
+
+            // F17 attack-to-cloud.
+            if (id == params::attackCloudOn)
+                return juce::exactlyEqual (numeric, 0.0) || juce::exactlyEqual (numeric, 1.0);
+
+            if (id == params::attackCloudHoldMs)
+                return inRange (params::attackCloudHoldMinMs, params::attackCloudHoldMaxMs);
+
+            if (id == params::attackCloudTransitionMs)
+                return inRange (params::attackCloudTransitionMinMs, params::attackCloudTransitionMaxMs);
+
+            if (id == params::attackCloudOriginal)
+                return inRange (params::attackCloudOriginalMin, params::attackCloudOriginalMax);
+
+            if (id == params::lfoSlewMs)   return inRange (params::lfoSlewMsMin, params::lfoSlewMsMax);
+
             return false;
         }
+    }
+
+    bool PresetManager::isValidParameterValue (const juce::String& id, double value)
+    {
+        return isKnownParameterID (id) && parameterValueIsValid (id, juce::var (value));
     }
 
     // --- PresetData ---------------------------------------------------------
@@ -380,7 +497,9 @@ namespace texture
             return Status::fileMissing;
         }
 
-        if (file.getSize() > maxPresetFileSizeBytes)
+        // The byte limit depends on the schema, which is known only after parsing; this is the
+        // ceiling that applies to every schema.
+        if (file.getSize() > maxSchema3FileSizeBytes)
         {
             errorMessage = "Could not read preset: " + file.getFileNameWithoutExtension();
             return Status::tooLarge;
@@ -416,10 +535,16 @@ namespace texture
             return Status::invalidData;
         }
 
-        if (schema > currentSchemaVersion)
+        if (schema > maxSchemaVersion)
         {
             errorMessage = "This preset was made with a newer version of TEXTURE.";
             return Status::schemaTooNew;
+        }
+
+        if (schema < 3 && file.getSize() > maxPresetFileSizeBytes)
+        {
+            errorMessage = "Could not read preset: " + file.getFileNameWithoutExtension();
+            return Status::tooLarge;
         }
 
         // Only mutate `data` once everything has parsed cleanly.
@@ -466,6 +591,21 @@ namespace texture
                 }
 
                 parsedData.sampleStarts[static_cast<size_t> (layer)] = static_cast<float> (start);
+
+                const auto hashVar = sampleVar.getProperty ("sha256", juce::var());
+
+                if (! hashVar.isVoid())
+                {
+                    const auto hash = hashVar.toString();
+
+                    if (! hashVar.isString() || (hash.isNotEmpty() && ! BundleFormat::isSha256 (hash)))
+                    {
+                        errorMessage = "Preset sample content hash is invalid.";
+                        return Status::invalidData;
+                    }
+
+                    parsedData.mediaSha256[static_cast<size_t> (layer)] = hash;
+                }
             }
 
             parsedData.samplePath = parsedData.samplePaths[0];
@@ -474,6 +614,69 @@ namespace texture
         if (const auto* tagArray = parsed.getProperty ("tags", juce::var()).getArray())
             for (const auto& tag : *tagArray)
                 parsedData.tags.add (tag.toString());
+
+        // Schema 3 features. Each entry is validated against the curve rules, so a corrupt
+        // curve rejects the whole preset rather than falling back silently.
+        if (schema >= 3)
+        {
+            const auto features = parsed.getProperty ("features", juce::var());
+
+            if (! features.isVoid())
+            {
+                auto* featureObject = features.getDynamicObject();
+
+                if (featureObject == nullptr)
+                {
+                    errorMessage = "Preset feature data is malformed.";
+                    return Status::invalidData;
+                }
+
+                const auto curveVar = featureObject->getProperty ("lfo_curve");
+
+                if (! curveVar.isVoid())
+                {
+                    const auto* pointArray = curveVar.getArray();
+                    std::vector<CurvePoint> points;
+
+                    if (pointArray == nullptr)
+                    {
+                        errorMessage = "Preset modulation curve is malformed.";
+                        return Status::invalidData;
+                    }
+
+                    for (const auto& pointVar : *pointArray)
+                    {
+                        const auto* pair = pointVar.getArray();
+
+                        if (pair == nullptr || pair->size() != 2)
+                        {
+                            errorMessage = "Preset modulation curve is malformed.";
+                            return Status::invalidData;
+                        }
+
+                        double x = 0.0;
+                        double y = 0.0;
+
+                        if (! readNumericParameter (pair->getReference (0), x)
+                            || ! readNumericParameter (pair->getReference (1), y))
+                        {
+                            errorMessage = "Preset modulation curve is malformed.";
+                            return Status::invalidData;
+                        }
+
+                        points.push_back ({ static_cast<float> (x), static_cast<float> (y) });
+                    }
+
+                    if (! ModulationCurve::fromPoints (points, parsedData.lfoCurve))
+                    {
+                        errorMessage = "Preset modulation curve is invalid.";
+                        return Status::invalidData;
+                    }
+
+                    parsedData.hasLfoCurve = true;
+                }
+            }
+        }
 
         const auto parameterVar = parsed.getProperty ("parameters", juce::var());
 
@@ -514,8 +717,13 @@ namespace texture
                                                const PresetData& data,
                                                juce::String& errorMessage) const
     {
+        // Schema 3 only when a feature needs it; a default curve is not written.
+        const auto needsFeatures = data.hasLfoCurve && data.lfoCurve.isValid()
+                                   && ! (data.lfoCurve == ModulationCurve());
+        const auto schema = needsFeatures ? maxSchemaVersion : currentSchemaVersion;
+
         juce::DynamicObject::Ptr root (new juce::DynamicObject());
-        root->setProperty ("schema_version", currentSchemaVersion);
+        root->setProperty ("schema_version", schema);
         root->setProperty ("preset_name", data.name);
         root->setProperty ("category", data.category);
         root->setProperty ("author", data.author);
@@ -547,6 +755,19 @@ namespace texture
 
             sampleObject->setProperty ("path", path);
             sampleObject->setProperty ("start", start);
+
+            const auto& hash = data.mediaSha256[static_cast<size_t> (layer)];
+
+            if (hash.isNotEmpty())
+            {
+                if (! BundleFormat::isSha256 (hash))
+                {
+                    errorMessage = "Preset sample content hash is invalid.";
+                    return Status::invalidData;
+                }
+
+                sampleObject->setProperty ("sha256", hash);
+            }
             sampleArray.add (juce::var (sampleObject.get()));
         }
 
@@ -577,11 +798,29 @@ namespace texture
             parameterObject->setProperty (name, value);
         }
 
+        if (needsFeatures)
+        {
+            juce::DynamicObject::Ptr features (new juce::DynamicObject());
+            juce::Array<juce::var> points;
+
+            for (int i = 0; i < data.lfoCurve.getNumPoints(); ++i)
+            {
+                juce::Array<juce::var> pair;
+                pair.add (static_cast<double> (data.lfoCurve.getPoint (i).x));
+                pair.add (static_cast<double> (data.lfoCurve.getPoint (i).y));
+                points.add (juce::var (pair));
+            }
+
+            features->setProperty ("lfo_curve", points);
+            root->setProperty ("features", juce::var (features.get()));
+        }
+
         root->setProperty ("parameters", juce::var (parameterObject.get()));
 
         const auto text = juce::JSON::toString (juce::var (root.get()), false);
+        const auto sizeLimit = schema >= 3 ? maxSchema3FileSizeBytes : maxPresetFileSizeBytes;
 
-        if (text.getNumBytesAsUTF8() > static_cast<size_t> (maxPresetFileSizeBytes))
+        if (text.getNumBytesAsUTF8() > static_cast<size_t> (sizeLimit))
         {
             errorMessage = "Preset is too large to save.";
             return Status::writeFailed;

@@ -1,9 +1,11 @@
 #pragma once
 
+#include "Biquad.h"
 #include "Chorus.h"
 #include "Reverb.h"
 #include "Saturator.h"
 #include "SecretEffect.h"
+#include "ToneSpace.h"
 
 #include "../Utility/DspHelpers.h"
 #include "../Utility/ParameterIDs.h"
@@ -14,8 +16,12 @@ namespace texture
 {
     /** The fixed post-voice signal path.
 
-        Saturator -> Chorus -> Reverb -> high shelf -> DC blocker -> output gain.
-        The order is not user-rearrangeable (07_EFFECTS_CHAIN.md).
+        Tone filter (independent mode only) -> Saturator -> Chorus -> Reverb -> GRIT
+        -> stereo width (independent mode only) -> high shelf -> DC blocker -> gain.
+        The order is not user-rearrangeable (07_EFFECTS_CHAIN.md, F07).
+
+        With Follow MORPH selected the chain renders exactly the MORPH-derived values
+        and bypasses both the filter and the width stage.
     */
     class EffectsChain
     {
@@ -27,8 +33,14 @@ namespace texture
         /** Zeroes the reverb tail as well as the filter state (CC120). */
         void clearTails();
 
-        /** Pushes the MORPH-derived settings for the coming block. */
+        /** Pushes the MORPH-derived settings for the coming block. Real-time safe. */
         void setMorphTargets (const MorphTargets& targets);
+
+        /** Pushes the independent tone and space settings. Real-time safe. */
+        void setToneSpace (const ToneSpaceSettings& settings) noexcept;
+
+        /** The values the chain last applied (after mode routing and ramps). */
+        ResolvedToneSpace getAppliedToneSpace() const noexcept { return applied; }
 
         void setReverbEnabled (bool shouldBeEnabled) noexcept { reverb.setEnabled (shouldBeEnabled); }
         bool isReverbEnabled() const noexcept { return reverb.isEnabled(); }
@@ -57,31 +69,46 @@ namespace texture
         const Reverb& getReverb() const noexcept { return reverb; }
 
     private:
-        void updateHighShelf (float tiltDb);
+        void applyToneSpace (int numSamples) noexcept;
+        void updateHighShelf (float tiltDb) noexcept;
+        void processToneFilter (juce::AudioBuffer<float>& buffer, int startSample, int numSamples,
+                                float startMix, float endMix, float startHp, float startLp,
+                                float endHp, float endLp) noexcept;
+        void processWidth (juce::AudioBuffer<float>& buffer, int startSample, int numSamples,
+                           float startWidth, float endWidth) noexcept;
 
         static constexpr double gainSmoothingSeconds = 0.03;
         static constexpr float highShelfFrequency = 6000.0f;
         static constexpr float highShelfQ = 0.707f;
         static constexpr int maxSupportedChannels = 2;
+        static constexpr int toneFilterChunk = 32;
 
         Saturator saturator;
         Chorus chorus;
         Reverb reverb;
         SecretEffect secret;
 
-        using ShelfFilter = juce::dsp::IIR::Filter<float>;
-        using ShelfCoefficients = juce::dsp::IIR::Coefficients<float>;
-
-        std::array<ShelfFilter, maxSupportedChannels> highShelf {};
+        std::array<dsp::Biquad, maxSupportedChannels> highShelf {};
+        std::array<dsp::Biquad, maxSupportedChannels> toneHighPass {};
+        std::array<dsp::Biquad, maxSupportedChannels> toneLowPass {};
         std::array<dsp::DcBlocker, maxSupportedChannels> dcBlockers {};
+
+        /** Scratch for the wet tone-filter signal. Sized in prepare(), never in process(). */
+        juce::AudioBuffer<float> toneScratch;
 
         juce::SmoothedValue<float> outputGain;
         dsp::EnergyTracker tailEnergy;
 
+        MorphTargets morphTargets { deriveMorphTargets (params::morphDefault) };
+        ToneSpaceSettings toneSettings;
+        ToneSpaceRouter router;
+        ResolvedToneSpace applied;
+
         double preparedSampleRate { 44100.0 };
         int preparedChannels { 2 };
+        int preparedBlockSize { 512 };
         bool isPrepared { false };
-        float currentTiltDb { -1.0f };   // forces the first update
+        float currentTiltDb { 1.0e9f };   // forces the first shelf update
         float lastBlockPeak { 0.0f };
     };
 }

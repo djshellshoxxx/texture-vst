@@ -29,12 +29,93 @@ namespace texture::params
     inline constexpr const char* shimmer     = "shimmer";
     inline constexpr const char* randomMode  = "random_mode";
 
-    /** Every ID in preset/serialisation order. */
+    // F07 independent tone and space. Appended, so older presets and sessions do not
+    // carry them and read the Follow MORPH defaults.
+    inline constexpr const char* toneSpaceMode = "tone_space_mode";
+    inline constexpr const char* toneHpHz      = "tone_hp_hz";
+    inline constexpr const char* toneLpHz      = "tone_lp_hz";
+    inline constexpr const char* toneFilterOn  = "tone_filter_on";
+    inline constexpr const char* toneTiltDb    = "tone_tilt_db";
+    inline constexpr const char* spaceWidth    = "space_width";
+    inline constexpr const char* spaceReverb   = "space_reverb";
+    inline constexpr const char* spaceChorus   = "space_chorus";
+    inline constexpr const char* toneDrive     = "tone_drive";
+
+    // F11 mono, legato and glide. Appended; Poly with zero glide is the default.
+    inline constexpr const char* voiceMode     = "voice_mode";
+    inline constexpr const char* notePriority  = "note_priority";
+    inline constexpr const char* glideMs       = "glide_ms";
+    inline constexpr const char* glideMode     = "glide_mode";
+
+    // F13 expandable grain controls. Appended. Each manual value has a Follow flag;
+    // while Follow is on the value is ignored and the MORPH mapping applies.
+    inline constexpr const char* grainSizeMs       = "grain_size_ms";
+    inline constexpr const char* grainSizeFollow   = "grain_size_follow";
+    inline constexpr const char* grainDensityHz    = "grain_density_hz";
+    inline constexpr const char* grainDensityFollow = "grain_density_follow";
+    inline constexpr const char* grainJitter       = "grain_jitter";
+    inline constexpr const char* grainJitterFollow = "grain_jitter_follow";
+    inline constexpr const char* grainDetuneCents  = "grain_detune_cents";
+    inline constexpr const char* grainDetuneFollow = "grain_detune_follow";
+    inline constexpr const char* grainPanSpread    = "grain_pan_spread";
+    inline constexpr const char* grainPanFollow    = "grain_pan_follow";
+
+    // F14 modulation shapes. Appended. lfo_rate, depth, sync and division are unchanged.
+    inline constexpr const char* lfoShape      = "lfo_shape";
+    inline constexpr const char* lfoRetrigger  = "lfo_retrigger";
+    inline constexpr const char* lfoPhase      = "lfo_phase";
+    inline constexpr const char* lfoSlewMs     = "lfo_slew_ms";
+
+    // F19 rhythmic grains. Appended. Legacy clock is the default and leaves the grain path unchanged.
+    inline constexpr const char* grainClock          = "grain_clock";
+    inline constexpr const char* grainDivision       = "grain_division";
+    inline constexpr const char* grainSwing          = "grain_swing";
+    inline constexpr const char* grainProbability    = "grain_probability";
+    inline constexpr const char* grainGate           = "grain_gate";
+    inline constexpr const char* grainBurst          = "grain_burst";
+    inline constexpr const char* grainFirstImmediate = "grain_first_immediate";
+
+    // F17 attack-to-cloud. Appended. Off by default; with it off the voice path is unchanged.
+    inline constexpr const char* attackCloudOn           = "attack_cloud_on";
+    inline constexpr const char* attackCloudHoldMs       = "attack_cloud_hold_ms";
+    inline constexpr const char* attackCloudTransitionMs = "attack_cloud_transition_ms";
+    inline constexpr const char* attackCloudOriginal     = "attack_cloud_original";
+
+    // F16 MORPH personalities. Appended. Legacy is the default and keeps MORPH's mapping.
+    inline constexpr const char* morphPersonality     = "morph_personality";
+    inline constexpr const char* personalityIntensity = "personality_intensity";
+
+    // F10 freeze and scan. Appended, one set per layer.
+    inline constexpr const char* layer1ScanMode     = "layer_1_scan_mode";
+    inline constexpr const char* layer1ScanPosition = "layer_1_scan_position";
+    inline constexpr const char* layer1ScanSpeed    = "layer_1_scan_speed";
+    inline constexpr const char* layer1Freeze       = "layer_1_freeze";
+    inline constexpr const char* layer1FreezeSpread = "layer_1_freeze_spread";
+    inline constexpr const char* layer2ScanMode     = "layer_2_scan_mode";
+    inline constexpr const char* layer2ScanPosition = "layer_2_scan_position";
+    inline constexpr const char* layer2ScanSpeed    = "layer_2_scan_speed";
+    inline constexpr const char* layer2Freeze       = "layer_2_freeze";
+    inline constexpr const char* layer2FreezeSpread = "layer_2_freeze_spread";
+
+    /** Every ID in preset/serialisation order. Append only: positions are part of
+        the lock registry's contract and of the preset file layout. */
     inline constexpr const char* allIDs[] = {
         morph, attack, decay, sustain, release,
         reverbOn, gainDb, lfoRate, lfoDepth, lfoSync, lfoDivision, layerBlend,
         tune, reverse, shimmer, randomMode,
-        layer1Root, layer2Root, layer1FineCents, layer2FineCents
+        layer1Root, layer2Root, layer1FineCents, layer2FineCents,
+        toneSpaceMode, toneHpHz, toneLpHz, toneFilterOn, toneTiltDb,
+        spaceWidth, spaceReverb, spaceChorus, toneDrive,
+        voiceMode, notePriority, glideMs, glideMode,
+        grainSizeMs, grainSizeFollow, grainDensityHz, grainDensityFollow,
+        grainJitter, grainJitterFollow, grainDetuneCents, grainDetuneFollow,
+        grainPanSpread, grainPanFollow,
+        lfoShape, lfoRetrigger, lfoPhase, lfoSlewMs,
+        layer1ScanMode, layer1ScanPosition, layer1ScanSpeed, layer1Freeze, layer1FreezeSpread,
+        layer2ScanMode, layer2ScanPosition, layer2ScanSpeed, layer2Freeze, layer2FreezeSpread,
+        grainClock, grainDivision, grainSwing, grainProbability, grainGate, grainBurst, grainFirstImmediate,
+        morphPersonality, personalityIntensity,
+        attackCloudOn, attackCloudHoldMs, attackCloudTransitionMs, attackCloudOriginal
     };
 
     inline constexpr int numParameters = static_cast<int> (std::size (allIDs));
@@ -61,6 +142,78 @@ namespace texture::params
     inline constexpr float reverseMin = 0.0f,    reverseMax = 1.0f,      reverseDefault = 0.0f;
     inline constexpr float shimmerMin = 0.0f,    shimmerMax = 1.0f,      shimmerDefault = 0.0f;
 
+    // F07 ranges. Follow MORPH (mode 0) is the default and ignores these values.
+    inline constexpr int toneSpaceModeFollow = 0;
+    inline constexpr int toneSpaceModeIndependent = 1;
+    inline constexpr int toneSpaceModeDefault = toneSpaceModeFollow;
+    inline constexpr float toneHpMinHz = 20.0f,     toneHpMaxHz = 2000.0f, toneHpDefaultHz = 20.0f;
+    inline constexpr float toneLpMinHz = 1000.0f,   toneLpMaxHz = 20000.0f, toneLpDefaultHz = 20000.0f;
+    inline constexpr bool  toneFilterOnDefault = false;
+    inline constexpr float toneTiltMinDb = -12.0f,  toneTiltMaxDb = 12.0f, toneTiltDefaultDb = 0.0f;
+    inline constexpr float spaceWidthMin = 0.0f,    spaceWidthMax = 2.0f,  spaceWidthDefault = 1.0f;
+    inline constexpr float spaceReverbMin = 0.0f,   spaceReverbMax = 1.0f, spaceReverbDefault = 0.3f;
+    inline constexpr float spaceChorusMin = 0.0f,   spaceChorusMax = 1.0f, spaceChorusDefault = 0.2f;
+    inline constexpr float toneDriveMin = 0.0f,     toneDriveMax = 1.0f,   toneDriveDefault = 0.1f;
+
+    // F11 ranges. Poly (0) is the default; glide is off until the user asks for it.
+    inline constexpr int voiceModeCount = 3;          // Poly, Mono retrigger, Mono legato
+    inline constexpr int voiceModeDefault = 0;
+    inline constexpr int notePriorityCount = 3;       // Last, High, Low
+    inline constexpr int notePriorityDefault = 0;
+    inline constexpr float glideMsMin = 0.0f,       glideMsMax = 2000.0f, glideMsDefault = 0.0f;
+    inline constexpr int glideModeCount = 2;          // Always, Overlap only
+    inline constexpr int glideModeDefault = 1;
+
+    // F13 ranges. Follow is on by default, which reproduces the MORPH mapping exactly.
+    inline constexpr float grainSizeMinMs = 5.0f,       grainSizeMaxMs = 500.0f,  grainSizeDefaultMs = 80.0f;
+    inline constexpr float grainDensityMinHz = 1.0f,    grainDensityMaxHz = 200.0f, grainDensityDefaultHz = 30.0f;
+    inline constexpr float grainJitterMin = 0.0f,       grainJitterMax = 1.0f,    grainJitterDefault = 0.1f;
+    inline constexpr float grainDetuneMinCents = 0.0f,  grainDetuneMaxCents = 100.0f, grainDetuneDefaultCents = 10.0f;
+    inline constexpr float grainPanSpreadMin = 0.0f,    grainPanSpreadMax = 1.0f, grainPanSpreadDefault = 0.5f;
+    inline constexpr bool  grainFollowDefault = true;
+
+    // F14 ranges. Sine with Legacy retrigger and zero phase is the default, which reproduces
+    // the original MORPH LFO exactly.
+    inline constexpr int lfoShapeCount = 5;            // Sine, Triangle, Step random, Smooth random, Curve
+    inline constexpr int lfoShapeDefault = 0;
+    inline constexpr int lfoRetriggerCount = 4;        // Legacy, Free, First note, Host
+    inline constexpr int lfoRetriggerDefault = 0;
+    inline constexpr float lfoPhaseMin = 0.0f,         lfoPhaseMax = 1.0f,   lfoPhaseDefault = 0.0f;
+    inline constexpr float lfoSlewMsMin = 0.0f,        lfoSlewMsMax = 100.0f, lfoSlewMsDefault = 10.0f;
+
+    // F10 ranges. Legacy (0) with Freeze off is the default, so the read position is unchanged.
+    inline constexpr int scanModeCount = 3;            // Legacy, Manual, Scan
+    inline constexpr int scanModeDefault = 0;
+    inline constexpr float scanPositionMin = 0.0f,     scanPositionMax = 1.0f, scanPositionDefault = 0.0f;
+    inline constexpr float scanSpeedMin = -4.0f,       scanSpeedMax = 4.0f,    scanSpeedDefault = 0.0f;
+    inline constexpr bool  freezeDefault = false;
+    inline constexpr float freezeSpreadMin = 0.0f,     freezeSpreadMax = 1.0f, freezeSpreadDefault = 0.1f;
+
+    // F19 ranges. Legacy (0) is the default; the grid settings only matter when Rhythmic is chosen.
+    inline constexpr int grainClockCount = 2;          // Legacy, Rhythmic
+    inline constexpr int grainClockDefault = 0;
+    inline constexpr int grainDivisionCount = 6;       // 1/4, 1/8, 1/16, 1/32, 1/8T, 1/16T
+    inline constexpr int grainDivisionDefault = 2;     // 1/16
+    inline constexpr float grainSwingMin = 0.0f,       grainSwingMax = 0.75f, grainSwingDefault = 0.0f;
+    inline constexpr float grainProbabilityMin = 0.0f, grainProbabilityMax = 1.0f, grainProbabilityDefault = 1.0f;
+    inline constexpr float grainGateMin = 0.05f,       grainGateMax = 1.0f,   grainGateDefault = 0.5f;
+    inline constexpr int grainBurstMin = 1,            grainBurstMax = 4,     grainBurstDefault = 1;
+    inline constexpr bool grainFirstImmediateDefault = true;
+
+    // F17 ranges. Off by default. Hold may be zero; the transition is at least 5 ms.
+    inline constexpr bool attackCloudOnDefault = false;
+    inline constexpr float attackCloudHoldMinMs = 0.0f,         attackCloudHoldMaxMs = 500.0f, attackCloudHoldDefaultMs = 40.0f;
+    inline constexpr float attackCloudTransitionMinMs = 5.0f,   attackCloudTransitionMaxMs = 2000.0f, attackCloudTransitionDefaultMs = 250.0f;
+    inline constexpr float attackCloudOriginalMin = 0.0f,       attackCloudOriginalMax = 1.0f, attackCloudOriginalDefault = 1.0f;
+
+    // F16 ranges. Legacy (0) is the default; intensity only matters for the other styles.
+    inline constexpr int personalityCount = 5;         // Legacy, Cloud, Pulse, Fracture, Swarm
+    inline constexpr int personalityDefault = 0;
+    inline constexpr float personalityIntensityMin = 0.0f, personalityIntensityMax = 1.0f, personalityIntensityDefault = 0.5f;
+
+    /** Grid labels for grain_division, in choice order. */
+    inline constexpr const char* grainDivisionNames[] = { "1/4", "1/8", "1/16", "1/32", "1/8T", "1/16T" };
+
     /** Tempo divisions offered when LFO sync is engaged. */
     inline constexpr const char* divisionNames[] = { "1/1", "1/2", "1/4", "1/8", "1/16" };
     inline constexpr int numDivisions = static_cast<int> (std::size (divisionNames));
@@ -68,8 +221,32 @@ namespace texture::params
     /** Beats per LFO cycle for each division index. */
     inline constexpr double divisionBeats[] = { 4.0, 2.0, 1.0, 0.5, 0.25 };
 
+    /** True for the F13 grain value and Follow controls. */
+    bool isGrainParameter (const juce::String& parameterID);
+
+    /** True for the F14 modulation shape controls. */
+    bool isModulationShapeParameter (const juce::String& parameterID);
+
+    /** True for the F19 rhythmic grain controls. Randomize leaves them as the user set them. */
+    bool isRhythmParameter (const juce::String& parameterID);
+
+    /** True for the F16 personality controls. Randomize leaves them as the user set them. */
+    bool isPersonalityParameter (const juce::String& parameterID);
+
+    /** True for the F17 attack-to-cloud controls. Randomize leaves them as the user set them. */
+    bool isAttackCloudParameter (const juce::String& parameterID);
+
+    /** True for the F10 scan and freeze controls. Randomize leaves them as the user set them. */
+    bool isScanParameter (const juce::String& parameterID);
+
     /** Human-readable name shown in the host's automation list. */
     juce::String displayNameFor (const juce::String& parameterID);
+
+    /** True for the F07 tone and space controls. Randomize leaves them as the user set them. */
+    bool isToneSpaceParameter (const juce::String& parameterID);
+
+    /** True for the F11 voice and glide controls. Randomize leaves them as the user set them. */
+    bool isPerformanceParameter (const juce::String& parameterID);
 
     /** Default value for a parameter, in its own (real-world) units. */
     float defaultValueFor (const juce::String& parameterID);
@@ -99,6 +276,14 @@ namespace texture
         float sourceFineCents { 0.0f }; // smoothed, per-layer calibration
         float reverseChance;      // 0 .. 1, probability a grain plays backwards
         float shimmerAmount;      // 0 .. 1, octave-up grains blended into the cloud
+
+        // F10: a manual read centre for the layer, normalised, or -1 when the layer reads from
+        // its own read head (Legacy, not frozen). Set by SamplePositionController via the engine.
+        float scanCentre { -1.0f };
+        // F13: spawn rate in grains per second per voice, set only when grain density is
+        // manual. Zero keeps the legacy cadence, which derives the hop from duration and
+        // overlap. Written by GrainTargetResolver, never by MORPH.
+        float grainDensityHz { 0.0f };
     };
 
     /** Derives every MORPH-dependent value. `morph` must already be clamped to [0, 1]. */
@@ -122,6 +307,8 @@ namespace texture
         t.sourceFineCents   = 0.0f;
         t.reverseChance     = 0.0f;
         t.shimmerAmount     = 0.0f;
+        t.grainDensityHz    = 0.0f;
+        t.scanCentre        = -1.0f;
         return t;
     }
 }

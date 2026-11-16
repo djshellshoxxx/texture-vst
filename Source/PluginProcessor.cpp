@@ -6,11 +6,13 @@
 #include "PluginProcessor.h"
 
 #include "PluginEditor.h"
+#include "Engine/AuditionChords.h"
 #include "Utility/DspHelpers.h"
 #include "Utility/StateSchema.h"
 
 #include <cmath>
 #include <algorithm>
+#include <string>
 
 namespace texture
 {
@@ -63,6 +65,18 @@ namespace texture
     // =========================================================================
     //  Parameter layout
     // =========================================================================
+
+    namespace
+    {
+        /** Logarithmic travel between two positive limits: equal ratios take equal knob travel. */
+        juce::NormalisableRange<float> logarithmicRange (float minimum, float maximum)
+        {
+            return { minimum, maximum,
+                     [] (float start, float end, float normalised) { return start * std::pow (end / start, normalised); },
+                     [] (float start, float end, float value) { return std::log (value / start) / std::log (end / start); },
+                     [] (float start, float end, float value) { return juce::jlimit (start, end, value); } };
+        }
+    }
 
     juce::AudioProcessorValueTreeState::ParameterLayout TextureAudioProcessor::createParameterLayout()
     {
@@ -206,6 +220,221 @@ namespace texture
             juce::ParameterID { params::randomMode, 1 }, params::displayNameFor (params::randomMode),
             juce::StringArray { "Legacy", "Repeat", "Evolve" }, params::randomModeDefault));
 
+        // --- F07 tone and space. Appended: older states read the Follow MORPH defaults.
+        const auto hzFormatter = [] (float value, int)
+        {
+            return value >= 1000.0f ? juce::String (value / 1000.0f, 2) + " kHz"
+                                    : juce::String (juce::roundToInt (value)) + " Hz";
+        };
+        const auto percentFormatter = [] (float value, int)
+        {
+            return juce::String (juce::roundToInt (value * 100.0f)) + "%";
+        };
+
+        layout.add (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { params::toneSpaceMode, 1 }, params::displayNameFor (params::toneSpaceMode),
+            juce::StringArray { "Follow MORPH", "Independent" }, params::toneSpaceModeDefault));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::toneHpHz, 1 }, params::displayNameFor (params::toneHpHz),
+            logarithmicRange (params::toneHpMinHz, params::toneHpMaxHz), params::toneHpDefaultHz,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (hzFormatter)));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::toneLpHz, 1 }, params::displayNameFor (params::toneLpHz),
+            logarithmicRange (params::toneLpMinHz, params::toneLpMaxHz), params::toneLpDefaultHz,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (hzFormatter)));
+
+        layout.add (std::make_unique<juce::AudioParameterBool> (
+            juce::ParameterID { params::toneFilterOn, 1 }, params::displayNameFor (params::toneFilterOn),
+            params::toneFilterOnDefault));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::toneTiltDb, 1 }, params::displayNameFor (params::toneTiltDb),
+            Range { params::toneTiltMinDb, params::toneTiltMaxDb, 0.1f }, params::toneTiltDefaultDb,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction ([] (float value, int)
+            {
+                return (value > 0.0f ? "+" : "") + juce::String (value, 1) + " dB";
+            })));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::spaceWidth, 1 }, params::displayNameFor (params::spaceWidth),
+            Range { params::spaceWidthMin, params::spaceWidthMax, 0.0001f }, params::spaceWidthDefault,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentFormatter)));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::spaceReverb, 1 }, params::displayNameFor (params::spaceReverb),
+            Range { params::spaceReverbMin, params::spaceReverbMax, 0.0001f }, params::spaceReverbDefault,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentFormatter)));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::spaceChorus, 1 }, params::displayNameFor (params::spaceChorus),
+            Range { params::spaceChorusMin, params::spaceChorusMax, 0.0001f }, params::spaceChorusDefault,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentFormatter)));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::toneDrive, 1 }, params::displayNameFor (params::toneDrive),
+            Range { params::toneDriveMin, params::toneDriveMax, 0.0001f }, params::toneDriveDefault,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentFormatter)));
+
+        // --- F11 mono, legato and glide. Appended: older states read Poly with no glide.
+        layout.add (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { params::voiceMode, 1 }, params::displayNameFor (params::voiceMode),
+            juce::StringArray { "Poly", "Mono Retrigger", "Mono Legato" }, params::voiceModeDefault));
+
+        layout.add (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { params::notePriority, 1 }, params::displayNameFor (params::notePriority),
+            juce::StringArray { "Last", "High", "Low" }, params::notePriorityDefault));
+
+        // Glide is logarithmic above zero: a small value is a short slide, and zero is off.
+        juce::NormalisableRange<float> glideRange (params::glideMsMin, params::glideMsMax,
+            [] (float start, float end, float normalised)
+            {
+                juce::ignoreUnused (start, end);
+                return normalised <= 0.0f ? 0.0f : std::pow (params::glideMsMax + 1.0f, normalised) - 1.0f;
+            },
+            [] (float start, float end, float value)
+            {
+                juce::ignoreUnused (start, end);
+                return value <= 0.0f ? 0.0f : std::log (value + 1.0f) / std::log (params::glideMsMax + 1.0f);
+            },
+            [] (float start, float end, float value)
+            {
+                return juce::jlimit (start, end, value);
+            });
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::glideMs, 1 }, params::displayNameFor (params::glideMs),
+            glideRange, params::glideMsDefault,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction ([] (float value, int)
+            {
+                return value >= 1000.0f ? juce::String (value / 1000.0f, 2) + " s"
+                                        : juce::String (juce::roundToInt (value)) + " ms";
+            })));
+
+        layout.add (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { params::glideMode, 1 }, params::displayNameFor (params::glideMode),
+            juce::StringArray { "Always", "Overlap only" }, params::glideModeDefault));
+
+        // --- F13 expandable grain controls. Appended: older states read Follow MORPH.
+        // Times are skewed like ADSR so the knob's travel favours short grains.
+        Range grainSizeRange { params::grainSizeMinMs, params::grainSizeMaxMs, 0.0001f };
+        grainSizeRange.setSkewForCentre (params::grainSizeDefaultMs);
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::grainSizeMs, 1 }, params::displayNameFor (params::grainSizeMs),
+            grainSizeRange, params::grainSizeDefaultMs,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction ([] (float value, int)
+            {
+                return juce::String (juce::roundToInt (value)) + " ms";
+            })));
+
+        layout.add (std::make_unique<juce::AudioParameterBool> (
+            juce::ParameterID { params::grainSizeFollow, 1 }, params::displayNameFor (params::grainSizeFollow),
+            params::grainFollowDefault));
+
+        Range grainDensityRange { params::grainDensityMinHz, params::grainDensityMaxHz, 0.0001f };
+        grainDensityRange.setSkewForCentre (params::grainDensityDefaultHz);
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::grainDensityHz, 1 }, params::displayNameFor (params::grainDensityHz),
+            grainDensityRange, params::grainDensityDefaultHz,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction ([] (float value, int)
+            {
+                return juce::String (value, 1) + " Hz";
+            })));
+
+        layout.add (std::make_unique<juce::AudioParameterBool> (
+            juce::ParameterID { params::grainDensityFollow, 1 }, params::displayNameFor (params::grainDensityFollow),
+            params::grainFollowDefault));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::grainJitter, 1 }, params::displayNameFor (params::grainJitter),
+            Range { params::grainJitterMin, params::grainJitterMax, 0.0001f }, params::grainJitterDefault,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentFormatter)));
+
+        layout.add (std::make_unique<juce::AudioParameterBool> (
+            juce::ParameterID { params::grainJitterFollow, 1 }, params::displayNameFor (params::grainJitterFollow),
+            params::grainFollowDefault));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::grainDetuneCents, 1 }, params::displayNameFor (params::grainDetuneCents),
+            Range { params::grainDetuneMinCents, params::grainDetuneMaxCents, 0.0001f }, params::grainDetuneDefaultCents,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction ([] (float value, int)
+            {
+                return juce::String (juce::roundToInt (value)) + " cents";
+            })));
+
+        layout.add (std::make_unique<juce::AudioParameterBool> (
+            juce::ParameterID { params::grainDetuneFollow, 1 }, params::displayNameFor (params::grainDetuneFollow),
+            params::grainFollowDefault));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::grainPanSpread, 1 }, params::displayNameFor (params::grainPanSpread),
+            Range { params::grainPanSpreadMin, params::grainPanSpreadMax, 0.0001f }, params::grainPanSpreadDefault,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentFormatter)));
+
+        layout.add (std::make_unique<juce::AudioParameterBool> (
+            juce::ParameterID { params::grainPanFollow, 1 }, params::displayNameFor (params::grainPanFollow),
+            params::grainFollowDefault));
+
+        // --- F14 modulation shapes. Appended: older states read the original sine LFO.
+        layout.add (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { params::lfoShape, 1 }, params::displayNameFor (params::lfoShape),
+            juce::StringArray { "Sine", "Triangle", "Step random", "Smooth random", "Curve" }, params::lfoShapeDefault));
+
+        layout.add (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { params::lfoRetrigger, 1 }, params::displayNameFor (params::lfoRetrigger),
+            juce::StringArray { "Legacy", "Free", "First note", "Host" }, params::lfoRetriggerDefault));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::lfoPhase, 1 }, params::displayNameFor (params::lfoPhase),
+            Range { params::lfoPhaseMin, params::lfoPhaseMax, 0.0001f }, params::lfoPhaseDefault,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentFormatter)));
+
+        // --- F10 freeze and scan, one set per layer. Appended: Legacy with Freeze off reads as before.
+        const std::array<std::array<const char*, 5>, numLayers> scanLayout {{
+            { params::layer1ScanMode, params::layer1ScanPosition, params::layer1ScanSpeed,
+              params::layer1Freeze, params::layer1FreezeSpread },
+            { params::layer2ScanMode, params::layer2ScanPosition, params::layer2ScanSpeed,
+              params::layer2Freeze, params::layer2FreezeSpread } }};
+
+        for (const auto& ids : scanLayout)
+        {
+            layout.add (std::make_unique<juce::AudioParameterChoice> (
+                juce::ParameterID { ids[0], 1 }, params::displayNameFor (ids[0]),
+                juce::StringArray { "Legacy", "Manual", "Scan" }, params::scanModeDefault));
+
+            layout.add (std::make_unique<juce::AudioParameterFloat> (
+                juce::ParameterID { ids[1], 1 }, params::displayNameFor (ids[1]),
+                Range { params::scanPositionMin, params::scanPositionMax, 0.0001f }, params::scanPositionDefault,
+                juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentFormatter)));
+
+            layout.add (std::make_unique<juce::AudioParameterFloat> (
+                juce::ParameterID { ids[2], 1 }, params::displayNameFor (ids[2]),
+                Range { params::scanSpeedMin, params::scanSpeedMax, 0.0001f }, params::scanSpeedDefault,
+                juce::AudioParameterFloatAttributes().withStringFromValueFunction ([] (float value, int)
+                {
+                    return juce::String (value, 2) + " src/s";
+                })));
+
+            layout.add (std::make_unique<juce::AudioParameterBool> (
+                juce::ParameterID { ids[3], 1 }, params::displayNameFor (ids[3]), params::freezeDefault));
+
+            layout.add (std::make_unique<juce::AudioParameterFloat> (
+                juce::ParameterID { ids[4], 1 }, params::displayNameFor (ids[4]),
+                Range { params::freezeSpreadMin, params::freezeSpreadMax, 0.0001f }, params::freezeSpreadDefault,
+                juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentFormatter)));
+        }
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { params::lfoSlewMs, 1 }, params::displayNameFor (params::lfoSlewMs),
+            Range { params::lfoSlewMsMin, params::lfoSlewMsMax, 0.0001f }, params::lfoSlewMsDefault,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction ([] (float value, int)
+            {
+                return juce::String (juce::roundToInt (value)) + " ms";
+            })));
+
         return layout;
     }
 
@@ -257,6 +486,8 @@ namespace texture
         if (auto* store = applicationProperties.getUserSettings())
             if (store->containsKey ("default_gain_db"))
                 setParameterValue (params::gainDb, static_cast<float> (store->getDoubleValue ("default_gain_db", params::gainDefaultDb)));
+
+        renderedAudioCache.setDirectory (getRenderedAudioDirectory());
 
         enforceTierLimits();
 
@@ -344,6 +575,303 @@ namespace texture
         reverseParameter     = apvts.getRawParameterValue (params::reverse);
         shimmerParameter     = apvts.getRawParameterValue (params::shimmer);
         randomModeParameter  = apvts.getRawParameterValue (params::randomMode);
+
+        toneSpaceParameters.mode     = apvts.getRawParameterValue (params::toneSpaceMode);
+        toneSpaceParameters.hp       = apvts.getRawParameterValue (params::toneHpHz);
+        toneSpaceParameters.lp       = apvts.getRawParameterValue (params::toneLpHz);
+        toneSpaceParameters.filterOn = apvts.getRawParameterValue (params::toneFilterOn);
+        toneSpaceParameters.tilt     = apvts.getRawParameterValue (params::toneTiltDb);
+        toneSpaceParameters.width    = apvts.getRawParameterValue (params::spaceWidth);
+        toneSpaceParameters.reverb   = apvts.getRawParameterValue (params::spaceReverb);
+        toneSpaceParameters.chorus   = apvts.getRawParameterValue (params::spaceChorus);
+        toneSpaceParameters.drive    = apvts.getRawParameterValue (params::toneDrive);
+
+        performanceParameters.voiceMode    = apvts.getRawParameterValue (params::voiceMode);
+        performanceParameters.priority     = apvts.getRawParameterValue (params::notePriority);
+        performanceParameters.glideMs      = apvts.getRawParameterValue (params::glideMs);
+        performanceParameters.glideMode    = apvts.getRawParameterValue (params::glideMode);
+
+        for (size_t i = 0; i < numGrainFields; ++i)
+        {
+            grainParameters.values[i] = apvts.getRawParameterValue (grainValueParameterID (static_cast<GrainField> (i)));
+            grainParameters.follow[i] = apvts.getRawParameterValue (grainFollowParameterID (static_cast<GrainField> (i)));
+        }
+
+        rhythmParameters.clock          = apvts.getRawParameterValue (params::grainClock);
+        rhythmParameters.division       = apvts.getRawParameterValue (params::grainDivision);
+        rhythmParameters.swing          = apvts.getRawParameterValue (params::grainSwing);
+        rhythmParameters.probability    = apvts.getRawParameterValue (params::grainProbability);
+        rhythmParameters.gate           = apvts.getRawParameterValue (params::grainGate);
+        rhythmParameters.burst          = apvts.getRawParameterValue (params::grainBurst);
+        rhythmParameters.firstImmediate = apvts.getRawParameterValue (params::grainFirstImmediate);
+
+        personalityParameters.style     = apvts.getRawParameterValue (params::morphPersonality);
+        personalityParameters.intensity = apvts.getRawParameterValue (params::personalityIntensity);
+
+        attackCloudParameters.on         = apvts.getRawParameterValue (params::attackCloudOn);
+        attackCloudParameters.hold       = apvts.getRawParameterValue (params::attackCloudHoldMs);
+        attackCloudParameters.transition = apvts.getRawParameterValue (params::attackCloudTransitionMs);
+        attackCloudParameters.original   = apvts.getRawParameterValue (params::attackCloudOriginal);
+
+        const std::array<std::array<const char*, 5>, numLayers> scanIDs {{
+            { params::layer1ScanMode, params::layer1ScanPosition, params::layer1ScanSpeed,
+              params::layer1Freeze, params::layer1FreezeSpread },
+            { params::layer2ScanMode, params::layer2ScanPosition, params::layer2ScanSpeed,
+              params::layer2Freeze, params::layer2FreezeSpread } }};
+
+        for (size_t layer = 0; layer < static_cast<size_t> (numLayers); ++layer)
+        {
+            scanParameters[layer].mode     = apvts.getRawParameterValue (scanIDs[layer][0]);
+            scanParameters[layer].position = apvts.getRawParameterValue (scanIDs[layer][1]);
+            scanParameters[layer].speed    = apvts.getRawParameterValue (scanIDs[layer][2]);
+            scanParameters[layer].freeze   = apvts.getRawParameterValue (scanIDs[layer][3]);
+            scanParameters[layer].spread   = apvts.getRawParameterValue (scanIDs[layer][4]);
+        }
+
+        modulationParameters.shape     = apvts.getRawParameterValue (params::lfoShape);
+        modulationParameters.retrigger = apvts.getRawParameterValue (params::lfoRetrigger);
+        modulationParameters.phase     = apvts.getRawParameterValue (params::lfoPhase);
+        modulationParameters.slewMs    = apvts.getRawParameterValue (params::lfoSlewMs);
+    }
+
+    ScanSettings TextureAudioProcessor::readScanSettings (int layerIndex) const noexcept
+    {
+        const auto index = static_cast<size_t> (juce::jlimit (0, numLayers - 1, layerIndex));
+        const auto& p = scanParameters[index];
+
+        const auto read = [] (const std::atomic<float>* value, float fallback)
+        {
+            return value != nullptr ? value->load (std::memory_order_relaxed) : fallback;
+        };
+
+        ScanSettings settings;
+        settings.mode = scanModeFromIndex (juce::roundToInt (read (p.mode, 0.0f)));
+        settings.position = read (p.position, params::scanPositionDefault);
+        settings.speed = read (p.speed, params::scanSpeedDefault);
+        settings.freeze = read (p.freeze, 0.0f) > 0.5f;
+        settings.freezeSpread = read (p.spread, params::freezeSpreadDefault);
+        return sanitiseScanSettings (settings);
+    }
+
+    ScanSettings TextureAudioProcessor::getScanSettings (int layerIndex) const
+    {
+        return readScanSettings (layerIndex);
+    }
+
+    GrainControlSettings TextureAudioProcessor::getGrainControlSettings() const
+    {
+        GrainControlSettings settings;
+
+        for (size_t i = 0; i < numGrainFields; ++i)
+        {
+            if (const auto* value = grainParameters.values[i])
+                settings.values[i] = value->load (std::memory_order_relaxed);
+
+            if (const auto* follow = grainParameters.follow[i])
+                settings.follow[i] = follow->load (std::memory_order_relaxed) > 0.5f;
+        }
+
+        return settings;
+    }
+
+    RhythmSettings TextureAudioProcessor::readRhythmSettings() const noexcept
+    {
+        const auto read = [] (const std::atomic<float>* value, float fallback)
+        {
+            return value != nullptr ? value->load (std::memory_order_relaxed) : fallback;
+        };
+
+        RhythmSettings settings;
+        settings.rhythmic = juce::roundToInt (read (rhythmParameters.clock, static_cast<float> (params::grainClockDefault)))
+                            == params::grainClockCount - 1;
+        settings.division = juce::roundToInt (read (rhythmParameters.division, static_cast<float> (params::grainDivisionDefault)));
+        settings.swing = read (rhythmParameters.swing, params::grainSwingDefault);
+        settings.probability = read (rhythmParameters.probability, params::grainProbabilityDefault);
+        settings.gate = read (rhythmParameters.gate, params::grainGateDefault);
+        settings.burst = juce::roundToInt (read (rhythmParameters.burst, static_cast<float> (params::grainBurstDefault)));
+        settings.firstGrainImmediate = read (rhythmParameters.firstImmediate,
+                                             params::grainFirstImmediateDefault ? 1.0f : 0.0f) > 0.5f;
+        return settings;
+    }
+
+    AttackCloudSettings TextureAudioProcessor::readAttackCloudSettings() const noexcept
+    {
+        const auto read = [] (const std::atomic<float>* value, float fallback)
+        {
+            return value != nullptr ? value->load (std::memory_order_relaxed) : fallback;
+        };
+
+        AttackCloudSettings settings;
+        settings.on = read (attackCloudParameters.on, 0.0f) > 0.5f;
+        settings.holdMs = read (attackCloudParameters.hold, params::attackCloudHoldDefaultMs);
+        settings.transitionMs = read (attackCloudParameters.transition, params::attackCloudTransitionDefaultMs);
+        settings.original = read (attackCloudParameters.original, params::attackCloudOriginalDefault);
+        return settings;
+    }
+
+    GrainRenderInputs TextureAudioProcessor::readGrainRenderInputs (float morph) const noexcept
+    {
+        GrainRenderInputs inputs;
+        inputs.rhythm = readRhythmSettings();
+        inputs.morph = morph;
+
+        const auto styleIndex = personalityParameters.style != nullptr
+                                    ? juce::roundToInt (personalityParameters.style->load (std::memory_order_relaxed))
+                                    : params::personalityDefault;
+        inputs.personality = personality::fromIndex (styleIndex);
+        inputs.personalityIntensity = personalityParameters.intensity != nullptr
+                                          ? personalityParameters.intensity->load (std::memory_order_relaxed)
+                                          : params::personalityIntensityDefault;
+        return inputs;
+    }
+
+    float TextureAudioProcessor::getGrainEffectiveValue (GrainField field) const
+    {
+        const auto index = static_cast<size_t> (field);
+
+        if (grainEffectivePublished.load (std::memory_order_relaxed))
+            return grainEffective[index].load (std::memory_order_relaxed);
+
+        // No block has rendered yet (no audio device, or a plugin that is not running). The
+        // value is what the next block will show for the current MORPH setting.
+        const auto morph = getParameterValue (params::morph, params::morphDefault);
+        return GrainTargetResolver::resolve (deriveMorphTargets (morph), getGrainControlSettings())
+            .effective[index];
+    }
+
+    // =========================================================================
+    //  Modulation shapes (F14)
+    // =========================================================================
+
+    /** Undo for the modulation curve. Like the other feature undo steps, it applies a whole
+        state, so redo and undo always put back exactly the curve that was heard. */
+    class TextureAudioProcessor::ModulationCurveAction final : public juce::UndoableAction
+    {
+    public:
+        ModulationCurveAction (TextureAudioProcessor& host, ModulationCurve beforeCurve, ModulationCurve afterCurve)
+            : owner (host), before (beforeCurve), after (afterCurve)
+        {
+        }
+
+        bool perform() override { return owner.applyModulationCurve (after); }
+        bool undo() override { return owner.applyModulationCurve (before); }
+        int getSizeInUnits() override { return static_cast<int> (sizeof (*this)); }
+
+    private:
+        TextureAudioProcessor& owner;
+        ModulationCurve before;
+        ModulationCurve after;
+    };
+
+    bool TextureAudioProcessor::applyModulationCurve (const ModulationCurve& curve)
+    {
+        if (! curve.isValid())
+            return false;
+
+        lfoCurve = curve;
+        lfoCurveMailbox.publish (curve);
+        return true;
+    }
+
+    bool TextureAudioProcessor::setModulationCurve (const ModulationCurve& curve, const juce::String& undoName)
+    {
+        if (! curve.isValid())
+        {
+            postToast ("That curve is not valid, so nothing changed.", SampleLoader::Severity::warning);
+            return false;
+        }
+
+        if (curve == lfoCurve)
+            return true;
+
+        const auto previous = lfoCurve;
+        undoManager.beginNewTransaction (undoName);
+        undoManager.perform (new ModulationCurveAction (*this, previous, curve));
+        markPresetDirty();
+        return true;
+    }
+
+    void TextureAudioProcessor::setGrainFollow (GrainField field, bool shouldFollow)
+    {
+        // Captured before the transaction: the value the sound is using right now.
+        const auto change = planGrainFollowChange (field, shouldFollow, getGrainEffectiveValue (field));
+
+        undoManager.beginNewTransaction (shouldFollow ? "Follow MORPH for grain control"
+                                                      : "Set grain control manually");
+
+        for (int i = 0; i < change.count; ++i)
+            setParameterValue (change.writes[static_cast<size_t> (i)].parameterID,
+                               change.writes[static_cast<size_t> (i)].value);
+
+        markPresetDirty();
+    }
+
+    GrainControlSettings TextureAudioProcessor::readGrainSettings() const noexcept
+    {
+        return getGrainControlSettings();
+    }
+
+    MonoConfig TextureAudioProcessor::readPerformanceSettings() const noexcept
+    {
+        const auto read = [] (const std::atomic<float>* value, float fallback)
+        {
+            return value != nullptr ? value->load (std::memory_order_relaxed) : fallback;
+        };
+
+        const auto& p = performanceParameters;
+        return monoConfigFromParameters (juce::roundToInt (read (p.voiceMode, 0.0f)),
+                                         juce::roundToInt (read (p.priority, 0.0f)),
+                                         read (p.glideMs, params::glideMsDefault),
+                                         juce::roundToInt (read (p.glideMode, static_cast<float> (params::glideModeDefault))));
+    }
+
+    float TextureAudioProcessor::getFollowMorphValueForGui (int index) const noexcept
+    {
+        return followMorphValues[static_cast<size_t> (juce::jlimit (0, 3, index))].load (std::memory_order_relaxed);
+    }
+
+    void TextureAudioProcessor::startIndependentFromCurrentSound()
+    {
+        const auto drive = getFollowMorphValueForGui (0);
+        const auto chorus = getFollowMorphValueForGui (1);
+        const auto reverb = getFollowMorphValueForGui (2);
+        const auto tilt = getFollowMorphValueForGui (3);
+
+        // Inverse of the independent mappings in ToneSpaceRouter::resolve, so the first
+        // Independent block renders the same drive, chorus, reverb and tilt.
+        undoManager.beginNewTransaction ("Start tone and space from current sound");
+        setParameterValue (params::toneSpaceMode, static_cast<float> (params::toneSpaceModeIndependent));
+        setParameterValue (params::toneDrive, juce::jlimit (params::toneDriveMin, params::toneDriveMax,
+                                                            (drive - 0.1f) / 0.25f));
+        setParameterValue (params::spaceChorus, juce::jlimit (params::spaceChorusMin, params::spaceChorusMax,
+                                                              chorus / 0.6f));
+        setParameterValue (params::spaceReverb, juce::jlimit (params::spaceReverbMin, params::spaceReverbMax, reverb));
+        setParameterValue (params::toneTiltDb, juce::jlimit (params::toneTiltMinDb, params::toneTiltMaxDb, tilt));
+        setParameterValue (params::spaceWidth, params::spaceWidthDefault);
+        markPresetDirty();
+        postToast ("Tone and space now start from the current sound.", SampleLoader::Severity::info);
+    }
+
+    ToneSpaceSettings TextureAudioProcessor::readToneSpaceSettings() const noexcept
+    {
+        const auto read = [] (const std::atomic<float>* value, float fallback)
+        {
+            return value != nullptr ? value->load (std::memory_order_relaxed) : fallback;
+        };
+
+        const auto& p = toneSpaceParameters;
+        ToneSpaceSettings settings;
+        settings.independent = read (p.mode, static_cast<float> (params::toneSpaceModeDefault))
+                               > 0.5f * static_cast<float> (params::toneSpaceModeIndependent);
+        settings.hpHz = read (p.hp, params::toneHpDefaultHz);
+        settings.lpHz = read (p.lp, params::toneLpDefaultHz);
+        settings.filterOn = read (p.filterOn, 0.0f) > 0.5f;
+        settings.tiltDb = read (p.tilt, params::toneTiltDefaultDb);
+        settings.width = read (p.width, params::spaceWidthDefault);
+        settings.reverbSend = read (p.reverb, params::spaceReverbDefault);
+        settings.chorusAmount = read (p.chorus, params::spaceChorusDefault);
+        settings.drive = read (p.drive, params::toneDriveDefault);
+        return sanitiseToneSpace (settings);
     }
 
     const juce::String TextureAudioProcessor::getName() const
@@ -380,6 +908,8 @@ namespace texture
 
         effects.prepare (currentSampleRate, currentBlockSize, 2);
         morphLfo.prepare (currentSampleRate);
+        grainResolver.prepare (currentSampleRate);
+        renderController.prepare (currentSampleRate);
 
         smoothedMorph.reset (currentSampleRate, morphSmoothingSeconds);
         smoothedMorph.setCurrentAndTargetValue (morphParameter != nullptr
@@ -471,18 +1001,43 @@ namespace texture
         morphLfo.setDepth (licenseManager.isPro() ? requestedDepth : 0.0f);
 
         double hostBpm = 0.0;
-        double hostPpq = -1.0;
+        std::optional<double> hostPpq;
         bool hostIsPlaying = false;
+        bool hostHasPlayhead = false;
 
         if (auto* hostPlayHead = getPlayHead())
         {
             if (const auto position = hostPlayHead->getPosition())
             {
+                hostHasPlayhead = true;
                 hostBpm = position->getBpm().orFallback (0.0);
-                hostPpq = position->getPpqPosition().orFallback (-1.0);
+
+                if (const auto ppq = position->getPpqPosition())
+                    hostPpq = *ppq;
+
                 hostIsPlaying = position->getIsPlaying();
             }
         }
+
+        if (hostBpm > 0.0 && std::isfinite (hostBpm))
+            lastHostBpm.store (hostBpm, std::memory_order_relaxed);
+
+        // F14 modulation shapes. Read once per block, like every other LFO setting.
+        const auto readModulation = [] (const std::atomic<float>* value, float fallback)
+        {
+            return value != nullptr ? value->load (std::memory_order_relaxed) : fallback;
+        };
+
+        morphLfo.setShape (lfoShapeFromIndex (juce::roundToInt (
+            readModulation (modulationParameters.shape, static_cast<float> (params::lfoShapeDefault)))));
+        morphLfo.setRetrigger (lfoRetriggerFromIndex (juce::roundToInt (
+            readModulation (modulationParameters.retrigger, static_cast<float> (params::lfoRetriggerDefault)))));
+        morphLfo.setPhaseOffset (readModulation (modulationParameters.phase, params::lfoPhaseDefault));
+        morphLfo.setSlewMs (readModulation (modulationParameters.slewMs, params::lfoSlewMsDefault));
+        morphLfo.setSeed (randomSeed.load (std::memory_order_relaxed));
+
+        if (lfoCurveMailbox.tryRead (lfoCurveAudio))
+            morphLfo.setCurve (lfoCurveAudio);
 
         morphLfo.updateFromPlayHead (hostBpm, hostIsPlaying, hostPpq);
         morphLfo.advanceBlock (numSamples);
@@ -494,6 +1049,39 @@ namespace texture
         currentTargets.tuneSemitones = tuneParameter    != nullptr ? tuneParameter->load()    : params::tuneDefaultSemitones;
         currentTargets.reverseChance = reverseParameter != nullptr ? reverseParameter->load() : params::reverseDefault;
         currentTargets.shimmerAmount = shimmerParameter != nullptr ? shimmerParameter->load() : params::shimmerDefault;
+
+        followMorphValues[0].store (currentTargets.saturatorDrive, std::memory_order_relaxed);
+        followMorphValues[1].store (currentTargets.chorusDepth, std::memory_order_relaxed);
+        followMorphValues[2].store (currentTargets.reverbSend, std::memory_order_relaxed);
+        followMorphValues[3].store (currentTargets.highShelfTiltDb, std::memory_order_relaxed);
+
+        // F16 personality and F19 grid for this block, before the manual overrides (F13) resolve,
+        // so an explicit grain value still wins over a personality. The transport is the host's,
+        // or free-running without one.
+        {
+            TransportSpan transport;
+            transport.hasPlayhead = hostHasPlayhead;
+            transport.hasPpq = hostPpq.has_value();
+            transport.playing = hostIsPlaying;
+            transport.ppq = hostPpq.value_or (0.0);
+            transport.bpm = hostBpm;
+
+            const auto grainSettings = readGrainSettings();
+            renderController.beginBlock (readGrainRenderInputs (morphNow), currentTargets,
+                                         grainSettings.follow[static_cast<std::size_t> (GrainField::size)],
+                                         transport, numSamples);
+        }
+
+        // F13: manual grain values and Follow resolve here, once per block, into the targets
+        // that every layer and the effects read.
+        const auto grain = grainResolver.advance (currentTargets, readGrainSettings(), numSamples);
+        currentTargets = grain.targets;
+
+        for (size_t i = 0; i < numGrainFields; ++i)
+            grainEffective[i].store (grain.effective[i], std::memory_order_relaxed);
+
+        grainOversubscribedFlag.store (grain.oversubscribed, std::memory_order_relaxed);
+        grainEffectivePublished.store (true, std::memory_order_relaxed);
 
         for (int layer = 0; layer < numLayers; ++layer)
         {
@@ -527,6 +1115,18 @@ namespace texture
             engines[i].setAdsrParameters (attack, decay, sustain, release);
         }
 
+        const auto monoConfig = readPerformanceSettings();
+        for (auto& engine : engines)
+            engine.setVoiceConfig (monoConfig);
+
+        for (size_t layer = 0; layer < engines.size(); ++layer)
+            engines[layer].setScanSettings (readScanSettings (static_cast<int> (layer)));
+
+        const auto attackCloud = readAttackCloudSettings();
+        for (auto& engine : engines)
+            engine.setAttackCloud (attackCloud);
+
+        effects.setToneSpace (readToneSpaceSettings());
         effects.setMorphTargets (currentTargets);
         effects.getSecretEffect().setBitDepth (secretBitDepth.load (std::memory_order_relaxed));
         effects.getSecretEffect().setDownsample (secretDownsample.load (std::memory_order_relaxed));
@@ -548,31 +1148,42 @@ namespace texture
         if (numSamples <= 0 || layerMix.getNumSamples() < numSamples)
             return;
 
-        for (int i = 0; i < numLayers; ++i)
+        // Rhythmic scheduling works in spans of bounded length so its event list is fixed in size.
+        // Legacy renders the segment whole, exactly as before.
+        const auto chunk = renderController.isRhythmic() ? rhythm::maxSpanSamples : numSamples;
+
+        for (int offset = 0; offset < numSamples; offset += chunk)
         {
-            const auto gain = layerGains[static_cast<size_t> (i)];
+            const auto length = juce::jmin (chunk, numSamples - offset);
+            const auto frame = startSample + offset;
+            const auto& schedule = renderController.renderSpan (frame, length);
 
-            if (gain <= 0.0001f)
-                continue;
+            for (int i = 0; i < numLayers; ++i)
+            {
+                const auto gain = layerGains[static_cast<size_t> (i)];
 
-            const auto* source = layers[static_cast<size_t> (i)].live.load (std::memory_order_acquire);
+                if (gain <= 0.0001f)
+                    continue;
 
-            if (source == nullptr || ! source->isValid())
-                continue;
+                const auto* source = layers[static_cast<size_t> (i)].live.load (std::memory_order_acquire);
 
-            layerMix.clear (0, numSamples);
+                if (source == nullptr || ! source->isValid())
+                    continue;
 
-            auto layerTargets = currentTargets;
-            const auto index = static_cast<size_t> (i);
-            layerTargets.sourceFineCents = sourceFineParameters[index] != nullptr
-                                               ? sourceFineParameters[index]->load()
-                                               : params::sourceFineDefaultCents;
+                layerMix.clear (0, length);
 
-            if (engines[index].renderNextBlock (source, layerTargets, layerMix, 0, numSamples) == 0)
-                continue;
+                auto layerTargets = currentTargets;
+                const auto index = static_cast<size_t> (i);
+                layerTargets.sourceFineCents = sourceFineParameters[index] != nullptr
+                                                   ? sourceFineParameters[index]->load()
+                                                   : params::sourceFineDefaultCents;
 
-            for (int ch = 0; ch < 2; ++ch)
-                buffer.addFrom (ch, startSample, layerMix, ch, 0, numSamples, gain);
+                if (engines[index].renderNextBlock (source, layerTargets, layerMix, 0, length, &schedule) == 0)
+                    continue;
+
+                for (int ch = 0; ch < 2; ++ch)
+                    buffer.addFrom (ch, frame, layerMix, ch, 0, length, gain);
+            }
         }
     }
 
@@ -710,14 +1321,7 @@ namespace texture
         const auto root = static_cast<int> (command & 0x7fu);
         const auto velocity = static_cast<float> ((command >> 7) & 0x7fu) / 127.0f;
         const auto chord = static_cast<int> ((command >> 14) & 0x3u);
-        constexpr std::array<std::array<int, 4>, 4> offsets {{
-            {{ 0, -1, -1, -1 }},
-            {{ 0, 4, 7, -1 }},
-            {{ 0, 3, 7, -1 }},
-            {{ 0, 7, -1, -1 }}
-        }};
-
-        for (const auto offset : offsets[static_cast<size_t> (chord)])
+        for (const auto offset : AuditionChords::offsets[static_cast<size_t> (chord)])
         {
             if (offset < 0 || root + offset > 127)
                 continue;
@@ -753,11 +1357,17 @@ namespace texture
             lastMidiNote.store (message.getNoteNumber(), std::memory_order_relaxed);
             lastMidiVelocity.store (message.getVelocity(), std::memory_order_relaxed);
 
+            // The first key of a chord restarts the LFO in First note mode; the rest do not.
+            if (heldNotes.noteOn (message.getChannel(), message.getNoteNumber()))
+                morphLfo.noteStarted();
+
             for (auto& engine : engines)
                 engine.noteOn (message.getChannel(), message.getNoteNumber(), message.getFloatVelocity());
         }
         else if (message.isNoteOff())
         {
+            heldNotes.noteOff (message.getChannel(), message.getNoteNumber());
+
             for (auto& engine : engines)
                 engine.noteOff (message.getChannel(), message.getNoteNumber());
         }
@@ -774,14 +1384,21 @@ namespace texture
         else if (message.isAllNotesOff())
         {
             stopAudition();
+            heldNotes.clearChannel (message.getChannel());
+
             for (auto& engine : engines)
                 engine.allNotesOff (message.getChannel());
         }
         else if (message.isAllSoundOff())
         {
             stopAudition();
+            heldNotes.clearChannel (message.getChannel());
+
             for (auto& engine : engines)
                 engine.allSoundOff (message.getChannel());
+
+            // F19: a silenced instrument restarts its grid rather than replaying missed starts.
+            renderController.reset();
 
             effects.clearTails();
         }
@@ -815,6 +1432,8 @@ namespace texture
 
     void TextureAudioProcessor::parameterChanged (const juce::String&, float)
     {
+        parameterRevision.fetch_add (1, std::memory_order_relaxed);
+
         if (suppressPresetDirtyTracking.load (std::memory_order_relaxed))
             return;
 
@@ -833,6 +1452,74 @@ namespace texture
         {
             handleAsyncUpdate();
         }
+
+        // F10: a freeze captured its centre on the audio thread. Write it to scan_position here,
+        // so saving and restoring the patch returns to the frozen place. Never from processBlock.
+        for (size_t layer = 0; layer < engines.size(); ++layer)
+        {
+            double frozenCentre = 0.0;
+
+            if (engines[layer].takeFreezeLatch (frozenCentre))
+                setParameterValue (layer == 0 ? params::layer1ScanPosition : params::layer2ScanPosition,
+                                   static_cast<float> (frozenCentre));
+        }
+
+        // A finished render is collected here even when no export window is open, so
+        // the drag tile and the toast are right whichever window the user has.
+        WavExporter::Result finished;
+
+        if (exportController.getState() == ExportController::State::finished)
+            collectFinishedExport (finished);
+    }
+
+    bool TextureAudioProcessor::startExportJob (ExportController::Request request, bool forDrag)
+    {
+        DragRender drag;
+        drag.sampleRate = request.sampleRate;
+        drag.bitDepth = request.bitDepth;
+
+        if (! exportController.start (std::move (request)))
+            return false;
+
+        dragRender = forDrag ? std::optional<DragRender> (drag) : std::nullopt;
+        return true;
+    }
+
+    bool TextureAudioProcessor::collectFinishedExport (WavExporter::Result& result)
+    {
+        if (! exportController.takeResult (result))
+            return false;
+
+        if (dragRender.has_value())
+        {
+            if (result.succeeded)
+            {
+                RenderedAudio audio;
+                audio.file = result.file;
+                audio.name = result.file.getFileNameWithoutExtension();
+                audio.lengthSeconds = result.lengthSeconds;
+                audio.sampleRate = dragRender->sampleRate;
+                audio.bitDepth = dragRender->bitDepth;
+                audio.bytes = result.fileSizeBytes;
+                audio.peaks = result.peaks;
+                lastRender = std::move (audio);
+            }
+
+            dragRender.reset();
+        }
+
+        if (result.clippedSamples > 0 && result.succeeded)
+            result.message << " " << juce::String (result.clippedSamples)
+                           << " samples reached full scale; nothing was limited.";
+
+        lastExportResult = result;
+        ++exportSerial;
+
+        postToast (result.succeeded ? result.message
+                                    : (result.cancelled ? juce::String ("Render cancelled. Nothing was written.")
+                                                        : result.message),
+                   result.succeeded ? SampleLoader::Severity::info : SampleLoader::Severity::warning);
+        return true;
     }
 
     void TextureAudioProcessor::handleAsyncUpdate()
@@ -961,6 +1648,12 @@ namespace texture
         listeners.call ([callback, argument] (Listener& l) { (l.*callback) (argument); });
     }
 
+    void TextureAudioProcessor::notifySampleMissing (int layerIndex, const juce::String& expectedSha256,
+                                                     const juce::String& fileName)
+    {
+        listeners.call ([=] (Listener& l) { l.sampleMissing (layerIndex, expectedSha256, fileName); });
+    }
+
     void TextureAudioProcessor::notifyPluginStateChanged()
     {
         listeners.call ([] (Listener& l) { l.pluginStateChanged(); });
@@ -969,6 +1662,232 @@ namespace texture
     // =========================================================================
     //  Samples
     // =========================================================================
+
+    // =========================================================================
+    //  Variation history (F09)
+    // =========================================================================
+
+    namespace
+    {
+        constexpr const char* previewUndoName = "Preview variation";
+    }
+
+    /** One undo step that moves the whole sound: parameters, samples and seed. */
+    class TextureAudioProcessor::SoundSnapshotAction final : public juce::UndoableAction
+    {
+    public:
+        SoundSnapshotAction (TextureAudioProcessor& host, SoundSnapshot beforeState, SoundSnapshot afterState)
+            : owner (host), before (std::move (beforeState)), after (std::move (afterState))
+        {
+        }
+
+        bool perform() override { return owner.applySoundSnapshot (after); }
+        bool undo() override { return owner.applySoundSnapshot (before); }
+
+    private:
+        TextureAudioProcessor& owner;
+        SoundSnapshot before;
+        SoundSnapshot after;
+    };
+
+    /** Adapts the processor to the pure preview state machine. */
+    struct TextureAudioProcessor::VariationPreviewHost
+    {
+        TextureAudioProcessor& owner;
+
+        SoundSnapshot captureState() const { return owner.captureSoundSnapshot(); }
+
+        void applyPreview (const SoundSnapshot& target)
+        {
+            owner.undoManager.beginNewTransaction (previewUndoName);
+            owner.undoManager.perform (new SoundSnapshotAction (owner, owner.captureSoundSnapshot(), target));
+        }
+
+        void restorePreview (const SoundSnapshot& /*before*/)
+        {
+            // Undo is exact while the preview is the newest step. If the user has edited
+            // since, that edit wins: the preview is kept rather than silently reverted.
+            if (owner.undoManager.getUndoDescription() == previewUndoName && owner.undoManager.undo())
+                return;
+
+            owner.postToast ("The preview stays: something changed after it.", SampleLoader::Severity::info);
+        }
+    };
+
+    SoundSnapshot TextureAudioProcessor::captureSoundSnapshot() const
+    {
+        SoundSnapshot snapshot;
+
+        for (size_t i = 0; i < snapshot.parameters.size(); ++i)
+        {
+            const auto* id = params::allIDs[i];
+            snapshot.parameters[i] = getParameterValue (id, params::defaultValueFor (id));
+        }
+
+        for (size_t layer = 0; layer < static_cast<size_t> (numLayers); ++layer)
+        {
+            snapshot.media[layer] = getSampleForLayer (static_cast<int> (layer));
+            snapshot.files[layer] = layers[layer].file;
+            snapshot.originalNames[layer] = layers[layer].originalName;
+            snapshot.sampleStarts[layer] = getSampleStart (static_cast<int> (layer));
+        }
+
+        snapshot.seed = randomSeed.load (std::memory_order_relaxed);
+        snapshot.lfoCurve = lfoCurve;
+        return snapshot;
+    }
+
+    bool TextureAudioProcessor::applySoundSnapshot (const SoundSnapshot& snapshot)
+    {
+        // The same validator as preset loading: every value finite and inside its range.
+        for (size_t i = 0; i < snapshot.parameters.size(); ++i)
+            if (! PresetManager::isValidParameterValue (params::allIDs[i], snapshot.parameters[i]))
+                return false;
+
+        for (const auto start : snapshot.sampleStarts)
+            if (! std::isfinite (start) || start < 0.0f || start > 1.0f)
+                return false;
+
+        for (size_t i = 0; i < snapshot.parameters.size(); ++i)
+            setParameterValue (params::allIDs[i], snapshot.parameters[i]);
+
+        applyModulationCurve (snapshot.lfoCurve);
+
+        enforceTierLimits();
+        randomSeed.store (snapshot.seed, std::memory_order_relaxed);
+
+        for (size_t layer = 0; layer < static_cast<size_t> (numLayers); ++layer)
+        {
+            const auto index = static_cast<int> (layer);
+            auto& state = layers[layer];
+
+            // A load still in flight must not overwrite the sound being restored.
+            sampleLoader.cancelPendingLoad (index);
+
+            const auto target = snapshot.media[layer] != nullptr ? snapshot.media[layer] : SampleBuffer::makeEmpty();
+
+            if (target.get() != state.messageThreadCopy.get())
+                publishSample (state, target);
+
+            state.file = snapshot.files[layer];
+            state.originalName = snapshot.originalNames[layer];
+            setSampleStart (index, snapshot.sampleStarts[layer], false);
+            notifyListeners (&Listener::sampleChanged, index);
+        }
+
+        markPresetDirty();
+        notifyPluginStateChanged();
+        return true;
+    }
+
+    std::size_t TextureAudioProcessor::getRetainedMediaBytes() const
+    {
+        std::vector<const SampleBuffer*> references;
+
+        for (size_t i = 0; i < variations.size(); ++i)
+            for (const auto& media : variations.at (i).payload.media)
+                references.push_back (media.get());
+
+        return uniqueMediaBytes (std::move (references));
+    }
+
+    void TextureAudioProcessor::recordVariation (const juce::String& operation)
+    {
+        // A new variation supersedes any preview: the sound now heard is the new one.
+        variationPreview.accept();
+
+        const auto candidate = captureSoundSnapshot();
+
+        // Keep retained sample audio within budget by evicting the oldest unpinned entries.
+        const auto bytesWithCandidate = [this, &candidate]
+        {
+            std::vector<const SampleBuffer*> references;
+
+            for (size_t i = 0; i < variations.size(); ++i)
+                for (const auto& media : variations.at (i).payload.media)
+                    references.push_back (media.get());
+
+            for (const auto& media : candidate.media)
+                references.push_back (media.get());
+
+            return uniqueMediaBytes (std::move (references));
+        };
+
+        while (bytesWithCandidate() > variationMediaBudgetBytes && variations.evictOldestUnpinned())
+        {
+        }
+
+        if (bytesWithCandidate() > variationMediaBudgetBytes)
+        {
+            postToast ("Variations are holding too much sample audio. Unpin or clear some to keep this one.",
+                       SampleLoader::Severity::warning);
+            return;
+        }
+
+        const auto result = variations.add (candidate, operation.toStdString(), juce::Time::currentTimeMillis());
+
+        if (result == VariationList::AddResult::rejectedAllPinned)
+            postToast ("Every variation is pinned. Unpin one, or clear the history, to keep new ones.",
+                       SampleLoader::Severity::warning);
+    }
+
+    void TextureAudioProcessor::previewVariation (std::size_t index)
+    {
+        const auto* entry = variations.find (index);
+
+        if (entry == nullptr)
+            return;
+
+        VariationPreviewHost host { *this };
+        variationPreview.begin (host, index, entry->payload);
+    }
+
+    bool TextureAudioProcessor::previousVariation()
+    {
+        if (! variations.movePrevious())
+            return false;
+
+        previewVariation (variations.getCursor());
+        return true;
+    }
+
+    bool TextureAudioProcessor::nextVariation()
+    {
+        if (! variations.moveNext())
+            return false;
+
+        previewVariation (variations.getCursor());
+        return true;
+    }
+
+    void TextureAudioProcessor::acceptVariation()
+    {
+        variationPreview.accept();
+    }
+
+    void TextureAudioProcessor::cancelVariation()
+    {
+        VariationPreviewHost host { *this };
+        variationPreview.cancel (host);
+    }
+
+    bool TextureAudioProcessor::setVariationPinned (std::size_t index, bool shouldPin)
+    {
+        if (! variations.setPinned (index, shouldPin))
+        {
+            postToast ("Only eight variations can be pinned at once.", SampleLoader::Severity::warning);
+            return false;
+        }
+
+        return true;
+    }
+
+    void TextureAudioProcessor::clearVariations()
+    {
+        // Clearing the list keeps the sound the user is hearing.
+        variationPreview.accept();
+        variations.clear();
+    }
 
     void TextureAudioProcessor::setActiveLayer (int layerIndex)
     {
@@ -1096,6 +2015,79 @@ namespace texture
         return layers[index].messageThreadCopy;
     }
 
+    TextureAudioProcessor::BundleSource TextureAudioProcessor::captureBundleSource (const juce::String& name,
+                                                                                   const juce::String& category,
+                                                                                   const juce::StringArray& tags) const
+    {
+        BundleSource source;
+        source.preset = captureCurrentPreset (name, category, tags);
+
+        for (int layer = 0; layer < numLayers; ++layer)
+            source.files[static_cast<size_t> (layer)] = getSampleFileForLayer (layer);
+
+        return source;
+    }
+
+    void TextureAudioProcessor::relinkLayer (int layerIndex, const juce::File& file)
+    {
+        const auto index = static_cast<size_t> (juce::jlimit (0, numLayers - 1, layerIndex));
+
+        if (! file.existsAsFile() || ! sampleLoader.isSupportedAudioFile (file))
+        {
+            postToast ("That file cannot be used as a sample.", SampleLoader::Severity::warning);
+            return;
+        }
+
+        logInfo ("loader", "Relinking layer " + juce::String (layerIndex + 1) + " to " + file.getFullPathName());
+        sampleLoadMarksDirty[index].store (true, std::memory_order_release);
+        sampleLoader.loadAsync (file, layerIndex);
+        markPresetDirty();
+    }
+
+    std::shared_ptr<const PatchSnapshot> TextureAudioProcessor::captureExportSnapshot() const
+    {
+        auto snapshot = std::make_shared<PatchSnapshot>();
+        snapshot->settings = captureRenderSettings();
+
+        for (int layer = 0; layer < numLayers; ++layer)
+            snapshot->samples[static_cast<size_t> (layer)] = getSampleForLayer (layer);
+
+        return snapshot;
+    }
+
+    juce::File TextureAudioProcessor::getRenderedAudioDirectory()
+    {
+        if (auto* store = applicationProperties.getUserSettings())
+        {
+            const auto saved = juce::File (store->getValue ("renderedAudioDirectory"));
+
+            if (saved != juce::File() && saved.isDirectory())
+                return saved;
+        }
+
+        return RenderedAudioCache::defaultDirectory();
+    }
+
+    bool TextureAudioProcessor::setRenderedAudioDirectory (const juce::File& directory)
+    {
+        if (exportController.isBusy() || directory == juce::File() || ! directory.isDirectory())
+            return false;
+
+        if (auto* store = applicationProperties.getUserSettings())
+        {
+            store->setValue ("renderedAudioDirectory", directory.getFullPathName());
+            store->saveIfNeeded();
+        }
+
+        renderedAudioCache.setDirectory (directory);
+        return true;
+    }
+
+    juce::File TextureAudioProcessor::getPortableStagingDirectory() const
+    {
+        return PresetManager::getPluginDataDirectory().getChildFile ("Staging");
+    }
+
     juce::File TextureAudioProcessor::getSampleFileForLayer (int layerIndex) const
     {
         const auto index = static_cast<size_t> (juce::jlimit (0, numLayers - 1, layerIndex));
@@ -1218,6 +2210,9 @@ namespace texture
         for (const auto* id : params::allIDs)
             data.setParameter (id, getParameterValue (id, params::defaultValueFor (id)));
 
+        data.hasLfoCurve = true;
+        data.lfoCurve = lfoCurve;
+
         return data;
     }
 
@@ -1256,6 +2251,13 @@ namespace texture
         for (const auto* id : params::allIDs)
             setParameterValue (id, data.getParameter (id, params::defaultValueFor (id)));
 
+        // A preset without a curve loads the default one, the same rule as its parameters.
+        // The change is part of this preset's undo step.
+        const auto presetCurve = data.hasLfoCurve ? data.lfoCurve : ModulationCurve();
+
+        if (! (presetCurve == lfoCurve))
+            undoManager.perform (new ModulationCurveAction (*this, lfoCurve, presetCurve));
+
         currentPresetName = data.name;
         currentPresetCategory = data.category;
         currentPresetFile = file;
@@ -1293,6 +2295,8 @@ namespace texture
                                + storedPath.fromLastOccurrenceOf ("/", false, false)
                                + "' is missing in layer " + juce::String (layerIndex + 1) + ".",
                            SampleLoader::Severity::warning);
+                notifySampleMissing (layerIndex, data.mediaSha256[index],
+                                     storedPath.fromLastOccurrenceOf ("/", false, false));
             }
 
             notifyListeners (&Listener::sampleChanged, layerIndex);
@@ -1359,6 +2363,15 @@ namespace texture
         undoManager.beginNewTransaction();
         auto& random = juce::Random::getSystemRandom();
 
+        // One snapshot of the locks for the whole operation (F02): a lock toggled while
+        // this runs cannot change which values are written.
+        const auto locks = editLocks;
+        const auto write = [this, &locks] (const char* id, float value)
+        {
+            if (! locks.isLocked (id))
+                setParameterValue (id, value);
+        };
+
         // Start sound-design parameters from defaults so results do not drift.
         // TUNE calibrates the source sample and must survive randomisation.
         for (const auto* id : params::allIDs)
@@ -1366,41 +2379,265 @@ namespace texture
                 && juce::String (id) != params::layer1Root
                 && juce::String (id) != params::layer2Root
                 && juce::String (id) != params::layer1FineCents
-                && juce::String (id) != params::layer2FineCents)
-                setParameterValue (id, params::defaultValueFor (id));
+                && juce::String (id) != params::layer2FineCents
+                && ! params::isToneSpaceParameter (id)
+                && ! params::isPerformanceParameter (id)
+                && ! params::isScanParameter (id)
+                && ! params::isRhythmParameter (id)
+                && ! params::isPersonalityParameter (id)
+                && ! params::isAttackCloudParameter (id))
+                write (id, params::defaultValueFor (id));
 
-        setParameterValue (params::morph, random.nextFloat());
-        setParameterValue (params::attack, juce::jmap (random.nextFloat(), 5.0f, 2500.0f));
-        setParameterValue (params::decay, juce::jmap (random.nextFloat(), 50.0f, 3000.0f));
-        setParameterValue (params::sustain, juce::jmap (random.nextFloat(), 0.35f, 1.0f));
-        setParameterValue (params::release, juce::jmap (random.nextFloat(), 200.0f, 6000.0f));
-        setParameterValue (params::reverbOn, random.nextFloat() < 0.85f ? 1.0f : 0.0f);
-        setParameterValue (params::gainDb, juce::jmap (random.nextFloat(), -8.0f, 0.0f));
+        write (params::morph, random.nextFloat());
+        write (params::attack, juce::jmap (random.nextFloat(), 5.0f, 2500.0f));
+        write (params::decay, juce::jmap (random.nextFloat(), 50.0f, 3000.0f));
+        write (params::sustain, juce::jmap (random.nextFloat(), 0.35f, 1.0f));
+        write (params::release, juce::jmap (random.nextFloat(), 200.0f, 6000.0f));
+        write (params::reverbOn, random.nextFloat() < 0.85f ? 1.0f : 0.0f);
+        write (params::gainDb, juce::jmap (random.nextFloat(), -8.0f, 0.0f));
 
         // Tune stays put: it describes the sample, not the sound. The two grain
         // effects are applied sparingly so most rolls still sound like the sample.
         if (random.nextFloat() < 0.35f)
-            setParameterValue (params::reverse, juce::jmap (random.nextFloat(), 0.1f, 0.6f));
+            write (params::reverse, juce::jmap (random.nextFloat(), 0.1f, 0.6f));
 
         if (random.nextFloat() < 0.35f)
-            setParameterValue (params::shimmer, juce::jmap (random.nextFloat(), 0.1f, 0.7f));
+            write (params::shimmer, juce::jmap (random.nextFloat(), 0.1f, 0.7f));
 
         if (licenseManager.isPro())
         {
-            setParameterValue (params::lfoRate, juce::jmap (random.nextFloat(), 0.05f, 1.5f));
-            setParameterValue (params::lfoDepth, random.nextFloat() < 0.5f ? 0.0f
-                                                                          : juce::jmap (random.nextFloat(), 0.1f, 0.7f));
-            setParameterValue (params::lfoSync, random.nextFloat() < 0.3f ? 1.0f : 0.0f);
-            setParameterValue (params::lfoDivision,
-                               static_cast<float> (random.nextInt (params::numDivisions)));
+            write (params::lfoRate, juce::jmap (random.nextFloat(), 0.05f, 1.5f));
+            write (params::lfoDepth, random.nextFloat() < 0.5f ? 0.0f
+                                                              : juce::jmap (random.nextFloat(), 0.1f, 0.7f));
+            write (params::lfoSync, random.nextFloat() < 0.3f ? 1.0f : 0.0f);
+            write (params::lfoDivision,
+                   static_cast<float> (random.nextInt (params::numDivisions)));
 
             if (getSampleForLayer (1) != nullptr && getSampleForLayer (1)->isValid())
-                setParameterValue (params::layerBlend, juce::jmap (random.nextFloat(), 0.0f, 0.8f));
+                write (params::layerBlend, juce::jmap (random.nextFloat(), 0.0f, 0.8f));
         }
 
         enforceTierLimits();
         markPresetDirty();
-        postToast ("Randomised.", SampleLoader::Severity::info);
+        recordVariation ("Randomize");
+
+        const auto lockedKept = locks.countLockedTotal();
+        postToast (lockedKept > 0 ? "Randomised; " + juce::String (lockedKept) + " locked "
+                                        + (lockedKept == 1 ? "control" : "controls") + " kept."
+                                  : juce::String ("Randomised."),
+                   SampleLoader::Severity::info);
+    }
+
+    // =========================================================================
+    //  Editing locks and Gentle Mutate
+    // =========================================================================
+
+    bool TextureAudioProcessor::isFieldLocked (const juce::String& parameterID) const
+    {
+        return editLocks.isLocked (parameterID.toStdString());
+    }
+
+    void TextureAudioProcessor::setFieldLocked (const juce::String& parameterID, bool shouldLock)
+    {
+        auto next = editLocks;
+
+        if (! next.setLocked (parameterID.toStdString(), shouldLock) || next == editLocks)
+            return;
+
+        lockHistory.record (editLocks);
+        editLocks = std::move (next);
+        notifyPluginStateChanged();
+    }
+
+    void TextureAudioProcessor::setGroupLocked (LockGroup group, bool shouldLock)
+    {
+        auto next = editLocks;
+        next.setGroupLocked (group, shouldLock);
+
+        if (next == editLocks)
+            return;
+
+        lockHistory.record (editLocks);
+        editLocks = std::move (next);
+        notifyPluginStateChanged();
+    }
+
+    LockPolicy::GroupState TextureAudioProcessor::getGroupLockState (LockGroup group) const
+    {
+        return editLocks.groupState (group);
+    }
+
+    int TextureAudioProcessor::getLockedFieldCount() const
+    {
+        return editLocks.countLockedTotal();
+    }
+
+    void TextureAudioProcessor::unlockAllFields()
+    {
+        if (editLocks.empty())
+            return;
+
+        lockHistory.record (editLocks);
+        editLocks.clear();
+        notifyPluginStateChanged();
+    }
+
+    bool TextureAudioProcessor::undoLockChange()
+    {
+        LockPolicy::LockSet restored;
+
+        if (! lockHistory.undo (restored))
+            return false;
+
+        editLocks = std::move (restored);
+        notifyPluginStateChanged();
+        return true;
+    }
+
+    void TextureAudioProcessor::setMutateOptions (const MutateOptions& options)
+    {
+        // Only the four sound groups are selectable. Pitch calibration and Layers are
+        // never mutated, so their bits are dropped rather than trusted from the GUI.
+        const auto selectable = MutationPlanner::groupBit (LockGroup::envelope)
+                              | MutationPlanner::groupBit (LockGroup::grain)
+                              | MutationPlanner::groupBit (LockGroup::motion)
+                              | MutationPlanner::groupBit (LockGroup::toneSpace);
+
+        mutateOptions.strength = std::isfinite (options.strength)
+                                     ? juce::jlimit (0.0f, 1.0f, options.strength)
+                                     : 0.0f;
+        mutateOptions.groupMask = options.groupMask & selectable;
+        mutateOptions.allowCategorical = options.allowCategorical;
+    }
+
+    std::vector<MutationField> TextureAudioProcessor::buildMutationFields() const
+    {
+        std::vector<MutationField> fields;
+        const auto& registry = LockPolicy::fields();
+        fields.reserve (registry.size());
+        const auto grainSettings = getGrainControlSettings();
+
+        for (const auto& info : registry)
+        {
+            MutationField field;
+            field.id = info.id;
+            field.group = info.group;
+            field.eligible = info.mutableByDefault && (! info.proOnly || licenseManager.isPro())
+                             && isGrainParameterMutable (info.id, grainSettings)
+                             && rhythm::isRhythmParameterMutable (info.id, readRhythmSettings().rhythmic)
+                             && isPersonalityParameterMutable (info.id, getPersonalityStyle())
+                             && isAttackCloudParameterMutable (info.id, readAttackCloudSettings().on);
+
+            const auto* parameter = apvts.getParameter (juce::String (std::string (info.id)));
+            if (parameter == nullptr)
+            {
+                field.eligible = false;
+                fields.push_back (field);
+                continue;
+            }
+
+            field.normalised = juce::jlimit (0.0f, 1.0f, parameter->getValue());
+
+            if (dynamic_cast<const juce::AudioParameterChoice*> (parameter) != nullptr)
+            {
+                field.kind = FieldKind::categorical;
+                field.choiceCount = static_cast<const juce::AudioParameterChoice*> (parameter)->choices.size();
+            }
+            else if (dynamic_cast<const juce::AudioParameterBool*> (parameter) != nullptr)
+            {
+                field.kind = FieldKind::categorical;
+                field.choiceCount = 2;
+            }
+            else if (dynamic_cast<const juce::AudioParameterInt*> (parameter) != nullptr)
+            {
+                field.kind = FieldKind::discrete;
+                const auto range = parameter->getNormalisableRange();
+                field.choiceCount = juce::roundToInt ((range.end - range.start) / range.interval) + 1;
+            }
+            else
+            {
+                field.kind = FieldKind::continuous;
+            }
+
+            fields.push_back (field);
+        }
+
+        return fields;
+    }
+
+    TextureAudioProcessor::MutateResult TextureAudioProcessor::mutateParameters()
+    {
+        MutateResult result;
+
+        if (mutateOptions.strength <= 0.0f)
+        {
+            result.status = PlanStatus::noOp;
+            result.message = "Mutate strength is zero; nothing changed.";
+            return result;
+        }
+
+        // Capture everything the plan depends on before planning: the baseline values,
+        // the lock snapshot, the revision and the operation seed.
+        const auto revision = parameterRevision.load (std::memory_order_relaxed);
+        const auto fields = buildMutationFields();
+        const auto locks = editLocks;
+
+        MutationRequest request;
+        request.strength = mutateOptions.strength;
+        request.seed = VersionedRandomStreams::value (randomSeed.load (std::memory_order_relaxed),
+                                                      VersionedRandomStreams::Lane::mutation,
+                                                      mutationOperationCount++, 0);
+        request.groupMask = mutateOptions.groupMask;
+        request.allowCategorical = mutateOptions.allowCategorical;
+        request.baselineRevision = revision;
+
+        const auto plan = MutationPlanner::plan (fields, locks, request, revision);
+        result.status = plan.status;
+        result.locked = plan.lockedSkipped;
+
+        if (plan.status == PlanStatus::staleRevision)
+            result.message = "Parameters changed while Mutate was planning. Press Mutate again.";
+        else if (plan.status == PlanStatus::invalidInput)
+            result.message = "Mutate skipped: a current value was not valid.";
+        else if (plan.changes.empty())
+            result.message = "Nothing moved" + juce::String (plan.lockedSkipped > 0
+                                 ? "; " + juce::String (plan.lockedSkipped) + " locked." : ".");
+
+        if (plan.status != PlanStatus::ok || plan.changes.empty())
+        {
+            if (! result.message.isEmpty())
+                postToast (result.message, SampleLoader::Severity::info);
+            return result;
+        }
+
+        // Writes are one undo step. A revision change here means a parameter moved
+        // after the baseline was captured; nothing is written in that case.
+        if (parameterRevision.load (std::memory_order_relaxed) != revision)
+        {
+            result.status = PlanStatus::staleRevision;
+            result.message = "Parameters changed while Mutate was planning. Press Mutate again.";
+            postToast (result.message, SampleLoader::Severity::warning);
+            return result;
+        }
+
+        undoManager.beginNewTransaction ("Gentle Mutate");
+
+        for (const auto& change : plan.changes)
+        {
+            if (auto* parameter = apvts.getParameter (juce::String (std::string (fields[change.fieldIndex].id))))
+                parameter->setValueNotifyingHost (change.normalised);
+        }
+
+        enforceTierLimits();
+        markPresetDirty();
+        recordVariation ("Mutate");
+
+        result.changed = static_cast<int> (plan.changes.size());
+        result.message = "Changed " + juce::String (result.changed)
+                       + (result.changed == 1 ? " control" : " controls")
+                       + (plan.lockedSkipped > 0 ? "; " + juce::String (plan.lockedSkipped) + " locked." : ".");
+        postToast (result.message, SampleLoader::Severity::info);
+        return result;
     }
 
     void TextureAudioProcessor::hardResetAllSettings()
@@ -1480,6 +2717,7 @@ namespace texture
     {
         const auto index = juce::jlimit (0, numCompareSlots - 1, slotIndex);
         compareSlots[static_cast<size_t> (index)] = captureParameterTree();
+        compareCurves[static_cast<size_t> (index)] = lfoCurve;
     }
 
     void TextureAudioProcessor::recallCompareSlot (int slotIndex)
@@ -1489,10 +2727,22 @@ namespace texture
 
         // Keep the slot we are leaving up to date so A/B is a true toggle.
         if (index != activeCompareSlot)
+        {
             compareSlots[static_cast<size_t> (activeCompareSlot)] = captureParameterTree();
+            compareCurves[static_cast<size_t> (activeCompareSlot)] = lfoCurve;
+        }
 
         activeCompareSlot = index;
         applyParameterTree (compareSlots[static_cast<size_t> (index)]);
+
+        // The curve is part of the slot, and undo must put back the one that was heard.
+        const auto recalled = compareCurves[static_cast<size_t> (index)];
+
+        if (! (recalled == lfoCurve))
+        {
+            const auto previous = lfoCurve;
+            undoManager.perform (new ModulationCurveAction (*this, previous, recalled));
+        }
 
         markPresetDirty();
         notifyPluginStateChanged();
@@ -1504,9 +2754,13 @@ namespace texture
         const auto to = juce::jlimit (0, numCompareSlots - 1, toIndex);
 
         if (from == activeCompareSlot)
+        {
             compareSlots[static_cast<size_t> (from)] = captureParameterTree();
+            compareCurves[static_cast<size_t> (from)] = lfoCurve;
+        }
 
         compareSlots[static_cast<size_t> (to)] = compareSlots[static_cast<size_t> (from)].createCopy();
+        compareCurves[static_cast<size_t> (to)] = compareCurves[static_cast<size_t> (from)];
         notifyPluginStateChanged();
     }
 
@@ -1545,6 +2799,20 @@ namespace texture
                                                                      static_cast<float> (params::randomModeDefault)));
         settings.randomSeed = randomSeed.load (std::memory_order_relaxed);
         settings.randomAlgorithmVersion = VersionedRandomStreams::algorithmVersion;
+        settings.toneSpace = readToneSpaceSettings();
+        settings.mono = readPerformanceSettings();
+        settings.grain = readGrainSettings();
+        settings.rhythm = readRhythmSettings();
+        settings.personality = getPersonalityStyle();
+        settings.personalityIntensity = getParameterValue (params::personalityIntensity, params::personalityIntensityDefault);
+        settings.attackCloud = readAttackCloudSettings();
+        settings.lfoShape = juce::roundToInt (getParameterValue (params::lfoShape, static_cast<float> (params::lfoShapeDefault)));
+        settings.lfoRetrigger = juce::roundToInt (getParameterValue (params::lfoRetrigger, static_cast<float> (params::lfoRetriggerDefault)));
+        settings.lfoPhase = getParameterValue (params::lfoPhase, params::lfoPhaseDefault);
+        settings.lfoSlewMs = getParameterValue (params::lfoSlewMs, params::lfoSlewMsDefault);
+        settings.lfoCurve = lfoCurve;
+        settings.hostBpm = lastHostBpm.load (std::memory_order_relaxed);
+        settings.scan = { getScanSettings (0), getScanSettings (1) };
 
         const auto secret = getSecretSettings();
         settings.gritBits = secret.bitDepth;
@@ -1600,6 +2868,23 @@ namespace texture
             root.appendChild (sample, nullptr);
         }
 
+        juce::ValueTree feature (StateSchema::featureStateTag);
+        feature.setProperty ("schema", StateSchema::featureStateSchemaVersion, nullptr);
+
+        for (const auto& id : editLocks.lockedIds())
+        {
+            juce::ValueTree lock (StateSchema::lockTag);
+            lock.setProperty ("id", juce::String (id), nullptr);
+            feature.appendChild (lock, nullptr);
+        }
+
+        // F14: the curve is written only when it differs from the default, so patches that
+        // do not use it stay readable by builds that predate it.
+        if (! (lfoCurve == ModulationCurve()))
+            feature.appendChild (StateSchema::curveToTree (lfoCurve), nullptr);
+
+        root.appendChild (feature, nullptr);
+
         juce::ValueTree preset (StateSchema::presetTag);
         preset.setProperty ("name", currentPresetName, nullptr);
         preset.setProperty ("category", currentPresetCategory, nullptr);
@@ -1607,6 +2892,7 @@ namespace texture
 
         // The active slot may have been edited since the last A/B switch.
         compareSlots[static_cast<size_t> (activeCompareSlot)] = captureParameterTree();
+        compareCurves[static_cast<size_t> (activeCompareSlot)] = lfoCurve;
 
         juce::ValueTree compare (StateSchema::compareTag);
         compare.setProperty ("active", activeCompareSlot, nullptr);
@@ -1626,6 +2912,11 @@ namespace texture
                                       : juce::var (getParameterValue (id, params::defaultValueFor (id))),
                                   nullptr);
             }
+
+            const auto& curve = compareCurves[static_cast<size_t> (slotIndex)];
+
+            if (! (curve == ModulationCurve()))
+                slot.appendChild (StateSchema::curveToTree (curve), nullptr);
 
             compare.appendChild (slot, nullptr);
         }
@@ -1668,6 +2959,14 @@ namespace texture
         const auto parameters = root.getChildWithName (StateSchema::parametersTag);
         suppressPresetDirtyTracking.store (true, std::memory_order_release);
         apvts.replaceState (parameters.getChild (0).createCopy());
+
+        // Parameters added after the state was written are absent from it, and
+        // replaceState leaves absent parameters alone. Give them their defaults here,
+        // so an older session never inherits the previous patch's tone or performance
+        // settings. Done before the undo history is cleared, so it is not undoable.
+        StateSchema::applyDefaultsForMissingParameters (
+            parameters.getChild (0),
+            [this] (const char* id) { setParameterValue (id, params::defaultValueFor (id)); });
         randomSeed.store (VersionedRandomStreams::defaultSeed, std::memory_order_relaxed);
         if (root.hasProperty ("randomSeedV1"))
         {
@@ -1678,6 +2977,40 @@ namespace texture
         // A restored session starts a fresh history: undo must never step back into
         // whatever this instance was doing before the host loaded the project.
         undoManager.clearUndoHistory();
+
+        // Variations are session-local: a project restore starts a fresh history.
+        variationPreview.reset();
+        variations.clear();
+
+        // Locks belong to this instance's host state. Restore applies values regardless
+        // of locks; it only reinstates which controls are protected from later edits.
+        editLocks.clear();
+        lockHistory.clear();
+
+        if (const auto feature = root.getChildWithName (StateSchema::featureStateTag); feature.isValid())
+        {
+            std::vector<std::string> lockIds;
+
+            for (const auto& lock : feature)
+                if (lock.getType() == StateSchema::lockTag)
+                    lockIds.push_back (lock.getProperty ("id").toString().toStdString());
+
+            const auto parsed = LockPolicy::parseIds (lockIds);
+            editLocks = parsed.locks;
+
+            for (const auto& ignored : parsed.ignoredIds)
+                logWarn ("locks", "Ignored unknown lock ID in host state: " + juce::String (ignored));
+        }
+
+        // F14: a state without the curve reads the default, never the previous patch's curve.
+        ModulationCurve restoredCurve;
+
+        if (const auto feature = root.getChildWithName (StateSchema::featureStateTag); feature.isValid())
+            if (const auto curveTree = feature.getChildWithName (StateSchema::lfoCurveTag); curveTree.isValid())
+                StateSchema::curveFromTree (curveTree, restoredCurve);
+
+        applyModulationCurve (restoredCurve);
+        compareCurves.fill (ModulationCurve());
 
         const auto preset = root.getChildWithName (StateSchema::presetTag);
 
@@ -1716,6 +3049,11 @@ namespace texture
                                           nullptr);
                 }
 
+                ModulationCurve slotCurve;
+                if (const auto curveTree = child.getChildWithName (StateSchema::lfoCurveTag); curveTree.isValid())
+                    StateSchema::curveFromTree (curveTree, slotCurve);
+                compareCurves[static_cast<size_t> (slotIndex)] = slotCurve;
+
                 compareSlots[static_cast<size_t> (slotIndex)] = std::move (snapshot);
             }
         }
@@ -1726,6 +3064,9 @@ namespace texture
 
             for (auto& slot : compareSlots)
                 slot = snapshot.createCopy();
+
+            // Slots from before F14 hold the neutral curve, which is what the patch had.
+            compareCurves.fill (restoredCurve);
         }
 
         SecretSettings secret;

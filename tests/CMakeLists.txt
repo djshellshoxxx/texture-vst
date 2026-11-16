@@ -20,27 +20,66 @@ set(TEXTURE_TEST_SOURCES
     test_sample_loader.cpp
     test_license_manager.cpp
     test_preset_manager.cpp
+    test_parameter_locks.cpp
+    test_mutation_planner.cpp
+    test_legacy_render_fixtures.cpp
+    test_tone_space.cpp
+    test_mono_legato.cpp
+    test_grain_controls.cpp
+    test_modulation_shapes.cpp
+    test_scan_position.cpp
+    test_variation_history.cpp
+    test_media_manifest.cpp
+    test_bundle_archive.cpp
+    test_export_planner.cpp
+    test_export_job.cpp
+    test_rendered_audio_cache.cpp
+    test_grain_clock.cpp
+    test_personality_map.cpp
+    test_attack_cloud.cpp
     test_fuzz.cpp
     TestHelpers.h
 
     ../Source/Engine/Grain.cpp
+    ../Source/Engine/GrainTargetResolver.cpp
+    ../Source/Engine/SamplePositionController.cpp
     ../Source/Engine/GranularEngine.cpp
+    ../Source/Engine/MonoNoteStack.cpp
     ../Source/Engine/SampleBuffer.cpp
     ../Source/Engine/Voice.cpp
+    ../Source/Engine/GrainClock.cpp
+    ../Source/Engine/GrainRenderController.cpp
 
     ../Source/Effects/Chorus.cpp
     ../Source/Effects/EffectsChain.cpp
     ../Source/Effects/Reverb.cpp
     ../Source/Effects/Saturator.cpp
     ../Source/Effects/SecretEffect.cpp
+    ../Source/Effects/ToneSpace.cpp
 
     ../Source/Modulation/EnvelopeADSR.cpp
     ../Source/Modulation/MorphLFO.cpp
+    ../Source/Modulation/ModulationCurve.cpp
+    ../Source/Modulation/ModulationOscillator.cpp
+    ../Source/Modulation/PersonalityMap.cpp
 
+    ../Source/IO/AtomicFileWriter.cpp
+    ../Source/IO/BundleArchive.cpp
+    ../Source/IO/BundleImportPlanner.cpp
     ../Source/IO/FactoryContent.cpp
+    ../Source/IO/MediaManifest.cpp
+    ../Source/IO/MediaRelinker.cpp
+    ../Source/IO/MediaStore.cpp
+    ../Source/IO/PortableMediaWorker.cpp
+    ../Source/IO/ExportPlanner.cpp
+    ../Source/IO/ExportJob.cpp
+    ../Source/IO/ExportController.cpp
+    ../Source/IO/RenderedAudioCache.cpp
     ../Source/IO/SampleLoader.cpp
     ../Source/IO/WavExporter.cpp
 
+    ../Source/Presets/LockPolicy.cpp
+    ../Source/Presets/MutationPlanner.cpp
     ../Source/Presets/PresetManager.cpp
 
     ../Source/License/LicenseManager.cpp
@@ -91,6 +130,15 @@ add_test(NAME texture_fuzz COMMAND Texture_Tests fuzz)
 
 set_tests_properties(texture_unit_tests PROPERTIES TIMEOUT 600)
 set_tests_properties(texture_fuzz PROPERTIES TIMEOUT 300)
+
+# Feature categories run as their own CTest entries, so their failures are attributable to the
+# feature and CI runs them. The unit category above does not include them.
+add_test(NAME texture_rhythm COMMAND Texture_Tests texture-rhythm)
+set_tests_properties(texture_rhythm PROPERTIES TIMEOUT 600)
+add_test(NAME texture_personality COMMAND Texture_Tests texture-personality)
+set_tests_properties(texture_personality PROPERTIES TIMEOUT 600)
+add_test(NAME texture_attack COMMAND Texture_Tests texture-attack)
+set_tests_properties(texture_attack PROPERTIES TIMEOUT 600)
 
 # Pure waveform math also runs without JUCE for focused boundary/sanitizer checks.
 add_executable(Texture_WaveformMathTests test_waveform_math.cpp)

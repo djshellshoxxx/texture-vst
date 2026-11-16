@@ -1,9 +1,17 @@
 #pragma once
 
+#include "../Effects/ToneSpace.h"
+#include "../Engine/AttackCloud.h"
+#include "../Engine/GrainClock.h"
+#include "../Engine/GrainTargetResolver.h"
+#include "../Engine/MonoNoteStack.h"
+#include "../Engine/SamplePositionController.h"
+#include "../Modulation/ModulationCurve.h"
 #include "../Engine/SampleBuffer.h"
 
 #include <array>
 #include <cstdint>
+#include <vector>
 
 namespace texture
 {
@@ -41,6 +49,20 @@ namespace texture
             float gritBits { 12.0f };
             float gritDownsample { 4.0f };
             float gritMix { 0.0f };
+            ToneSpaceSettings toneSpace;  // F07: Follow MORPH unless independent
+            MonoConfig mono;              // F11: Poly with no glide unless set
+            GrainControlSettings grain;   // F13: Follow MORPH everywhere unless set
+            RhythmSettings rhythm;        // F19: Legacy grain clock unless set
+            int personality { 0 };        // F16: Legacy unless set (Personality index)
+            float personalityIntensity { 0.5f };
+            AttackCloudSettings attackCloud;  // F17: off unless set
+            int lfoShape { 0 };           // F14: Sine unless set (LfoShape index)
+            int lfoRetrigger { 0 };       // F14: Legacy unless set (LfoRetrigger index)
+            float lfoPhase { 0.0f };
+            float lfoSlewMs { 10.0f };
+            ModulationCurve lfoCurve;     // used only by the Curve shape
+            double hostBpm { 120.0 };     // tempo for Host retrigger when no host is present
+            std::array<ScanSettings, 2> scan {};   // F10: Legacy with Freeze off unless set
             int midiNote { 60 };          // C3
             float velocity { 0.9f };
         };
@@ -58,10 +80,15 @@ namespace texture
         struct Result
         {
             bool succeeded { false };
+            bool cancelled { false };
             juce::File file;
             double lengthSeconds { 0.0 };
             juce::int64 fileSizeBytes { 0 };
             juce::String message;
+            /** Samples at or beyond full scale. Reported, never silently limited (F06). */
+            int clippedSamples { 0 };
+            /** Peak magnitude per time bin, for the rendered-audio tile (F15). */
+            std::vector<float> peaks;
         };
 
         /** Renders and writes the file. Call from the message thread or a background
